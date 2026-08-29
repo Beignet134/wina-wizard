@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wina Wizard — Tableau de bord</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<body>
+<div class="topbar">
+  <div class="inner">
+    <header>
+      <h1>Wina <span class="accent">Wizard</span></h1>
+      <span class="gen">généré le <span id="metaGenerated">—</span></span>
+    </header>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-page="retro" role="tab">Rétrospectif</button>
+      <button class="tab" data-page="dc" role="tab">Dixon-Coles</button>
+      <button class="tab" data-page="upcoming" role="tab">Paris à venir <span class="badge-count" id="tabUpCount">0</span></button>
+      <button class="tab" data-page="teams" role="tab">Stats équipes</button>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ================================================================= -->
+  <!-- PAGE 1 — RÉTROSPECTIF                                              -->
+  <!-- ================================================================= -->
+  <section class="page active" id="page-retro" role="tabpanel">
+    <p class="lead">Ce qui <em>aurait</em> été gagné sur les matchs déjà joués — simulateur de mise, filtres et sélection manuelle.</p>
+
+    <div class="cards">
+      <div class="card"><div class="k">Fichiers cotes</div><div class="v" id="metaOddsFiles">—</div></div>
+      <div class="card"><div class="k">Fichiers résultats</div><div class="v" id="metaResultsFiles">—</div></div>
+      <div class="card"><div class="k">Cotes après dédup.</div><div class="v"><span id="metaOddsDedup">—</span><span class="sub" id="metaOddsRaw"></span></div></div>
+      <div class="card"><div class="k">Matchs rapprochés</div><div class="v" id="metaMatched">—</div></div>
+      <div class="card"><div class="k">Non rapprochés</div><div class="v" id="metaUnmatched">—</div></div>
+    </div>
+
+    <div class="warn">
+      <strong>À lire avant toute décision.</strong> Cette page mesure le passé. Sur assez de combinaisons,
+      on trouve toujours un gagnant par hasard. Le <strong>ROI test</strong> (données récentes jamais
+      utilisées pour repérer l'edge) est le seul juge de fiabilité. Un nombre de paris (n) faible rend
+      tout résultat fragile. Rien ici n'est une consigne de pari.
+    </div>
+
+    <div class="panel">
+      <h2>Simulateur de mise <span class="hint">— mise fixe appliquée à chaque pari retenu</span></h2>
+      <div class="controls">
+        <div class="field">
+          <label for="stake">Mise par pari (€)</label>
+          <input type="number" id="stake" value="10" min="0" step="1">
+        </div>
+        <div class="field">
+          <label for="fCat">Catégorie</label>
+          <select id="fCat">
+            <option value="">Toutes</option>
+            <option value="Score exact">Score exact</option>
+            <option value="Vainqueur du match">Vainqueur du match</option>
+            <option value="Intervalle de buts">Intervalle de buts</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fPari">Pari précis</label>
+          <select id="fPari"><option value="">Tous</option></select>
+        </div>
+        <div class="field">
+          <label for="fLigue">Ligue</label>
+          <select id="fLigue"><option value="">Toutes</option></select>
+        </div>
+        <div class="field">
+          <label>Cote (min / max)</label>
+          <div class="row2">
+            <input type="number" id="fCoteMin" placeholder="min" step="0.1" min="1">
+            <input type="number" id="fCoteMax" placeholder="max" step="0.1" min="1">
+          </div>
+        </div>
+        <div class="field">
+          <label for="fSearch">Recherche (équipe / match)</label>
+          <input type="text" id="fSearch" placeholder="ex: Naples">
+        </div>
+        <div class="field">
+          <label for="onlySel">Affichage</label>
+          <select id="onlySel">
+            <option value="all">Tous les paris filtrés</option>
+            <option value="selected">Seulement mes paris cochés</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">Paris retenus</div><div class="v" id="kNb">0</div></div>
+        <div class="kpi"><div class="k">Total misé</div><div class="v" id="kMise">0 €</div></div>
+        <div class="kpi"><div class="k">Gain / perte net</div><div class="v" id="kNet">0 €</div></div>
+        <div class="kpi"><div class="k">ROI</div><div class="v" id="kRoi">—</div></div>
+        <div class="kpi"><div class="k">Taux de réussite</div><div class="v" id="kWin">—</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Évolution du gain cumulé <span class="hint">— ordre chronologique des paris retenus</span></h2>
+      <div id="chartWrap"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Rentabilité par catégorie <span class="hint">— recalculée sur les paris filtrés, validation out-of-sample</span></h2>
+      <div class="tablewrap">
+        <table id="catTable">
+          <thead><tr>
+            <th>Catégorie</th><th class="num">Nb paris</th><th class="num">ROI global</th>
+            <th class="num">Réussite</th><th class="num">Cote moy.</th>
+            <th class="num">ROI test</th><th>Verdict</th>
+          </tr></thead>
+          <tbody id="catBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Détail des paris <span class="hint">— clique un en-tête pour trier ; coche pour composer ta sélection</span></h2>
+      <div class="tablewrap">
+        <table id="betTable">
+          <thead><tr>
+            <th><input type="checkbox" id="chkAll" class="chk" title="Tout cocher/décocher"></th>
+            <th class="sortable" data-k="date">Date <span class="arrow"></span></th>
+            <th class="sortable" data-k="match">Match <span class="arrow"></span></th>
+            <th class="sortable" data-k="ligue">Ligue <span class="arrow"></span></th>
+            <th class="sortable" data-k="cat">Catégorie <span class="arrow"></span></th>
+            <th class="sortable" data-k="col">Pari <span class="arrow"></span></th>
+            <th class="sortable num" data-k="cote">Cote <span class="arrow"></span></th>
+            <th class="sortable" data-k="won">Résultat <span class="arrow"></span></th>
+            <th class="sortable num" data-k="gain">Gain/perte <span class="arrow"></span></th>
+          </tr></thead>
+          <tbody id="betBody"></tbody>
+        </table>
+      </div>
+      <div class="tablefoot">
+        <span id="rowInfo"></span>
+        <span class="muted">Affichage limité aux 400 premières lignes ; KPI et graphique portent sur tout l'ensemble filtré.</span>
+      </div>
+      <details class="unmatched" id="unmatchedBox">
+        <summary></summary>
+        <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant (noms trop différents ?).
+        Enrichir <code>TEAM_ALIASES</code> dans le script Python pour les récupérer.</p>
+        <ul id="unmatchedList"></ul>
+      </details>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- PAGE 2 — DIXON-COLES (value bets rétrospectifs + à venir mêlés)    -->
+  <!-- ================================================================= -->
+  <section class="page" id="page-dc" role="tabpanel">
+    <p class="lead">Le modèle estime la probabilité « vraie » de chaque issue et la compare à la cote. Un <em>value bet</em> apparaît quand le modèle juge l'issue plus probable que la cote ne le suggère.</p>
+
+    <div class="warn pred">
+      <strong>Modèle Dixon-Coles.</strong> Poisson amélioré : correction des scores faibles (0-0, 1-1…)
+      et pondération des matchs récents (forme). Signal <em>prédictif</em>, plus solide que le rétrospectif,
+      mais dépendant de l'historique — <span id="metaPoissonScored">—</span> match(s) évalués, <span id="metaPoissonSkipped">—</span> ignorés
+      faute d'historique suffisant. L'espérance suppose le modèle juste, ce qui n'est jamais garanti.
+    </div>
+
+    <div class="panel">
+      <h2>Value bets <span class="hint">— tous les paris (joués ou à venir) où le modèle voit de la valeur</span></h2>
+      <div class="controls">
+        <div class="field">
+          <label for="vStake">Mise par value bet (€)</label>
+          <input type="number" id="vStake" value="10" min="0" step="1">
+        </div>
+        <div class="field">
+          <label for="vCat">Catégorie</label>
+          <select id="vCat">
+            <option value="">Toutes</option>
+            <option value="Score exact">Score exact</option>
+            <option value="Vainqueur du match">Vainqueur du match</option>
+            <option value="Intervalle de buts">Intervalle de buts</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="vEdge">Edge minimum</label>
+          <select id="vEdge">
+            <option value="0.02">2 % (tous)</option>
+            <option value="0.05">5 %</option>
+            <option value="0.10">10 %</option>
+            <option value="0.15">15 %</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="vSearch">Recherche (match)</label>
+          <input type="text" id="vSearch" placeholder="ex: Naples">
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">Value bets retenus</div><div class="v" id="vNb">0</div></div>
+        <div class="kpi"><div class="k">Total misé</div><div class="v" id="vMise">0 €</div></div>
+        <div class="kpi"><div class="k">Espérance de gain</div><div class="v" id="vEv">—</div></div>
+        <div class="kpi"><div class="k">Edge moyen</div><div class="v" id="vEdgeAvg">—</div></div>
+      </div>
+
+      <div class="tablewrap" style="margin-top:1rem">
+        <table id="vTable">
+          <thead><tr>
+            <th class="sortable" data-vk="ev">Espérance ▼</th>
+            <th class="sortable" data-vk="date">Date</th>
+            <th class="sortable" data-vk="match">Match</th>
+            <th class="sortable" data-vk="ligue">Ligue</th>
+            <th class="sortable" data-vk="colonne">Pari</th>
+            <th class="sortable num" data-vk="cote">Cote</th>
+            <th class="sortable num" data-vk="p_model">Proba modèle</th>
+            <th class="sortable num" data-vk="p_implied">Proba cote</th>
+            <th class="sortable num" data-vk="edge">Edge</th>
+          </tr></thead>
+          <tbody id="vBody"></tbody>
+        </table>
+      </div>
+      <div class="tablefoot">
+        <span id="vRowInfo"></span>
+        <span class="muted">« Espérance » = gain moyen attendu par euro misé si le modèle est juste. À confronter au volume et au ROI test.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- PAGE 3 — PARIS À VENIR                                             -->
+  <!-- ================================================================= -->
+  <section class="page" id="page-upcoming" role="tabpanel">
+    <p class="lead">Les value bets du modèle Dixon-Coles sur les matchs <strong>pas encore joués</strong>, dans les <span id="metaUpcomingDays">—</span> prochains jours. Classés par espérance de gain.</p>
+
+    <div class="warn pred">
+      <strong>Une espérance élevée n'est pas une bonne nouvelle — c'est un signal d'alerte.</strong>
+      Si une ligne affiche « +50 % d'espérance », cela ne veut pas dire que tu vas gagner 50 % : cela
+      veut presque toujours dire que <em>le modèle surestime</em> la probabilité de cette issue. Les
+      bookmakers intègrent les blessures, les compos, la forme, l'argent parié — le modèle, lui, ne
+      connaît que l'historique des buts. Quand une cote paraît « trop belle » selon lui, l'explication
+      la plus probable est que le modèle a tort, pas que le marché offre un cadeau. Un edge réaliste se
+      compte en <strong>quelques pourcents</strong>, pas en dizaines. Les espérances énormes viennent
+      surtout d'équipes avec trop peu d'historique (forces gonflées). Traite ces cartes comme des
+      <em>pistes à vérifier</em> contre le contexte réel, jamais comme des paris sûrs. Joue avec modération.
+    </div>
+
+    <div class="panel">
+      <h2>Filtrer les recommandations</h2>
+      <div class="controls">
+        <div class="field">
+          <label for="uStake">Mise par pari (€)</label>
+          <input type="number" id="uStake" value="10" min="0" step="1">
+        </div>
+        <div class="field">
+          <label for="uCat">Catégorie</label>
+          <select id="uCat">
+            <option value="">Toutes</option>
+            <option value="Score exact">Score exact</option>
+            <option value="Vainqueur du match">Vainqueur du match</option>
+            <option value="Intervalle de buts">Intervalle de buts</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="uEdge">Edge minimum</label>
+          <select id="uEdge">
+            <option value="0.02">2 % (tous)</option>
+            <option value="0.05">5 %</option>
+            <option value="0.10">10 %</option>
+            <option value="0.15">15 %</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="uSort">Trier par</label>
+          <select id="uSort">
+            <option value="ev">Espérance (décroissant)</option>
+            <option value="edge">Edge (décroissant)</option>
+            <option value="kickoff">Date du match (croissant)</option>
+            <option value="cote">Cote (décroissant)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">Paris recommandés</div><div class="v" id="uNb">0</div></div>
+        <div class="kpi"><div class="k">Total à miser</div><div class="v" id="uMise">0 €</div></div>
+        <div class="kpi"><div class="k">Espérance totale</div><div class="v" id="uEv">—</div></div>
+        <div class="kpi"><div class="k">Matchs concernés</div><div class="v" id="uMatches">0</div></div>
+      </div>
+    </div>
+
+    <div id="recGrid" class="rec-grid"></div>
+    <p id="uEmpty" class="muted" style="text-align:center;margin-top:2rem;display:none"></p>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- PAGE 4 — STATISTIQUES DES ÉQUIPES (forces Dixon-Coles)             -->
+  <!-- ================================================================= -->
+  <section class="page" id="page-teams" role="tabpanel">
+    <p class="lead">Les forces offensives et défensives estimées par le modèle Dixon-Coles pour chaque équipe, relatives à la moyenne de sa ligue. <strong>1,00 = exactement la moyenne</strong> ; au-dessus = meilleur, en-dessous = moins bon.</p>
+
+    <div class="panel">
+      <h2>Comprendre les colonnes <span class="hint">— cliquer pour déplier</span></h2>
+      <details>
+        <summary class="muted" style="cursor:pointer">Que signifient Attaque / Défense, domicile / extérieur ?</summary>
+        <div style="margin-top:.7rem; color:var(--muted); font-size:.9rem; line-height:1.7">
+          <strong style="color:var(--ink)">Attaque</strong> mesure les buts marqués, <strong style="color:var(--ink)">Défense</strong> les buts encaissés, chacun rapporté à la moyenne de la ligue.<br>
+          • <strong style="color:var(--pos)">Attaque &gt; 1</strong> : l'équipe marque plus que la moyenne (c'est bien).<br>
+          • <strong style="color:var(--pos)">Défense &lt; 1</strong> : l'équipe encaisse moins que la moyenne (c'est bien — une petite valeur de défense est bonne).<br>
+          Les colonnes <em>domicile</em> et <em>extérieur</em> sont séparées car la plupart des équipes sont sensiblement meilleures chez elles. « Nb » = nombre de matchs utilisés (plus il est élevé, plus la force est fiable).
+        </div>
+      </details>
+    </div>
+
+    <div class="panel">
+      <h2>Forces par équipe <span class="hint" id="teamCount"></span></h2>
+      <div class="controls">
+        <div class="field">
+          <label for="tPays">Pays</label>
+          <select id="tPays"><option value="">Tous</option></select>
+        </div>
+        <div class="field">
+          <label for="tLigue">Ligue</label>
+          <select id="tLigue"><option value="">Toutes</option></select>
+        </div>
+        <div class="field">
+          <label for="tAnnee">Année</label>
+          <select id="tAnnee"><option value="">Toutes</option></select>
+        </div>
+        <div class="field">
+          <label for="tSearch">Recherche (équipe)</label>
+          <input type="text" id="tSearch" placeholder="ex: Naples">
+        </div>
+        <div class="field">
+          <label for="tMinMatches">Matchs minimum</label>
+          <select id="tMinMatches">
+            <option value="0">Aucun filtre</option>
+            <option value="5">≥ 5 (recommandé)</option>
+            <option value="10">≥ 10</option>
+            <option value="20">≥ 20</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="tablewrap" style="margin-top:1rem">
+        <table id="teamTable">
+          <thead><tr>
+            <th class="sortable" data-tk="equipe">Équipe</th>
+            <th class="sortable" data-tk="ligue">Ligue</th>
+            <th class="sortable num" data-tk="atk_home">Attaque dom.</th>
+            <th class="sortable num" data-tk="def_home">Défense dom.</th>
+            <th class="sortable num" data-tk="atk_away">Attaque ext.</th>
+            <th class="sortable num" data-tk="def_away">Défense ext.</th>
+            <th class="sortable num" data-tk="n_home">Nb dom.</th>
+            <th class="sortable num" data-tk="n_away">Nb ext.</th>
+          </tr></thead>
+          <tbody id="teamBody"></tbody>
+        </table>
+      </div>
+      <div class="tablefoot">
+        <span id="teamRowInfo"></span>
+        <span class="muted">Vert = au-dessus de la moyenne pour l'attaque / sous la moyenne pour la défense (donc favorable). Les forces sont d'autant plus fiables que « Nb » est élevé.</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Wina Wizard — outil d'analyse personnel. Les paris sportifs comportent un risque de perte.
+    Jouer avec modération. 09-74-75-13-13 (appel non surtaxé).
+  </footer>
+</div>
+
+
+<script src="donnees.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
