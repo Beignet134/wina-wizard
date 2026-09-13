@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260913075531">
+<link rel="stylesheet" href="style.css?v=20260913094025">
 </head>
 <body>
 <div class="topbar">
@@ -457,6 +457,13 @@
             <option value="1">Un seul par match et par catégorie</option>
           </select>
         </div>
+        <div class="field">
+          <label for="btEvPos">Espérance</label>
+          <select id="btEvPos">
+            <option value="0">Peu importe</option>
+            <option value="1" selected>Écarter les espérances négatives</option>
+          </select>
+        </div>
         <div class="field" style="align-self:end">
           <span class="muted" style="font-size:.78rem">Ces filtres pilotent toute la page : KPI, graphiques et tableaux. Catégorie, ligue, marge bookmaker, poids du modèle, mouvement de cote et second avis sont synchronisés avec l'onglet « Paris à venir ».</span>
         </div>
@@ -690,6 +697,13 @@
           <select id="uDedup">
             <option value="0">Tous les compter</option>
             <option value="1">Un seul par match et par catégorie</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="uEvPos">Espérance</label>
+          <select id="uEvPos">
+            <option value="0">Peu importe</option>
+            <option value="1" selected>Écarter les espérances négatives</option>
           </select>
         </div>
         <div class="field">
@@ -1039,7 +1053,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260913075531"></script>
-<script src="app.js?v=20260913075531"></script>
+<script src="donnees.js?v=20260913094025"></script>
+<script src="app.js?v=20260913094025"></script>
 </body>
 </html>
