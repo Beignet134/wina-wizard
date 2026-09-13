@@ -822,3 +822,63 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   display: block; font-size: .68rem; color: var(--ink-faint);
   font-weight: 400; margin-top: .1rem;
 }
+
+/* ---------------------------------------------------------------
+   Affinages mobile
+   Placé en FIN de feuille pour primer sur les règles précédentes sans
+   avoir à les réécrire une par une. Ne touche qu'aux écrans étroits :
+   l'affichage bureau reste strictement inchangé.
+   --------------------------------------------------------------- */
+@media (max-width: 640px) {
+  /* Cartes de tableau (cardify) : 8 colonnes deviennent 8 rangées sur
+     mobile, ce qui produisait des cartes d'un écran de haut pour une
+     seule ligne. On resserre l'interligne plutôt que de masquer des
+     colonnes — masquer ferait disparaître une information sans le dire. */
+  table.cardify tr { padding: .35rem .6rem; margin-bottom: .45rem; }
+  table.cardify td { padding: .26rem 0; gap: .6rem; font-size: .84rem; }
+  table.cardify td::before { font-size: .62rem; letter-spacing: .05em; }
+
+  /* Onglets : la barre défile horizontalement, mais le dégradé de
+     masquage ne signalait qu'un débordement à DROITE. Sur une page
+     ouverte au milieu (cas de « Bankroll »), le contenu tronqué est à
+     gauche — d'où l'impression d'un onglet coupé. Dégradé des deux
+     côtés, et défilement fluide au doigt. */
+  .tabs {
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, black 20px,
+                        black calc(100% - 20px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, black 20px,
+                black calc(100% - 20px), transparent 100%);
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab { scroll-snap-align: center; }
+
+  /* Filtres : une seule colonne sous 640px. En deux colonnes, les
+     libellés en majuscules se coupaient en plein milieu d'un mot. */
+  .controls { grid-template-columns: 1fr; gap: .6rem; }
+  .field input, .field select { font-size: 16px; }  /* 16px = pas de zoom auto iOS */
+
+  /* Textes explicatifs : volontairement longs sur bureau, ils occupaient
+     plusieurs écrans sur mobile avant le premier chiffre utile. */
+  .lead { font-size: .88rem; line-height: 1.5; }
+  .panel > .muted { font-size: .8rem; line-height: 1.45; }
+
+  /* Cartes de paris : marges resserrées, une par ligne */
+  .rec-grid { grid-template-columns: 1fr; gap: .7rem; }
+  .rec { padding: .8rem .85rem; }
+
+  /* KPI : 2 par ligne plutôt qu'une colonne unique très haute */
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: .6rem; }
+  .kpi { padding: .7rem .75rem; }
+  .kpi .v { font-size: 1.15rem; }
+
+  /* Graphiques : plus hauts proportionnellement, sinon illisibles */
+  .chart-holder svg { min-height: 200px; }
+}
+
+/* Très petits écrans : un seul KPI par ligne devient plus lisible que
+   deux colonnes écrasées. */
+@media (max-width: 380px) {
+  .kpis { grid-template-columns: 1fr; }
+  .rec-metrics { grid-template-columns: 1fr 1fr; }
+}
