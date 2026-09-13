@@ -84,6 +84,15 @@ function calibrer(rows, actif) {
   });
 }
 
+// Découpe "min-max" en bornes numériques. Les plages sont exclusives à
+// gauche et inclusives à droite ("2-4" = 2,01 à 4,00), pour qu'une cote
+// tombant pile sur une borne n'apparaisse pas dans deux plages à la fois.
+function dansPlageCote(cote, plage) {
+  if (!plage || cote == null) return true;
+  const [lo, hi] = plage.split("-").map(Number);
+  return cote > lo && cote <= hi;
+}
+
 function blended(r, alpha) {
   const pm = pMarche(r);
   if (pm == null) return {p: r.p_model, edge: r.edge, ev: r.ev};
@@ -674,6 +683,7 @@ function renderUpcoming() {
     if (cat && v.categorie !== cat) return false;
     if (ligue && v.ligue !== ligue) return false;
     if (v.edge_aff < edge) return false;
+    if (!dansPlageCote(v.cote, $("uCote") ? $("uCote").value : "")) return false;
     // Espérance : un edge dévigué positif ne garantit PAS une espérance
     // positive — sur une cote très basse, la marge du bookmaker peut
     // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
@@ -1012,7 +1022,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib"].forEach(id => {
+["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1042,7 +1052,8 @@ function lierFiltres(idA, idB) {
 }
 [["btCat","uCat"], ["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
- ["btEvPos","uEvPos"], ["btCalib","uCalib"]].forEach(([a,b]) => lierFiltres(a,b));
+ ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"],
+ ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
 
 // Sans ratio mesurable (backtest de moins de 100 paris, ou ratio aberrant
 // — voir build_dc_backtest côté Python), le filtre n'a rien à appliquer :
@@ -1323,7 +1334,11 @@ function btFiltered() {
   // Les paris sont stockés avec leurs DEUX edges (brut et marge retirée).
   // Selon le mode, on ne garde que ceux qui passaient le seuil dans cette
   // lecture-là — sinon on comparerait des ensembles différents.
-  const seuil = MIN_EDGE;
+  // Pilotable depuis la page (auparavant figé à MIN_EDGE, alors que la page
+  // « Paris à venir » proposait déjà ce réglage : les deux vues ne
+  // montraient donc pas le même ensemble à réglages identiques).
+  const seuil = $("btEdge") ? (parseFloat($("btEdge").value) || MIN_EDGE) : MIN_EDGE;
+  const plageCote = $("btCoteRange") ? $("btCoteRange").value : "";
   const alpha = blendAlpha("btAlpha");
   // Filtre sur le MOUVEMENT DE LA COTE entre la première et la dernière
   // capture. Une cote qui raccourcit signale que de l'argent est entré sur
@@ -1349,6 +1364,7 @@ function btFiltered() {
     const e = alpha < 1 ? blended(r, alpha).edge
                         : (devig ? (r.edge_devig ?? r.edge) : r.edge);
     if (e < seuil) return false;
+    if (!dansPlageCote(r.cote, plageCote)) return false;
     // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
     // pas celle du modèle seul — sinon le filtre contredirait les chiffres
     // affichés dans les colonnes.
@@ -2506,7 +2522,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
