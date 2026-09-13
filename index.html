@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260913153433">
+<link rel="stylesheet" href="style.css?v=20260913183817">
 </head>
 <body>
 <div class="topbar">
@@ -471,10 +471,32 @@
             <option value="1" selected>Écarter les espérances négatives</option>
           </select>
         </div>
-        <div class="field" style="align-self:end">
-          <span class="muted" style="font-size:.78rem">Ces filtres pilotent toute la page : KPI, graphiques et tableaux. Catégorie, ligue, marge bookmaker, poids du modèle, mouvement de cote et second avis sont synchronisés avec l'onglet « Paris à venir ».</span>
+        <div class="field">
+          <label for="btEdge">Edge minimum</label>
+          <select id="btEdge">
+            <option value="0.02">2 % (tous)</option>
+            <option value="0.05">5 %</option>
+            <option value="0.10">10 %</option>
+            <option value="0.15">15 %</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="btCoteRange">Plage de cotes</label>
+          <select id="btCoteRange">
+            <option value="">Toutes</option>
+            <option value="1-2">1,01 à 2,00</option>
+            <option value="2-4">2,01 à 4,00</option>
+            <option value="4-8">4,01 à 8,00</option>
+            <option value="8-15">8,01 à 15,00</option>
+            <option value="15-999">Au-delà de 15,00</option>
+            <option value="2-15">2,01 à 15,00 (hors extrêmes)</option>
+          </select>
         </div>
       </div>
+      <p class="muted" style="font-size:.78rem; margin:.7rem 0 0">Ces filtres pilotent toute la page :
+        KPI, graphiques et tableaux. Catégorie, ligue, marge bookmaker, poids du modèle, mouvement de
+        cote, second avis, enrichissement xG, paris liés, espérance et calibration sont synchronisés
+        avec l'onglet « Paris à venir ».</p>
       <p class="muted" id="btEnrichiNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <div id="btEvoWrap"></div>
@@ -718,6 +740,18 @@
           <select id="uEvPos">
             <option value="0">Peu importe</option>
             <option value="1" selected>Écarter les espérances négatives</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="uCote">Plage de cotes</label>
+          <select id="uCote">
+            <option value="">Toutes</option>
+            <option value="1-2">1,01 à 2,00</option>
+            <option value="2-4">2,01 à 4,00</option>
+            <option value="4-8">4,01 à 8,00</option>
+            <option value="8-15">8,01 à 15,00</option>
+            <option value="15-999">Au-delà de 15,00</option>
+            <option value="2-15">2,01 à 15,00 (hors extrêmes)</option>
           </select>
         </div>
         <div class="field">
@@ -1067,7 +1101,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260913153433"></script>
-<script src="app.js?v=20260913153433"></script>
+<script src="donnees.js?v=20260913183817"></script>
+<script src="app.js?v=20260913183817"></script>
 </body>
 </html>
