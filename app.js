@@ -43,6 +43,47 @@ function pMarche(r) {
 }
 
 // Renvoie {p, edge, ev} après mélange, pour un pari et un α donnés.
+// --- Correction de calibration ---------------------------------------
+// Le modèle surestime systématiquement ses probabilités : mesuré à un
+// ratio réel/annoncé de 0,924 sur 1107 paris, identique (à la 3e décimale)
+// sur chacune des deux moitiés de la période testée séparément. Ce filtre
+// applique ce facteur AVANT tout autre traitement, de sorte que l'edge et
+// l'espérance qui en découlent reposent sur une probabilité corrigée du
+// biais plutôt que sur celle, trop optimiste, produite par le modèle.
+//
+// À appliquer sur TOUT l'échantillon, jamais par-dessus des filtres qui
+// ont déjà sélectionné leurs paris : testé, la correction dégrade alors
+// les résultats, parce que ces filtres retiennent déjà les paris les mieux
+// calibrés et que les corriger à la baisse les pénalise à tort.
+const CALIB_RATIO = (WIZARD_DATA.dc_stats || {}).calib_ratio || null;
+
+function calibrer(rows, actif) {
+  if (!actif || !CALIB_RATIO) return rows;
+  const k = CALIB_RATIO;
+  return rows.map(r => {
+    const o = Object.assign({}, r);
+    // La probabilité du MARCHÉ dévigué ne bouge pas : ce n'est pas elle
+    // qui est mal calibrée, c'est celle du modèle. On la reconstitue avant
+    // correction pour recalculer l'edge dévigué sur la bonne référence.
+    const pMarcheDevig = (r.p_model != null && r.edge_devig != null)
+                       ? r.p_model - r.edge_devig : null;
+    if (o.p_model != null) {
+      o.p_model = r.p_model * k;
+      if (r.cote) o.edge = o.p_model - 1 / r.cote;
+      if (pMarcheDevig != null) o.edge_devig = o.p_model - pMarcheDevig;
+      if (r.cote) o.ev = o.p_model * (r.cote - 1) - (1 - o.p_model);
+    }
+    if (o.p_model_xg != null) {
+      const pMarcheXg = (r.edge_devig_xg != null) ? r.p_model_xg - r.edge_devig_xg : null;
+      o.p_model_xg = r.p_model_xg * k;
+      if (r.cote) o.edge_xg = o.p_model_xg - 1 / r.cote;
+      if (pMarcheXg != null) o.edge_devig_xg = o.p_model_xg - pMarcheXg;
+      if (r.cote) o.ev_xg = o.p_model_xg * (r.cote - 1) - (1 - o.p_model_xg);
+    }
+    return o;
+  });
+}
+
 function blended(r, alpha) {
   const pm = pMarche(r);
   if (pm == null) return {p: r.p_model, edge: r.edge, ev: r.ev};
@@ -528,7 +569,18 @@ const UPCOMING = VALUE_BETS.filter(v => v.is_upcoming && v.days_until!=null && v
    réellement engagée, impossible de calculer une vraie évolution de
    bankroll (page "Bankroll" plus bas) — on ne saurait que QUELS paris ont
    été joués, pas COMBIEN. */
-const PLACED = new Map(Object.entries(WIZARD_DATA.paris_joues || {}));
+// Object.entries suffit pour le format normal {"clé": {"mise": N}}, mais
+// un donnees.js produit avant la correction du bouton « Télécharger » peut
+// contenir une LISTE de paires [clé, {"mise": N}] : on la reconnaît et on
+// la convertit, plutôt que d'afficher des lignes du genre
+// "['2026-09-12|Match|homeWin', {'mise': 6}]" avec des mises à 0 €.
+const PLACED = new Map(
+  Array.isArray(WIZARD_DATA.paris_joues)
+    ? WIZARD_DATA.paris_joues.map(x =>
+        Array.isArray(x) && x.length === 2 ? [String(x[0]), x[1] || {mise: null}]
+                                           : [String(x), {mise: null}])
+    : Object.entries(WIZARD_DATA.paris_joues || {})
+);
 
 function betKey(v) {
   return `${v.date}|${v.match}|${v.colonne}`;
@@ -592,9 +644,13 @@ function renderUpcoming() {
   // rien savoir du mode. Les matchs sans historique xG suffisant sont
   // EXCLUS en mode "avec", jamais comblés par la valeur en buts déguisée.
   const enrichi = $("uEnrichi") ? $("uEnrichi").value === "avec" : false;
-  let source = UPCOMING;
+  // Correction de calibration appliquée à l'ensemble AVANT la substitution
+  // xG — même ordre que sur la page DC rétrospectif, pour que les deux
+  // pages restent strictement comparables quand leurs filtres sont liés.
+  const calibActif = $("uCalib") ? $("uCalib").value === "1" : false;
+  let source = calibrer(UPCOMING, calibActif);
   if (enrichi) {
-    source = UPCOMING
+    source = source
       .filter(v => v.p_model_xg != null)
       .map(v => ({
         ...v,
@@ -956,7 +1012,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos"].forEach(id => {
+["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -986,7 +1042,27 @@ function lierFiltres(idA, idB) {
 }
 [["btCat","uCat"], ["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
- ["btEvPos","uEvPos"]].forEach(([a,b]) => lierFiltres(a,b));
+ ["btEvPos","uEvPos"], ["btCalib","uCalib"]].forEach(([a,b]) => lierFiltres(a,b));
+
+// Sans ratio mesurable (backtest de moins de 100 paris, ou ratio aberrant
+// — voir build_dc_backtest côté Python), le filtre n'a rien à appliquer :
+// mieux vaut le griser en disant pourquoi que de le laisser cliquable sans
+// effet visible, ce qui donnerait l'impression d'un bug.
+["btCalib", "uCalib"].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  if (!CALIB_RATIO) {
+    el.value = "0";
+    el.disabled = true;
+    el.title = "Indisponible : l'historique du backtest est trop court pour "
+             + "mesurer un ratio de calibration fiable (100 paris minimum).";
+  } else {
+    el.title = `Ratio mesuré sur le backtest : ${CALIB_RATIO.toFixed(3)} — le modèle `
+             + `surestime ses probabilités d'environ `
+             + `${((1 - CALIB_RATIO) * 100).toFixed(1)} %. La correction les ramène `
+             + `à leur niveau réellement observé.`;
+  }
+});
 
 // Télécharge directement le fichier paris_joues.json : bien plus pratique
 // que le copier-coller manuel (l'artefact ne peut pas écrire sur le disque
@@ -1223,9 +1299,15 @@ function btFiltered() {
   // jamais comblés par la valeur en buts déguisée en xG : mélanger les
   // deux logiques dans une même moyenne aurait rendu la comparaison
   // trompeuse plutôt qu'absente.
-  let source = BT_ROWS;
+  // La correction de calibration s'applique AVANT la substitution xG, sur
+  // l'ensemble brut : les deux jeux de probabilités (buts et xG) sont
+  // corrigés du même facteur, puis la substitution choisit lequel utiliser.
+  // Dans l'ordre inverse, seule la lecture active aurait été corrigée et
+  // l'infobulle aurait affiché deux valeurs incohérentes entre elles.
+  const calibActif = $("btCalib") ? $("btCalib").value === "1" : false;
+  let source = calibrer(BT_ROWS, calibActif);
   if (enrichi) {
-    source = BT_ROWS
+    source = source
       .filter(r => r.p_model_xg != null)
       .map(r => ({
         ...r,
@@ -2424,7 +2506,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
