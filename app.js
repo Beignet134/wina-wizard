@@ -618,6 +618,15 @@ function renderUpcoming() {
     if (cat && v.categorie !== cat) return false;
     if (ligue && v.ligue !== ligue) return false;
     if (v.edge_aff < edge) return false;
+    // Espérance : un edge dévigué positif ne garantit PAS une espérance
+    // positive — sur une cote très basse, la marge du bookmaker peut
+    // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
+    // mais espérance -6,3 %). ev_aff porte déjà la valeur du mode actif
+    // (mélangée si α < 1), donc le filtre suit ce qui est affiché.
+    if ($("uEvPos") && $("uEvPos").value === "1") {
+      const ev = v.ev_aff ?? v.ev;
+      if (ev == null || ev <= 0) return false;
+    }
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
@@ -947,7 +956,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup"].forEach(id => {
+["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -976,7 +985,8 @@ function lierFiltres(idA, idB) {
   });
 }
 [["btCat","uCat"], ["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
- ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"]].forEach(([a,b]) => lierFiltres(a,b));
+ ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
+ ["btEvPos","uEvPos"]].forEach(([a,b]) => lierFiltres(a,b));
 
 // Télécharge directement le fichier paris_joues.json : bien plus pratique
 // que le copier-coller manuel (l'artefact ne peut pas écrire sur le disque
@@ -1244,12 +1254,26 @@ function btFiltered() {
   // normal tant que la collecte prospective n'a pas eu le temps de couvrir
   // suffisamment de matchs désormais joués.
   const pred = $("btPred") ? $("btPred").value : "";
+  // Espérance : un edge dévigué positif ne garantit PAS une espérance
+  // positive. Sur une cote très basse, la marge du bookmaker peut dépasser
+  // l'avantage du modèle — ex. cote 1.03 avec 91 % de probabilité : edge
+  // dévigué +2,5 % mais espérance -6,3 %, car il faudrait gagner 97,1 % du
+  // temps pour rentrer dans ses frais. L'espérance est la seule mesure de
+  // ce qu'un pari rapporte vraiment.
+  const evPos = $("btEvPos") ? $("btEvPos").value === "1" : false;
   let rows = source.filter(r => {
     // α < 1 : l'edge est celui du mélange avec le marché, forcément plus
     // sévère puisqu'il vaut α fois l'edge dévigé.
     const e = alpha < 1 ? blended(r, alpha).edge
                         : (devig ? (r.edge_devig ?? r.edge) : r.edge);
     if (e < seuil) return false;
+    // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
+    // pas celle du modèle seul — sinon le filtre contredirait les chiffres
+    // affichés dans les colonnes.
+    if (evPos) {
+      const ev = alpha < 1 ? blended(r, alpha).ev : r.ev;
+      if (ev == null || ev <= 0) return false;
+    }
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
     if (cat && r.categorie !== cat) return false;
@@ -2400,7 +2424,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
