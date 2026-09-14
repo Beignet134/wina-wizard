@@ -579,16 +579,31 @@ const UPCOMING = VALUE_BETS.filter(v => v.is_upcoming && v.days_until!=null && v
    bankroll (page "Bankroll" plus bas) — on ne saurait que QUELS paris ont
    été joués, pas COMBIEN. */
 // Object.entries suffit pour le format normal {"clé": {"mise": N}}, mais
-// un donnees.js produit avant la correction du bouton « Télécharger » peut
-// contenir une LISTE de paires [clé, {"mise": N}] : on la reconnaît et on
-// la convertit, plutôt que d'afficher des lignes du genre
-// "['2026-09-12|Match|homeWin', {'mise': 6}]" avec des mises à 0 €.
+// d'anciens fichiers peuvent contenir deux formes dégradées :
+//   - une LISTE de paires [clé, {"mise": N}] (bouton « Télécharger »
+//     d'avant correction, qui sérialisait la Map avec [...PLACED]) ;
+//   - une clé DÉJÀ figée en chaîne par une ancienne version Python :
+//     "['2026-09-12|Match|homeWin', {'mise': 6}]".
+// Les deux sont rattrapées ici, mise comprise, plutôt que de s'afficher
+// telles quelles avec 0 € dans la page Bankroll.
+function reparerClePlacee(cle, valeur) {
+  const mise = (valeur && valeur.mise != null) ? valeur.mise : null;
+  const s = String(cle);
+  if (!(s.startsWith("[") && s.endsWith("]"))) return [s, {mise}];
+  // Représentation Python : guillemets simples, et rien d'autre à exécuter.
+  // On extrait la vraie clé et la mise par lecture directe, sans eval.
+  const mCle = s.match(/^\['([^']*)'/);
+  const mMise = s.match(/'mise'\s*:\s*([\d.]+)/);
+  if (!mCle) return [s, {mise}];
+  return [mCle[1], {mise: mMise ? parseFloat(mMise[1]) : mise}];
+}
+
 const PLACED = new Map(
-  Array.isArray(WIZARD_DATA.paris_joues)
+  (Array.isArray(WIZARD_DATA.paris_joues)
     ? WIZARD_DATA.paris_joues.map(x =>
-        Array.isArray(x) && x.length === 2 ? [String(x[0]), x[1] || {mise: null}]
-                                           : [String(x), {mise: null}])
+        Array.isArray(x) && x.length === 2 ? [x[0], x[1]] : [x, null])
     : Object.entries(WIZARD_DATA.paris_joues || {})
+  ).map(([k, v]) => reparerClePlacee(k, v))
 );
 
 function betKey(v) {
