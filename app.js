@@ -1090,6 +1090,28 @@ function lierFiltres(idA, idB) {
   }
 });
 
+// Garantie 2 buts : sans chronologie des buts collectée (api_football_
+// collect.py, endpoint /fixtures/events), aucun pari ne porte l'indicateur
+// — le filtre n'aurait rien à appliquer. On le grise en disant pourquoi
+// plutôt que de le laisser sans effet visible.
+{
+  const el = $("btGarantie");
+  if (el) {
+    const n = BT_ROWS.filter(r => r.garantie_eligible).length;
+    if (!n) {
+      el.value = "0";
+      el.disabled = true;
+      el.title = "Indisponible : la chronologie des buts n'a pas encore été "
+               + "collectée. Lancez api_football_collect.py, qui récupère les "
+               + "minutes de but des matchs du backtest.";
+    } else {
+      const sauves = BT_ROWS.filter(r => r.garantie_sauve).length;
+      el.title = `${n} pari(s) Résultat en ligue éligible, dont ${sauves} que `
+               + `la garantie rend gagnant(s).`;
+    }
+  }
+}
+
 // Télécharge directement le fichier paris_joues.json : bien plus pratique
 // que le copier-coller manuel (l'artefact ne peut pas écrire sur le disque
 // ni utiliser le stockage du navigateur, donc le téléchargement est la
@@ -1354,6 +1376,15 @@ function btFiltered() {
   // montraient donc pas le même ensemble à réglages identiques).
   const seuil = $("btEdge") ? (parseFloat($("btEdge").value) || MIN_EDGE) : MIN_EDGE;
   const plageCote = $("btCoteRange") ? $("btCoteRange").value : "";
+  // Garantie 2 Buts d'Écart (Winamax) : sur un pari Résultat d'une ligue
+  // éligible, si l'équipe a mené de 2 buts à un moment du match, le pari
+  // est payé gagnant même si elle finit par ne pas gagner.
+  //   "1" = appliquer  -> les paris sauvés comptent comme gagnants
+  //   "2" = isoler     -> ne montrer QUE les paris que la garantie sauve,
+  //                       pour voir concrètement ce qu'elle apporte
+  // Le profit corrigé (profit_garantie) est calculé côté Python ; ici on
+  // ne fait que choisir quelle lecture utiliser.
+  const garantie = $("btGarantie") ? $("btGarantie").value : "0";
   const alpha = blendAlpha("btAlpha");
   // Filtre sur le MOUVEMENT DE LA COTE entre la première et la dernière
   // capture. Une cote qui raccourcit signale que de l'argent est entré sur
@@ -1373,6 +1404,18 @@ function btFiltered() {
   // temps pour rentrer dans ses frais. L'espérance est la seule mesure de
   // ce qu'un pari rapporte vraiment.
   const evPos = $("btEvPos") ? $("btEvPos").value === "1" : false;
+  // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
+  // être vu comme gagnant par TOUS les filtres qui suivent (y compris
+  // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
+  // dans le total de profit. Les champs d'origine sont conservés à part
+  // pour pouvoir afficher les deux lectures.
+  if (garantie === "1" || garantie === "2") {
+    source = source.map(r => r.garantie_sauve
+      ? {...r, gagne: true, profit: r.profit_garantie,
+         gagne_sans_garantie: r.gagne, profit_sans_garantie: r.profit}
+      : r);
+  }
+
   let rows = source.filter(r => {
     // α < 1 : l'edge est celui du mélange avec le marché, forcément plus
     // sévère puisqu'il vaut α fois l'edge dévigé.
@@ -1380,6 +1423,11 @@ function btFiltered() {
                         : (devig ? (r.edge_devig ?? r.edge) : r.edge);
     if (e < seuil) return false;
     if (!dansPlageCote(r.cote, plageCote)) return false;
+    // "Seulement les paris sauvés" : ne garde que ceux que la garantie
+    // transforme en gagnants — utile pour voir exactement ce qu'elle
+    // change, mais ce n'est PAS une stratégie jouable (on ne sait pas à
+    // l'avance quels paris elle sauvera).
+    if (garantie === "2" && !r.garantie_sauve) return false;
     // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
     // pas celle du modèle seul — sinon le filtre contredirait les chiffres
     // affichés dans les colonnes.
@@ -2537,7 +2585,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
