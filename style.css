@@ -278,7 +278,15 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .chart-tip { fill: var(--ink); font-size: 11px; font-family: var(--font-mono); }
 
 /* Graphique interactif */
-.chart-holder { position: relative; }
+/* Un SVG porteur d'un viewBox mais sans largeur CSS s'affiche à sa taille
+   INTRINSÈQUE (ici 1180 px). Sur mobile, cela forçait toute la page à
+   1180 px de large : les panneaux restaient à la largeur de l'écran
+   (~400 px) pendant que le graphique débordait jusqu'à 1180 — d'où
+   l'impression d'un contenu tassé dans la moitié gauche.
+   width:100% le ramène à la largeur de son conteneur ; le viewBox continue
+   de gérer la mise à l'échelle interne. */
+.chart-holder { position: relative; width: 100%; }
+.chart-holder svg { display: block; width: 100%; height: auto; }
 .chart-hit { cursor: crosshair; }
 .chart-dot { opacity: .55; }
 .chart-badge { font-size: 9.5px; font-family: var(--font-mono); font-weight: 600; letter-spacing: .05em; }
@@ -881,4 +889,34 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
 @media (max-width: 380px) {
   .kpis { grid-template-columns: 1fr; }
   .rec-metrics { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---------------------------------------------------------------
+   Garde-fous mobile contre le débordement horizontal
+   Un seul élément trop large (SVG, tableau, ligne de code) suffit à
+   élargir toute la page et à tasser le contenu dans une fraction de
+   l'écran. Ces règles bornent les coupables habituels.
+   --------------------------------------------------------------- */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+
+  /* Tout média ou SVG reste dans son conteneur, y compris ceux générés
+     dynamiquement par le JavaScript et donc invisibles dans le HTML. */
+  svg, img, canvas { max-width: 100%; height: auto; }
+
+  /* Les tableaux larges défilent DANS leur cadre au lieu d'élargir la
+     page. .tablewrap existe déjà mais n'était pas borné. */
+  .tablewrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Un mot très long (nom d'équipe, URL) ne doit pas pousser la largeur. */
+  .rec-match, .lead, .muted, td, th { overflow-wrap: anywhere; }
+
+  /* Les onglets débordaient sous la barre du navigateur : on les décale
+     et on garde le premier lisible à l'ouverture. */
+  .topbar .inner { padding-right: .4rem; }
+  .tabs { scroll-padding-left: 12px; }
+
+  /* Le panneau de filtres : le paragraphe explicatif passait AVANT le
+     graphique et repoussait tout vers le bas sur un écran étroit. */
+  .panel { padding: .9rem .8rem; }
 }
