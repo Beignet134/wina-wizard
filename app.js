@@ -1090,28 +1090,6 @@ function lierFiltres(idA, idB) {
   }
 });
 
-// Garantie 2 buts : sans chronologie des buts collectée (api_football_
-// collect.py, endpoint /fixtures/events), aucun pari ne porte l'indicateur
-// — le filtre n'aurait rien à appliquer. On le grise en disant pourquoi
-// plutôt que de le laisser sans effet visible.
-{
-  const el = $("btGarantie");
-  if (el) {
-    const n = BT_ROWS.filter(r => r.garantie_eligible).length;
-    if (!n) {
-      el.value = "0";
-      el.disabled = true;
-      el.title = "Indisponible : la chronologie des buts n'a pas encore été "
-               + "collectée. Lancez api_football_collect.py, qui récupère les "
-               + "minutes de but des matchs du backtest.";
-    } else {
-      const sauves = BT_ROWS.filter(r => r.garantie_sauve).length;
-      el.title = `${n} pari(s) Résultat en ligue éligible, dont ${sauves} que `
-               + `la garantie rend gagnant(s).`;
-    }
-  }
-}
-
 // Télécharge directement le fichier paris_joues.json : bien plus pratique
 // que le copier-coller manuel (l'artefact ne peut pas écrire sur le disque
 // ni utiliser le stockage du navigateur, donc le téléchargement est la
@@ -1297,6 +1275,29 @@ function renderOverview() {
 
 /* ================= PAGE — DIXON-COLES RÉTROSPECTIF ================= */
 const BT_ROWS = WIZARD_DATA.dc_backtest || [];
+
+// Garantie 2 buts : sans chronologie des buts collectée (api_football_
+// collect.py, endpoint /fixtures/events), aucun pari ne porte l'indicateur
+// — le filtre n'aurait rien à appliquer. On le grise en disant pourquoi
+// plutôt que de le laisser sans effet visible.
+{
+  const el = $("btGarantie");
+  if (el) {
+    const n = BT_ROWS.filter(r => r.garantie_eligible).length;
+    if (!n) {
+      el.value = "0";
+      el.disabled = true;
+      el.title = "Indisponible : la chronologie des buts n'a pas encore été "
+               + "collectée. Lancez api_football_collect.py, qui récupère les "
+               + "minutes de but des matchs du backtest.";
+    } else {
+      const sauves = BT_ROWS.filter(r => r.garantie_sauve).length;
+      el.title = `${n} pari(s) Résultat en ligue éligible, dont ${sauves} que `
+               + `la garantie rend gagnant(s).`;
+    }
+  }
+}
+
 const BT_STATS = WIZARD_DATA.dc_stats || {};
 
 // Bornes du calendrier : toute la période disponible, calculée côté Python
