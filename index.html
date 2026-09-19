@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919150148">
+<link rel="stylesheet" href="style.css?v=20260919152009">
 </head>
 <body>
 <div class="topbar">
@@ -447,7 +447,8 @@
           <label for="btEnrichi">Enrichissement xG</label>
           <select id="btEnrichi">
             <option value="sans">Sans — modèle en buts seul</option>
-            <option value="avec" selected>Avec — mélangé à l'xG</option>
+            <option value="auto" selected>xG si disponible, sinon buts</option>
+            <option value="avec">Avec — uniquement les matchs à xG</option>
           </select>
         </div>
         <div class="field">
@@ -743,7 +744,8 @@
           <label for="uEnrichi">Enrichissement xG</label>
           <select id="uEnrichi">
             <option value="sans">Sans — modèle en buts seul</option>
-            <option value="avec" selected>Avec — mélangé à l'xG</option>
+            <option value="auto" selected>xG si disponible, sinon buts</option>
+            <option value="avec">Avec — uniquement les matchs à xG</option>
           </select>
         </div>
         <div class="field">
@@ -1142,7 +1144,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919150148"></script>
-<script src="app.js?v=20260919150148"></script>
+<script src="donnees.js?v=20260919152009"></script>
+<script src="app.js?v=20260919152009"></script>
 </body>
 </html>
