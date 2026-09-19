@@ -1708,6 +1708,28 @@ function renderBacktest() {
   roiEl.textContent = fmtPct(roiEff);
   roiEl.className = "st-value " + (roiEff >= 0 ? "pos" : "neg");
 
+  // Avec Kelly, le capital engage est bien plus faible qu'avec une mise
+  // fixe : le RESULTAT NET baisse donc mecaniquement, sans que la strategie
+  // soit moins bonne. Seul le ROI (rendement du capital reellement engage)
+  // permet de comparer les deux. On le dit explicitement, sinon la chute du
+  // net donne l'impression trompeuse que Kelly est moins performant.
+  const noteMise = $("btMiseNote");
+  if (noteMise) {
+    if (strategieBt === "fixe") {
+      noteMise.style.display = "none";
+    } else {
+      const fixe = btStake();
+      const moyenne = totalMise / Math.max(g.n, 1);
+      noteMise.style.display = "";
+      noteMise.innerHTML = `<strong>Comparaison avec la mise fixe</strong> — Kelly engage `
+        + `${moyenne.toFixed(2)} € par pari en moyenne, contre ${fixe.toFixed(2)} € `
+        + `a plat : le <em>resultat net</em> est donc forcement plus faible, puisqu'il `
+        + `y a moins d'argent en jeu. C'est le <strong>ROI</strong> ci-dessus qui compare `
+        + `les deux a capital egal. Pour miser des montants comparables, augmentez la `
+        + `bankroll de depart sur la page Bankroll.`;
+    }
+  }
+
   $("btWin").textContent = (g.taux * 100).toFixed(1) + " %";
   $("btWinSub").textContent = `${g.wins} / ${g.n} gagnés` +
     (g.wins_attendus != null ? ` · ${g.wins_attendus} attendu(s)` : "");
