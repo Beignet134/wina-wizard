@@ -814,11 +814,16 @@ function renderUpcoming() {
       const variation = v.variation_proba || 0;   // > 0 = la cote a raccourci
       if (mv === "racc" && !v.raccourcit) return false;
       if (mv === "racc_fort" && variation < 0.02) return false;
-      if (mv === "allonge" && v.raccourcit) return false;
+      // Corrigé comme btFiltered (voir son commentaire) : on teste la
+      // variation elle-même, pas le booléen "a raccourci", pour ne garder
+      // que des allongements réels et non les cotes restées stables.
+      if (mv === "allonge" && variation > -0.0001) return false;
+      if (mv === "allonge_fort" && variation > -0.02) return false;
       if (mv === "stable" && Math.abs(variation) >= 0.01) return false;
       // Écarte les paris dont la cote s'allonge : mesuré à -53 % de ROI sur
       // les données réelles, contre -5 % pour celles qui raccourcissent.
       if (mv === "sauf_allonge" && variation < -0.0001) return false;
+      if (mv === "sauf_allonge_fort" && variation <= -0.02) return false;
     }
     return true;
   });
@@ -1183,6 +1188,8 @@ function cablerCasesCategorie() {
         document.querySelectorAll("." + autre + "CatChk").forEach(jumelle => {
           if (jumelle.value === boite.value) jumelle.checked = boite.checked;
         });
+        libelleMsel(pref);
+        libelleMsel(autre);
         if (typeof renderBacktest === "function") renderBacktest();
         if (typeof renderUpcoming === "function") renderUpcoming();
       });
@@ -1190,6 +1197,62 @@ function cablerCasesCategorie() {
   });
 }
 cablerCasesCategorie();
+
+// --- Type de pari : le groupe de cases est replie dans un menu deroulant --
+// (voir le commentaire CSS .msel dans style.css). Le texte du bouton resume
+// la selection courante ; le panneau s'ouvre/se ferme au clic et se
+// referme au clic ailleurs ou sur Echap, comme un <select> natif.
+function libelleMsel(prefixe) {
+  const boites = [...document.querySelectorAll("." + prefixe + "CatChk")];
+  const texte = $(prefixe + "CatBtnText");
+  if (!texte || !boites.length) return;
+  const coche = boites.filter(b => b.checked);
+  if (!coche.length) texte.textContent = "Aucune (= toutes)";
+  else if (coche.length === boites.length) texte.textContent = "Toutes";
+  else if (coche.length === 1) texte.textContent = coche[0].value;
+  else texte.textContent = coche.length + " sur " + boites.length;
+}
+
+function cablerMenusDeroulants() {
+  ["bt", "u"].forEach(pref => {
+    const msel = $(pref + "Cat");
+    const bouton = $(pref + "CatBtn");
+    if (!msel || !bouton) return;
+    bouton.addEventListener("click", () => {
+      const dejaOuvert = msel.classList.contains("open");
+      // Un seul menu ouvert a la fois (les deux pages partagent l'ecran
+      // sur les breakpoints larges, mieux vaut ne pas en laisser trainer).
+      document.querySelectorAll(".msel.open").forEach(autre => {
+        autre.classList.remove("open");
+        const b = autre.querySelector(".msel-btn");
+        if (b) b.setAttribute("aria-expanded", "false");
+      });
+      if (!dejaOuvert) {
+        msel.classList.add("open");
+        bouton.setAttribute("aria-expanded", "true");
+      }
+    });
+    libelleMsel(pref);
+  });
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll(".msel.open").forEach(msel => {
+      if (!msel.contains(e.target)) {
+        msel.classList.remove("open");
+        const b = msel.querySelector(".msel-btn");
+        if (b) b.setAttribute("aria-expanded", "false");
+      }
+    });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    document.querySelectorAll(".msel.open").forEach(msel => {
+      msel.classList.remove("open");
+      const b = msel.querySelector(".msel-btn");
+      if (b) b.setAttribute("aria-expanded", "false");
+    });
+  });
+}
+cablerMenusDeroulants();
 
 [["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
@@ -1589,7 +1652,17 @@ function btFiltered() {
       const v = r.variation_proba || 0;      // > 0 = la cote a raccourci
       if (mvt === "racc" && !r.raccourcit) return false;
       if (mvt === "racc_fort" && v < 0.02) return false;
-      if (mvt === "allonge" && r.raccourcit) return false;
+      // « allonge » visait à isoler les cotes qui s'allongent, mais testait
+      // r.raccourcit (un simple booléen) au lieu de la variation elle-même :
+      // ça gardait aussi les cotes STABLES (ni raccourcies ni vraiment
+      // allongées), qui n'ont rien à voir avec un allongement. Corrigé pour
+      // ne garder que les variations réellement négatives, symétrique de
+      // « racc »/« racc_fort » côté raccourcissement.
+      if (mvt === "allonge" && v > -0.0001) return false;
+      // Pendant du "fortement raccourci" côté allongement : même seuil (au
+      // moins 2 points de probabilité implicite perdus) pour isoler les
+      // mouvements de marché les plus marqués dans ce sens.
+      if (mvt === "allonge_fort" && v > -0.02) return false;
       if (mvt === "stable" && Math.abs(v) >= 0.01) return false;
       // ÉVITER LES ALLONGEMENTS : le signal le plus solide mesuré sur les
       // données réelles. Les cotes qui s'allongent affichent un ROI très
@@ -1598,6 +1671,10 @@ function btFiltered() {
       // Ce filtre est bien plus utile que « suivre les raccourcissements » :
       // il porte sur beaucoup plus de paris.
       if (mvt === "sauf_allonge" && v < -0.0001) return false;
+      // Version moins agressive : n'écarte que les FORTS allongements (même
+      // seuil que « allonge_fort »), en gardant les allongements légers, les
+      // cotes stables et celles qui raccourcissent.
+      if (mvt === "sauf_allonge_fort" && v <= -0.02) return false;
     }
     return true;
   });
