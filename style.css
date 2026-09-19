@@ -938,9 +938,9 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   border-radius: 8px; padding: .45rem .55rem;
 }
 .chk-cat {
-  display: flex; align-items: center; gap: .65rem;
+  display: flex; align-items: center; gap: .85rem;
   font-size: .8rem; color: var(--ink-dim); cursor: pointer;
-  line-height: 1.3;
+  line-height: 1.3; padding: .2rem 0;
   transition: color .15s;
 }
 .chk-cat:hover { color: var(--ink); }
@@ -1037,9 +1037,9 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
 .msel-panel {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
   min-width: 100%; width: max-content; max-width: 240px;
-  display: none; flex-direction: column; gap: .55rem;
+  display: none; flex-direction: column; gap: .75rem;
   background: var(--night-2); border: 1px solid var(--line); border-radius: 9px;
-  padding: .6rem .7rem; box-shadow: 0 10px 28px rgba(10,6,30,.45), var(--edge);
+  padding: .75rem .85rem; box-shadow: 0 10px 28px rgba(10,6,30,.45), var(--edge);
 }
 .msel.open .msel-panel { display: flex; }
 /* Ligue : liste peuplée dynamiquement, souvent 40-60 entrées — trop pour un
@@ -1056,7 +1056,7 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   box-shadow: 0 0 0 3px rgba(139,111,255,.18);
 }
 .msel-options {
-  display: flex; flex-direction: column; gap: .5rem;
+  display: flex; flex-direction: column; gap: .75rem;
   max-height: 260px; overflow-y: auto;
   /* Marge à droite pour que la scrollbar ne colle pas au texte des cases. */
   padding-right: .2rem;
@@ -1065,7 +1065,7 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
    "case nette" deja etabli pour .chk-group plus haut. */
 .msel-panel input[type="checkbox"] {
   appearance: none; -webkit-appearance: none; -moz-appearance: none;
-  width: 1rem; height: 1rem; flex: none;
+  width: 1.05rem; height: 1.05rem; flex: none;
   margin: 0; padding: 0;
   border: 1.5px solid var(--line);
   border-radius: 4px;
