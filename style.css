@@ -938,8 +938,9 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   border-radius: 8px; padding: .45rem .55rem;
 }
 .chk-cat {
-  display: flex; align-items: center; gap: .45rem;
+  display: flex; align-items: center; gap: .65rem;
   font-size: .8rem; color: var(--ink-dim); cursor: pointer;
+  line-height: 1.3;
   transition: color .15s;
 }
 .chk-cat:hover { color: var(--ink); }
@@ -1036,11 +1037,30 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
 .msel-panel {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
   min-width: 100%; width: max-content; max-width: 240px;
-  display: none; flex-direction: column; gap: .3rem;
+  display: none; flex-direction: column; gap: .55rem;
   background: var(--night-2); border: 1px solid var(--line); border-radius: 9px;
-  padding: .5rem .6rem; box-shadow: 0 10px 28px rgba(10,6,30,.45), var(--edge);
+  padding: .6rem .7rem; box-shadow: 0 10px 28px rgba(10,6,30,.45), var(--edge);
 }
 .msel.open .msel-panel { display: flex; }
+/* Ligue : liste peuplée dynamiquement, souvent 40-60 entrées — trop pour un
+   panneau de hauteur libre (il sortirait de l'écran). Élargie aussi, les
+   libellés "Pays - Ligue" étant plus longs que les 4 catégories fixes. */
+.msel-panel-ligues { min-width: 280px; max-width: 340px; gap: .5rem; }
+.msel-search {
+  width: 100%; background: var(--night); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 7px; padding: .4rem .6rem; font-size: .82rem; font-family: var(--font-body);
+  flex: none;
+}
+.msel-search:focus {
+  outline: none; border-color: var(--violet);
+  box-shadow: 0 0 0 3px rgba(139,111,255,.18);
+}
+.msel-options {
+  display: flex; flex-direction: column; gap: .5rem;
+  max-height: 260px; overflow-y: auto;
+  /* Marge à droite pour que la scrollbar ne colle pas au texte des cases. */
+  padding-right: .2rem;
+}
 /* A l'interieur du panneau, les cases reprennent exactement le rendu
    "case nette" deja etabli pour .chk-group plus haut. */
 .msel-panel input[type="checkbox"] {
