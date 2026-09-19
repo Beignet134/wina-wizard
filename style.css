@@ -929,3 +929,18 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   font-size: .78rem; color: var(--ink-dim);
 }
 .rec-kelly strong { color: var(--violet); font-family: var(--font-mono); }
+
+/* Type de pari : selection multiple par cases a cocher, en remplacement
+   d'une liste deroulante qui n'autorisait qu'un seul choix. */
+.chk-group {
+  display: flex; flex-direction: column; gap: .3rem;
+  background: var(--night); border: 1px solid var(--line);
+  border-radius: 8px; padding: .45rem .55rem;
+}
+.chk-cat {
+  display: flex; align-items: center; gap: .45rem;
+  font-size: .8rem; color: var(--ink-dim); cursor: pointer;
+  transition: color .15s;
+}
+.chk-cat:hover { color: var(--ink); }
+.chk-cat input { accent-color: var(--violet); cursor: pointer; margin: 0; }
