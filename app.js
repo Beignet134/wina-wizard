@@ -95,6 +95,17 @@ function appliquerXg(rows, mode) {
   return rows.map(r => (r.p_model_xg != null ? substituer(r) : {...r, source_xg: false}));
 }
 
+// --- Type de pari : selection multiple par cases a cocher ---------------
+// Renvoie la liste des categories cochees. Un ensemble VIDE (aucune case)
+// est traite comme "toutes" : afficher zero pari quand l'utilisateur
+// decoche tout serait une impasse, et laisserait croire a un bug.
+function categoriesCochees(prefixe) {
+  const boites = document.querySelectorAll("." + prefixe + "CatChk");
+  if (!boites.length) return null;                 // filtre absent
+  const choisies = [...boites].filter(b => b.checked).map(b => b.value);
+  return choisies.length ? choisies : null;        // rien coche = pas de filtre
+}
+
 function blendAlpha(selectId) {
   const el = $(selectId);
   const v = el ? parseFloat(el.value) : 1;
@@ -725,7 +736,8 @@ function renderUpcoming() {
   // page Bankroll, a defaut 100 EUR pour que l'ordre de grandeur reste lisible.
   const strategieMise = $("uMise2") ? $("uMise2").value : "fixe";
   const bankrollRef = parseFloat(($("bkDepart") || {}).value) || 100;
-  const cat = $("uCat").value, edge = parseFloat($("uEdge").value), sortBy = $("uSort").value;
+  const cats = categoriesCochees("u");
+  const edge = parseFloat($("uEdge").value), sortBy = $("uSort").value;
   const ligue = $("uLigue") ? $("uLigue").value : "";
   const pred = $("uPred") ? $("uPred").value : "";
   const devig = $("uDevig") ? $("uDevig").value === "1" : false;
@@ -754,7 +766,7 @@ function renderUpcoming() {
     const e = devig ? (v.edge_devig ?? v.edge) : v.edge;
     return Object.assign({}, v, {edge_aff: e, ev_aff: v.ev, p_aff: v.p_model});
   }).filter(v => {
-    if (cat && v.categorie !== cat) return false;
+    if (cats && !cats.includes(v.categorie)) return false;
     if (ligue && v.ligue !== ligue) return false;
     if (v.edge_aff < edge) return false;
     if (!dansPlageCote(v.cote, $("uCote") ? $("uCote").value : "")) return false;
@@ -1112,7 +1124,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
+["uStake","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1140,7 +1152,28 @@ function lierFiltres(idA, idB) {
     elA.dispatchEvent(new Event("change"));
   });
 }
-[["btCat","uCat"], ["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
+// Cases a cocher "Type de pari" : elles ne sont pas des <select>, donc ni
+// les ecouteurs ni lierFiltres() ne les prennent en charge. On les cable a
+// la main, en gardant les deux pages synchronisees comme les autres filtres.
+function cablerCasesCategorie() {
+  const paires = [["bt", renderBacktest], ["u", renderUpcoming]];
+  paires.forEach(([pref, redessiner]) => {
+    document.querySelectorAll("." + pref + "CatChk").forEach(boite => {
+      boite.addEventListener("change", () => {
+        // Report de la meme selection sur l'autre page.
+        const autre = pref === "bt" ? "u" : "bt";
+        document.querySelectorAll("." + autre + "CatChk").forEach(jumelle => {
+          if (jumelle.value === boite.value) jumelle.checked = boite.checked;
+        });
+        if (typeof renderBacktest === "function") renderBacktest();
+        if (typeof renderUpcoming === "function") renderUpcoming();
+      });
+    });
+  });
+}
+cablerCasesCategorie();
+
+[["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
  ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
  ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -1398,7 +1431,7 @@ const BT_STATS = WIZARD_DATA.dc_stats || {};
 // KPI, le tableau et le graphique portent toujours sur le MÊME ensemble.
 function btFiltered() {
   const f = $("btFilter") ? $("btFilter").value : "";
-  const cat = $("btCat") ? $("btCat").value : "";
+  const cats = categoriesCochees("bt");
   const ligue = $("btLigue") ? $("btLigue").value : "";
   const dedup = $("btDedup") ? $("btDedup").value === "1" : false;
   const devig = $("btDevig") ? $("btDevig").value === "1" : false;
@@ -1502,7 +1535,7 @@ function btFiltered() {
     }
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
-    if (cat && r.categorie !== cat) return false;
+    if (cats && !cats.includes(r.categorie)) return false;
     if (ligue && r.ligue !== ligue) return false;
     if (f === "won" && !r.gagne) return false;
     if (f === "lost" && r.gagne) return false;
@@ -2708,7 +2741,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
