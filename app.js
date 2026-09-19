@@ -901,13 +901,43 @@ function renderUpcoming() {
     if (sortBy==="edge") return b.edge_aff - a.edge_aff;
     return b[sortBy]-a[sortBy];
   });
-  const n = rows.length, mise = n*stake;
-  const evTotal = rows.reduce((s,v)=>s+(v.ev_aff ?? v.ev)*stake, 0);
+  const n = rows.length;
+  // Mise reellement engagee par pari : la mise fixe saisie, ou la mise
+  // conseillee par Kelly (variable selon l'edge et la cote de CHAQUE pari).
+  // Avant ce calcul, "Total a miser"/"Esperance totale" restaient bases sur
+  // la mise fixe meme quand Kelly etait choisi dans "Strategie de mise" —
+  // rien ne changeait donc a l'ecran en dehors d'une petite ligne sur
+  // chaque carte, facile a manquer. Les deux totaux suivent desormais
+  // vraiment la strategie choisie.
+  const miseParPari = strategieMise === "fixe"
+    ? rows.map(() => stake)
+    : rows.map(v => miseConseillee(v, "uMise2", stake, bankrollRef));
+  const mise = miseParPari.reduce((s,m) => s+m, 0);
+  const evTotal = rows.reduce((s,v,i) => s+(v.ev_aff ?? v.ev)*miseParPari[i], 0);
   const matches = new Set(rows.map(v=>v.match)).size;
   $("uNb").textContent = n;
-  $("uMise").textContent = mise.toLocaleString("fr-FR") + " €";
+  $("uMise").textContent = mise.toLocaleString("fr-FR", {maximumFractionDigits: 0}) + " €";
   const evEl=$("uEv"); evEl.textContent=fmtEur(evTotal); evEl.className="v "+(evTotal>=0?"pos":"neg");
   $("uMatches").textContent = matches;
+
+  // Rend le changement de strategie tangible : avec Kelly, "Total a miser"
+  // varie desormais reellement (mise moyenne differente de la mise fixe,
+  // et cet ecart se voit d'un coup d'oeil dans le KPI ci-dessus).
+  const uMiseNote = $("uMiseNote");
+  if (uMiseNote) {
+    if (strategieMise === "fixe" || n === 0) {
+      uMiseNote.style.display = "none";
+    } else {
+      const moyenne = mise / n;
+      uMiseNote.style.display = "";
+      uMiseNote.innerHTML = `<strong>Mise Kelly active</strong> — chaque pari reçoit sa propre mise `
+        + `(proportionnelle à son edge et à sa cote), au lieu de ${stake.toFixed(2)} € pour tous. `
+        + `Mise moyenne ici : <strong>${moyenne.toFixed(2)} €</strong> `
+        + `(${(moyenne/bankrollRef*100).toFixed(1)} % de la bankroll de ${bankrollRef.toFixed(0)} €). `
+        + `« Total à miser » et « Espérance totale » ci-dessus intègrent déjà cette variation — `
+        + `le détail par pari reste visible sur chaque carte.`;
+    }
+  }
 
   // Transparence sur ce que le mode xG fait vraiment à l'échantillon :
   // "avec" ÉCARTE les matchs sans historique xG, "auto" les conserve avec
@@ -2041,11 +2071,17 @@ function renderBacktest() {
   // Tableau par catégorie, recalculé sur l'ensemble filtré
   const cats = {};
   rowsFiltrees.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
-  Object.keys(cats).forEach(k => { cats[k] = btAgg(cats[k]); });
-  const order = Object.keys(cats).sort((a,b) => (cats[b].roi ?? -99) - (cats[a].roi ?? -99));
+  const catsAgg = {};
+  Object.keys(cats).forEach(k => { catsAgg[k] = btAgg(cats[k]); });
+  const order = Object.keys(catsAgg).sort((a,b) => (catsAgg[b].roi ?? -99) - (catsAgg[a].roi ?? -99));
   $("btCatBody").innerHTML = order.map(c => {
-    const s = cats[c];
-    const cnet = s.profit * btStakeFor(s);
+    const s = catsAgg[c];
+    // Net recalculé pari par pari, pas depuis l'agrégat : en mise Kelly,
+    // btStakeFor() a besoin des champs du pari (cote, p_aff/p_model) —
+    // passer l'objet agrégé s (qui ne les a pas) donnait silencieusement
+    // une mise nulle, donc un Net à 0 € pour toutes les catégories dès
+    // que la stratégie Kelly était choisie.
+    const cnet = cats[c].reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
     return `<tr>
       <td data-label=""><strong>${c}</strong></td>
       <td data-label="Paris" class="num">${s.n}</td>
@@ -2056,6 +2092,7 @@ function renderBacktest() {
     </tr>`;
   }).join("") || '<tr><td colspan="6" class="muted">Aucune catégorie.</td></tr>';
 
+  renderLigueComparaison(rowsFiltrees);
   renderBacktestRows();
   renderOosValidation();
   renderMouvement();
@@ -2063,6 +2100,65 @@ function renderBacktest() {
   drawParCote();
   drawShotsAnalysis();
   drawEvolution();
+}
+
+// Sous ce seuil de paris, le ROI d'une ligue est trop bruité pour se
+// distinguer du hasard (cf. le bandeau d'interprétation de btVerdict, même
+// logique) : on l'affiche quand même — le masquer donnerait l'impression
+// trompeuse qu'il n'y a rien à voir — mais avec un badge "peu de données"
+// plutôt qu'en le laissant se confondre avec des lignes solides.
+const LIGUE_COMP_SEUIL_FIABLE = 10;
+
+// Tableau "Comparaison des ligues", juste sous le graphique d'évolution du
+// gain cumulé : recalculé sur le MÊME ensemble filtré que tout le reste de
+// la page (rowsFiltrees, déjà passé par btFiltered()), pas un instantané
+// figé — changer un filtre en haut de page le met donc à jour comme le
+// reste.
+function renderLigueComparaison(rowsFiltrees) {
+  const body = $("btLigueCompBody");
+  const empty = $("btLigueCompEmpty");
+  const table = $("btLigueCompTable");
+  if (!body) return;
+
+  const parLigue = {};
+  rowsFiltrees.forEach(r => {
+    if (!r.ligue) return;
+    const k = ligueKey(r.pays, r.ligue);
+    (parLigue[k] = parLigue[k] || {label: ligueLabel(r.pays, r.ligue), rows: []}).rows.push(r);
+  });
+  const cles = Object.keys(parLigue);
+
+  if (!cles.length) {
+    body.innerHTML = "";
+    if (table) table.style.display = "none";
+    if (empty) empty.style.display = "";
+    return;
+  }
+  if (table) table.style.display = "";
+  if (empty) empty.style.display = "none";
+
+  const agg = {};
+  cles.forEach(k => { agg[k] = btAgg(parLigue[k].rows); });
+  const order = cles.sort((a,b) => (agg[b].roi ?? -99) - (agg[a].roi ?? -99));
+
+  body.innerHTML = order.map(k => {
+    const s = agg[k];
+    const rows = parLigue[k].rows;
+    // Même correctif que le tableau par catégorie : net recalculé pari par
+    // pari, pour rester juste en mise Kelly (btStakeFor a besoin de cote et
+    // p_aff/p_model, absents d'un objet agrégé).
+    const net = rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    const peuFiable = s.n < LIGUE_COMP_SEUIL_FIABLE;
+    return `<tr>
+      <td data-label=""><strong>${parLigue[k].label}</strong>${peuFiable
+        ? ' <span class="tag-cat" title="Moins de ' + LIGUE_COMP_SEUIL_FIABLE + ' paris : le ROI peut varier fortement d’un pari à l’autre.">peu de données</span>' : ""}</td>
+      <td data-label="Paris" class="num">${s.n}</td>
+      <td data-label="Réussite" class="num">${(s.taux*100).toFixed(1)} %</td>
+      <td data-label="Cote moy." class="num">${s.cote_moy != null ? s.cote_moy.toFixed(2) : "—"}</td>
+      <td data-label="ROI" class="num ${s.roi>=0?'pos':'neg'}"><strong>${fmtPct(s.roi)}</strong></td>
+      <td data-label="Net" class="num ${net>=0?'pos':'neg'}">${fmtEur(net)}</td>
+    </tr>`;
+  }).join("");
 }
 
 // Colonne et sens de tri du tableau de détail. Par défaut : les plus
@@ -2805,8 +2901,13 @@ function drawEvolution() {
   let cum = 0;
   const pts = filtres.map((r, i) => {
     cum += r.profit;
+    // p_aff/p_model sont repris ici (et pas seulement cote/profit) car
+    // btStakeFor() en a besoin pour la mise Kelly de l'infobulle au survol —
+    // sans eux elle retombe silencieusement sur une mise nulle (voir plus
+    // bas, gain = best.profit * btStakeFor(best)).
     return {x: i + 1, y: cum, date: r.date, match: r.match, pari: r.colonne,
-            cote: r.cote, gagne: r.gagne, score: r.score_reel, profit: r.profit};
+            cote: r.cote, gagne: r.gagne, score: r.score_reel, profit: r.profit,
+            p_aff: r.p_aff, p_model: r.p_model};
   });
 
   const W = 1180, H = 300, padL = 62, padR = 22, padT = 26, padB = 38;
