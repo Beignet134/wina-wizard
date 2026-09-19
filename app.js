@@ -29,6 +29,43 @@ const MIN_EDGE = WIZARD_DATA.config.min_edge ?? 0.02;
    (donc aucun value bet, par construction).
    ============================================================ */
 
+// --- Dimensionnement des mises (critere de Kelly) ----------------------
+// Kelly donne la fraction de bankroll qui maximise la croissance a long
+// terme :   f = (p * cote - 1) / (cote - 1)
+// Le numerateur est exactement l'esperance du pari.
+//
+// POURQUOI UNE FRACTION DE KELLY, ET NON KELLY ENTIER
+// Kelly suppose que la probabilite p est EXACTE. Celle du modele est
+// surconfiante (ratio mesure 0,924 sur le backtest), donc Kelly entier
+// sur-miserait systematiquement, avec des variations de bankroll brutales
+// et un risque reel de ruine. Le quart de Kelly divise la volatilite par
+// quatre en ne cedant qu'une petite part de la croissance theorique.
+//
+// Renvoie la fraction de bankroll a engager, bornee a MISE_PLAFOND : meme
+// un edge enorme ne doit jamais concentrer la bankroll sur un seul pari,
+// car un edge enorme trahit plus souvent une erreur du modele qu'une vraie
+// occasion.
+const MISE_PLAFOND = 0.10;
+
+function kellyFraction(p, cote, fraction) {
+  if (p == null || !cote || cote <= 1) return 0;
+  const f = (p * cote - 1) / (cote - 1);
+  if (!isFinite(f) || f <= 0) return 0;       // aucun edge : on ne mise pas
+  return Math.min(f * fraction, MISE_PLAFOND);
+}
+
+// Lit la strategie choisie et renvoie la mise en euros pour un pari donne.
+// "fixe" = le montant saisi ; sinon une fraction de la bankroll de depart.
+function miseConseillee(v, selectId, miseFixe, bankroll) {
+  const el = $(selectId);
+  const strategie = el ? el.value : "fixe";
+  if (strategie === "fixe" || !bankroll) return miseFixe;
+  const frac = parseFloat(strategie);
+  if (!isFinite(frac)) return miseFixe;
+  const p = v.p_aff ?? v.p_model;
+  return Math.round(kellyFraction(p, v.cote, frac) * bankroll * 100) / 100;
+}
+
 function blendAlpha(selectId) {
   const el = $(selectId);
   const v = el ? parseFloat(el.value) : 1;
@@ -655,6 +692,10 @@ function fmtKickoff(iso) {
 
 function renderUpcoming() {
   const stake = parseFloat($("uStake").value) || 0;
+  // Kelly raisonne en fraction de bankroll : on prend celle saisie sur la
+  // page Bankroll, a defaut 100 EUR pour que l'ordre de grandeur reste lisible.
+  const strategieMise = $("uMise2") ? $("uMise2").value : "fixe";
+  const bankrollRef = parseFloat(($("bkDepart") || {}).value) || 100;
   const cat = $("uCat").value, edge = parseFloat($("uEdge").value), sortBy = $("uSort").value;
   const ligue = $("uLigue") ? $("uLigue").value : "";
   const pred = $("uPred") ? $("uPred").value : "";
@@ -704,9 +745,16 @@ function renderUpcoming() {
     // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
     // mais espérance -6,3 %). ev_aff porte déjà la valeur du mode actif
     // (mélangée si α < 1), donc le filtre suit ce qui est affiché.
-    if ($("uEvPos") && $("uEvPos").value === "1") {
-      const ev = v.ev_aff ?? v.ev;
-      if (ev == null || ev <= 0) return false;
+    // Seuil d'esperance : -999 = pas de filtre, 0 = strictement positive,
+    // puis des paliers (0.02 = au moins +2 % de la mise).
+    if ($("uEvPos")) {
+      const seuilEv = parseFloat($("uEvPos").value);
+      if (seuilEv > -900) {
+        const ev = v.ev_aff ?? v.ev;
+        if (ev == null) return false;
+        // "Positive" exclut le zero ; les paliers sont inclusifs.
+        if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
+      }
     }
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
@@ -883,6 +931,10 @@ function renderUpcoming() {
           <span><strong>${libelleM}</strong> <span class="muted">(${ecart>=0?"+":""}${ecart.toFixed(1)}% vs ${v.marche_n_bookmakers} bookmakers)</span></span>
         </div>`;
     }
+    // Mise conseillee : null en mode "Montant fixe", puisque la valeur
+    // serait la meme pour tous les paris et n'apporterait rien.
+    const miseKelly = (strategieMise !== "fixe")
+      ? miseConseillee(v, "uMise2", stake, bankrollRef) : null;
     const key = betKey(v);
     const isPlaced = PLACED.has(key);
     const miseActuelle = PLACED.get(key)?.mise;
@@ -916,6 +968,8 @@ function renderUpcoming() {
         <div class="rec-metric"><div class="mk">Edge</div><div class="mv pos">${fmtPct(v.edge_aff ?? v.edge)}</div></div>
         <div class="rec-metric"><div class="mk">Espérance</div><div class="mv ${(v.ev_aff ?? v.ev)>=0?'pos':'neg'}">${fmtPct(v.ev_aff ?? v.ev)}</div></div>
       </div>
+      ${miseKelly != null ? `<div class="rec-kelly">Mise conseillée <strong>${miseKelly.toFixed(2)} €</strong>
+        <span class="muted">(${(miseKelly/bankrollRef*100).toFixed(1)} % de ${bankrollRef.toFixed(0)} €)</span></div>` : ""}
       ${injuryBlock}
       ${predBlock}
       ${marcheBlock}
@@ -1037,7 +1091,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote"].forEach(id => {
+["uStake","uCat","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1067,7 +1121,7 @@ function lierFiltres(idA, idB) {
 }
 [["btCat","uCat"], ["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
- ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"],
+ ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
  ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
 
 // Sans ratio mesurable (backtest de moins de 100 paris, ou ratio aberrant
@@ -1404,7 +1458,8 @@ function btFiltered() {
   // dévigué +2,5 % mais espérance -6,3 %, car il faudrait gagner 97,1 % du
   // temps pour rentrer dans ses frais. L'espérance est la seule mesure de
   // ce qu'un pari rapporte vraiment.
-  const evPos = $("btEvPos") ? $("btEvPos").value === "1" : false;
+  // -999 = pas de filtre ; 0 = strictement positive ; 0.02 = au moins +2 %.
+  const seuilEv = $("btEvPos") ? parseFloat($("btEvPos").value) : -999;
   // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
   // être vu comme gagnant par TOUS les filtres qui suivent (y compris
   // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
@@ -1432,9 +1487,10 @@ function btFiltered() {
     // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
     // pas celle du modèle seul — sinon le filtre contredirait les chiffres
     // affichés dans les colonnes.
-    if (evPos) {
+    if (seuilEv > -900) {
       const ev = alpha < 1 ? blended(r, alpha).ev : r.ev;
-      if (ev == null || ev <= 0) return false;
+      if (ev == null) return false;
+      if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
     }
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
@@ -2586,7 +2642,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btCat","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
