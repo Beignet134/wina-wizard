@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919152009">
+<link rel="stylesheet" href="style.css?v=20260919153958">
 </head>
 <body>
 <div class="topbar">
@@ -394,14 +394,13 @@
           </select>
         </div>
         <div class="field">
-          <label for="btCat">Type de pari</label>
-          <select id="btCat">
-            <option value="">Toutes</option>
-            <option value="Score exact">Score exact</option>
-            <option value="Vainqueur du match">Vainqueur du match</option>
-            <option value="Intervalle de buts">Intervalle de buts</option>
-            <option value="Plus/Moins de buts">Plus/Moins de buts</option>
-          </select>
+          <label>Type de pari</label>
+          <div class="chk-group" id="btCat">
+            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Score exact" checked><span>Score exact</span></label>
+            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
+            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
+            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+          </div>
         </div>
         <div class="field">
           <label for="btLigue">Ligue</label>
@@ -682,14 +681,13 @@
           <input type="number" id="uStake" value="10" min="0" step="1">
         </div>
         <div class="field">
-          <label for="uCat">Catégorie</label>
-          <select id="uCat">
-            <option value="">Toutes</option>
-            <option value="Score exact">Score exact</option>
-            <option value="Vainqueur du match">Vainqueur du match</option>
-            <option value="Intervalle de buts">Intervalle de buts</option>
-            <option value="Plus/Moins de buts">Plus/Moins de buts</option>
-          </select>
+          <label>Type de pari</label>
+          <div class="chk-group" id="uCat">
+            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Score exact" checked><span>Score exact</span></label>
+            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
+            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
+            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+          </div>
         </div>
         <div class="field">
           <label for="uLigue">Ligue</label>
@@ -1144,7 +1142,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919152009"></script>
-<script src="app.js?v=20260919152009"></script>
+<script src="donnees.js?v=20260919153958"></script>
+<script src="app.js?v=20260919153958"></script>
 </body>
 </html>
