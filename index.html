@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919213302">
+<link rel="stylesheet" href="style.css?v=20260919215041">
 </head>
 <body>
 <div class="topbar">
@@ -403,8 +403,8 @@
             <div class="msel-panel">
               <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Score exact" checked><span>Score exact</span></label>
               <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts"><span>Intervalle de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts"><span>Plus/Moins de buts</span></label>
             </div>
           </div>
         </div>
@@ -425,7 +425,7 @@
           <label for="btMvt">Mouvement de la cote</label>
           <select id="btMvt">
             <option value="">Peu importe</option>
-            <option value="sauf_allonge">Écarter toutes les cotes qui s'allongent</option>
+            <option value="sauf_allonge" selected>Écarter toutes les cotes qui s'allongent</option>
             <option value="sauf_allonge_fort">Écarter seulement les cotes fortement allongées</option>
             <option value="racc">A raccourci (marché confiant)</option>
             <option value="racc_fort">A fortement raccourci</option>
@@ -462,8 +462,8 @@
         <div class="field">
           <label for="btEnrichi">Enrichissement xG</label>
           <select id="btEnrichi">
-            <option value="sans">Sans — modèle en buts seul</option>
-            <option value="auto" selected>xG si disponible, sinon buts</option>
+            <option value="sans" selected>Sans — modèle en buts seul</option>
+            <option value="auto">xG si disponible, sinon buts</option>
             <option value="avec">Avec — uniquement les matchs à xG</option>
           </select>
         </div>
@@ -728,8 +728,8 @@
             <div class="msel-panel">
               <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Score exact" checked><span>Score exact</span></label>
               <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
-              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
-              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Intervalle de buts"><span>Intervalle de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Plus/Moins de buts"><span>Plus/Moins de buts</span></label>
             </div>
           </div>
         </div>
@@ -759,7 +759,7 @@
           <label for="uMvt">Mouvement de la cote</label>
           <select id="uMvt">
             <option value="">Peu importe</option>
-            <option value="sauf_allonge">Écarter toutes les cotes qui s'allongent</option>
+            <option value="sauf_allonge" selected>Écarter toutes les cotes qui s'allongent</option>
             <option value="sauf_allonge_fort">Écarter seulement les cotes fortement allongées</option>
             <option value="racc">A raccourci (marché confiant)</option>
             <option value="racc_fort">A fortement raccourci</option>
@@ -796,8 +796,8 @@
         <div class="field">
           <label for="uEnrichi">Enrichissement xG</label>
           <select id="uEnrichi">
-            <option value="sans">Sans — modèle en buts seul</option>
-            <option value="auto" selected>xG si disponible, sinon buts</option>
+            <option value="sans" selected>Sans — modèle en buts seul</option>
+            <option value="auto">xG si disponible, sinon buts</option>
             <option value="avec">Avec — uniquement les matchs à xG</option>
           </select>
         </div>
@@ -953,7 +953,8 @@
           <label for="simStrategie">Stratégie de mise</label>
           <select id="simStrategie">
             <option value="fixe">Montant fixe par pari (€)</option>
-            <option value="pct">% de la bankroll par jour, réparti</option>
+            <option value="pct">% de la bankroll par jour, réparti également</option>
+            <option value="kelly">Kelly — fraction par pari, selon son edge</option>
           </select>
         </div>
         <div class="field" id="simFixeWrap">
@@ -964,7 +965,23 @@
           <label for="simPct">% max de la bankroll par jour</label>
           <input type="number" id="simPct" value="15" min="1" max="100" step="1">
         </div>
+        <div class="field" id="simKellyWrap" style="display:none">
+          <label for="simKellyFrac">Fraction de Kelly</label>
+          <select id="simKellyFrac">
+            <option value="0.125">Kelly 1/8 (très prudent)</option>
+            <option value="0.25" selected>Kelly 1/4 (recommandé)</option>
+            <option value="0.5">Kelly 1/2 (agressif)</option>
+            <option value="1">Kelly entier (déconseillé)</option>
+          </select>
+        </div>
       </div>
+      <p class="muted" id="simKellyNote" style="display:none; margin:0 0 .8rem; font-size:.82rem">
+        <strong>Ici, contrairement au tableau « DC rétrospectif »</strong>, la bankroll compose
+        vraiment : la mise de chaque jour se calcule sur la bankroll <em>telle qu'elle est après les
+        jours précédents</em>, pas sur un montant de référence figé. C'est ce qui rend visible l'intérêt
+        de Kelly — chaque pari reçoit une part proportionnelle à son edge et à sa cote, prélevée sur
+        cette bankroll qui grandit ou rétrécit au fil du temps.
+      </p>
 
       <div class="kpis">
         <div class="kpi"><div class="k">Bankroll finale simulée</div><div class="v" id="simFinale">—</div></div>
@@ -1198,7 +1215,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919213302"></script>
-<script src="app.js?v=20260919213302"></script>
+<script src="donnees.js?v=20260919215041"></script>
+<script src="app.js?v=20260919215041"></script>
 </body>
 </html>
