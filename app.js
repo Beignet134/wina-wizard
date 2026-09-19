@@ -114,6 +114,20 @@ function categoriesCochees(prefixe) {
   return choisies.length ? choisies : null;        // rien coche = pas de filtre
 }
 
+// --- Ligue : meme principe, en Set (beaucoup plus d'options qu'il n'y a
+// de categories) et sans case pre-cochee au depart : ne rien cocher = ne
+// rien exclure, exactement le comportement de l'ancien <select value="">
+// qu'il remplace. La liste des cases est peuplee dynamiquement dans
+// initMeta() (les ligues dependent des donnees du jour), donc cette
+// fonction n'est fiable qu'appelee apres coup — c'est toujours le cas ici,
+// les fonctions de rendu ne tournant qu'au clic/au chargement complet.
+function liguesCochees(prefixe) {
+  const boites = document.querySelectorAll("." + prefixe + "LigueChk");
+  if (!boites.length) return null;
+  const choisies = [...boites].filter(b => b.checked).map(b => b.value);
+  return choisies.length ? new Set(choisies) : null;
+}
+
 function blendAlpha(selectId) {
   const el = $(selectId);
   const v = el ? parseFloat(el.value) : 1;
@@ -238,18 +252,41 @@ function initMeta() {
   };
   remplirLigues($("fLigue"), BETS);
 
-  // Idem pour le filtre Ligue de la page DC rétrospectif, à partir des
-  // paris du backtest (dc_backtest), qui ont leur propre champ "ligue".
-  // Même liste pour "Paris à venir" (uLigue) : l'UNION des ligues du
-  // backtest ET des value bets à venir, pas seulement ces dernières —
-  // sinon les deux filtres n'auraient pas les mêmes options et la liaison
-  // entre les deux pages (plus bas) échouerait silencieusement dès qu'une
-  // valeur de l'un est absente de la liste de l'autre.
-  const btSel = $("btLigue"), uSelLigue = $("uLigue");
-  if (btSel || uSelLigue) {
+  // Filtre Ligue des pages DC rétrospectif / Paris à venir : même widget
+  // "menu déroulant à cases à cocher" que Type de pari (voir libelleMsel),
+  // mais peuplé ici plutôt qu'écrit en dur dans le HTML — contrairement aux
+  // 4 catégories fixes, la liste des ligues dépend des données du jour.
+  // Aucune case n'est pré-cochée : ne rien cocher = ne rien exclure,
+  // exactement le comportement de l'ancien <select value=""> remplacé.
+  const remplirLiguesMsel = (prefixe, rows) => {
+    const conteneur = $(prefixe + "LigueOptions");
+    if (!conteneur) return;
+    conteneur.innerHTML = "";
+    ligueOptions(rows).forEach(r => {
+      const texte = ligueLabel(r.pays, r.ligue);
+      const label = document.createElement("label");
+      label.className = "chk-cat";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.className = prefixe + "LigueChk";
+      input.value = ligueKey(r.pays, r.ligue);
+      input.dataset.label = texte;
+      const span = document.createElement("span");
+      span.textContent = texte;
+      label.appendChild(input);
+      label.appendChild(span);
+      conteneur.appendChild(label);
+    });
+  };
+  // Même liste pour les deux pages : l'UNION des ligues du backtest ET des
+  // value bets à venir, pas seulement ces dernières — sinon les deux menus
+  // n'auraient pas les mêmes cases et la liaison entre les deux pages (plus
+  // bas) échouerait silencieusement dès qu'une valeur de l'un est absente
+  // de la liste de l'autre.
+  if ($("btLigueOptions") || $("uLigueOptions")) {
     const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])];
-    remplirLigues(btSel, toutes);
-    remplirLigues(uSelLigue, toutes);
+    remplirLiguesMsel("bt", toutes);
+    remplirLiguesMsel("u", toutes);
   }
 }
 
@@ -756,7 +793,7 @@ function renderUpcoming() {
   const bankrollRef = parseFloat(($("bkDepart") || {}).value) || 100;
   const cats = categoriesCochees("u");
   const edge = parseFloat($("uEdge").value), sortBy = $("uSort").value;
-  const ligue = $("uLigue") ? $("uLigue").value : "";
+  const ligues = liguesCochees("u");
   const pred = $("uPred") ? $("uPred").value : "";
   const devig = $("uDevig") ? $("uDevig").value === "1" : false;
   const alpha = blendAlpha("uAlpha");
@@ -785,7 +822,7 @@ function renderUpcoming() {
     return Object.assign({}, v, {edge_aff: e, ev_aff: v.ev, p_aff: v.p_model});
   }).filter(v => {
     if (cats && !cats.includes(v.categorie)) return false;
-    if (ligue && ligueKey(v.pays, v.ligue) !== ligue) return false;
+    if (ligues && !ligues.has(ligueKey(v.pays, v.ligue))) return false;
     if (v.edge_aff < edge) return false;
     if (!dansPlageCote(v.cote, $("uCote") ? $("uCote").value : "")) return false;
     // Espérance : un edge dévigué positif ne garantit PAS une espérance
@@ -1147,7 +1184,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uLigue","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
+["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1213,26 +1250,93 @@ function libelleMsel(prefixe) {
   else texte.textContent = coche.length + " sur " + boites.length;
 }
 
+// --- Ligue : même widget, mais liste peuplée dynamiquement (voir initMeta)
+// et rien de coché par défaut (voir liguesCochees). Câblé séparément de
+// cablerCasesCategorie() parce que les cases n'existent pas encore au
+// chargement du script — elles sont injectées après coup — et parce que le
+// texte du bouton n'a pas le même cas particulier "tout décoché".
+function cablerCasesLigue() {
+  ["bt", "u"].forEach(pref => {
+    document.querySelectorAll("." + pref + "LigueChk").forEach(boite => {
+      boite.addEventListener("change", () => {
+        const autre = pref === "bt" ? "u" : "bt";
+        document.querySelectorAll("." + autre + "LigueChk").forEach(jumelle => {
+          if (jumelle.value === boite.value) jumelle.checked = boite.checked;
+        });
+        libelleMselLigue(pref);
+        libelleMselLigue(autre);
+        if (typeof renderBacktest === "function") renderBacktest();
+        if (typeof renderUpcoming === "function") renderUpcoming();
+      });
+    });
+  });
+}
+cablerCasesLigue();
+
+function libelleMselLigue(prefixe) {
+  const boites = [...document.querySelectorAll("." + prefixe + "LigueChk")];
+  const texte = $(prefixe + "LigueBtnText");
+  if (!texte) return;
+  const coche = boites.filter(b => b.checked);
+  if (!coche.length) texte.textContent = "Toutes";
+  else if (coche.length === 1) texte.textContent = coche[0].dataset.label || coche[0].value;
+  else texte.textContent = coche.length + " ligues";
+}
+
+// Recherche texte dans le panneau Ligue : la liste peut dépasser 50 entrées,
+// ce qu'un <select> natif géère avec la saisie au clavier mais qu'un menu à
+// cases à cocher n'offre pas nativement — on le recrée ici.
+function filtrerOptionsLigue(prefixe) {
+  const rech = $(prefixe + "LigueSearch");
+  const terme = rech ? rech.value.trim().toLowerCase() : "";
+  document.querySelectorAll("#" + prefixe + "LigueOptions .chk-cat").forEach(label => {
+    const texte = label.textContent.toLowerCase();
+    label.style.display = (!terme || texte.includes(terme)) ? "" : "none";
+  });
+}
+["bt", "u"].forEach(pref => {
+  const rech = $(pref + "LigueSearch");
+  if (rech) rech.addEventListener("input", () => filtrerOptionsLigue(pref));
+});
+
+// Ouverture/fermeture d'un menu "case a cocher" du gabarit .msel — factorise
+// pour servir aussi bien Type de pari que Ligue (et tout futur menu du même
+// genre) : un seul menu ouvert a la fois, fermeture au clic ailleurs ou sur
+// Echap, comme un <select> natif.
+function cablerMenuDeroulant(mselId, boutonId, onOuverture) {
+  const msel = $(mselId), bouton = $(boutonId);
+  if (!msel || !bouton) return;
+  bouton.addEventListener("click", () => {
+    const dejaOuvert = msel.classList.contains("open");
+    // Un seul menu ouvert a la fois (les deux pages partagent l'ecran
+    // sur les breakpoints larges, mieux vaut ne pas en laisser trainer).
+    document.querySelectorAll(".msel.open").forEach(autre => {
+      autre.classList.remove("open");
+      const b = autre.querySelector(".msel-btn");
+      if (b) b.setAttribute("aria-expanded", "false");
+    });
+    if (!dejaOuvert) {
+      msel.classList.add("open");
+      bouton.setAttribute("aria-expanded", "true");
+      if (onOuverture) onOuverture();
+    }
+  });
+}
+
 function cablerMenusDeroulants() {
   ["bt", "u"].forEach(pref => {
-    const msel = $(pref + "Cat");
-    const bouton = $(pref + "CatBtn");
-    if (!msel || !bouton) return;
-    bouton.addEventListener("click", () => {
-      const dejaOuvert = msel.classList.contains("open");
-      // Un seul menu ouvert a la fois (les deux pages partagent l'ecran
-      // sur les breakpoints larges, mieux vaut ne pas en laisser trainer).
-      document.querySelectorAll(".msel.open").forEach(autre => {
-        autre.classList.remove("open");
-        const b = autre.querySelector(".msel-btn");
-        if (b) b.setAttribute("aria-expanded", "false");
-      });
-      if (!dejaOuvert) {
-        msel.classList.add("open");
-        bouton.setAttribute("aria-expanded", "true");
-      }
-    });
+    cablerMenuDeroulant(pref + "Cat", pref + "CatBtn");
     libelleMsel(pref);
+    // Ligue : la recherche repart vide et reprend le focus a chaque
+    // ouverture, pour retrouver au clavier le confort d'un <select> natif.
+    cablerMenuDeroulant(pref + "LigueMsel", pref + "LigueBtn", () => {
+      const rech = $(pref + "LigueSearch");
+      if (!rech) return;
+      rech.value = "";
+      filtrerOptionsLigue(pref);
+      rech.focus();
+    });
+    libelleMselLigue(pref);
   });
   document.addEventListener("click", (e) => {
     document.querySelectorAll(".msel.open").forEach(msel => {
@@ -1254,7 +1358,7 @@ function cablerMenusDeroulants() {
 }
 cablerMenusDeroulants();
 
-[["btLigue","uLigue"], ["btDevig","uDevig"], ["btAlpha","uAlpha"],
+[["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
  ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
  ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -1531,7 +1635,7 @@ const BT_STATS = WIZARD_DATA.dc_stats || {};
 function btFiltered() {
   const f = $("btFilter") ? $("btFilter").value : "";
   const cats = categoriesCochees("bt");
-  const ligue = $("btLigue") ? $("btLigue").value : "";
+  const ligues = liguesCochees("bt");
   const dedup = $("btDedup") ? $("btDedup").value === "1" : false;
   const devig = $("btDevig") ? $("btDevig").value === "1" : false;
   const modeXg = $("btEnrichi") ? $("btEnrichi").value : "sans";
@@ -1635,7 +1739,7 @@ function btFiltered() {
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
     if (cats && !cats.includes(r.categorie)) return false;
-    if (ligue && ligueKey(r.pays, r.ligue) !== ligue) return false;
+    if (ligues && !ligues.has(ligueKey(r.pays, r.ligue))) return false;
     if (f === "won" && !r.gagne) return false;
     if (f === "lost" && r.gagne) return false;
     if (pred === "accord" && r.prediction_accord !== "accord") return false;
@@ -2854,7 +2958,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btLigue","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
