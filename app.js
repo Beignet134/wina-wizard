@@ -1576,6 +1576,26 @@ function btStake() {
   return isNaN(v) ? 0 : v;
 }
 
+// Mise reellement engagee sur UN pari du backtest, selon la strategie
+// choisie. En mode "Montant fixe" c'est btStake() pour tous ; en mode Kelly
+// elle varie avec l'edge et la cote du pari.
+//
+// La bankroll de reference est celle de la page Bankroll. Elle reste FIXE
+// pendant tout le backtest, au lieu d'etre reevaluee apres chaque pari :
+// le vrai Kelly composerait les gains, mais le resultat dependrait alors de
+// l'ORDRE des paris, ce qui rendrait la comparaison avec la mise fixe
+// trompeuse. On mesure ici l'effet du dimensionnement seul.
+function btStakeFor(r) {
+  const el = $("btMise");
+  const strategie = el ? el.value : "fixe";
+  if (strategie === "fixe") return btStake();
+  const frac = parseFloat(strategie);
+  if (!isFinite(frac)) return btStake();
+  const bankroll = parseFloat(($("bkDepart") || {}).value) || 100;
+  const p = r.p_aff ?? r.p_model;
+  return kellyFraction(p, r.cote, frac) * bankroll;
+}
+
 function renderBacktest() {
   // Les agrégats sont recalculés sur l'ensemble filtré : la déduplication
   // change n, ROI, réussite... on ne peut donc pas réutiliser les totaux
@@ -1663,16 +1683,30 @@ function renderBacktest() {
   }
   empty.style.display = "none";
 
-  const stake = btStake();
-  const net = g.profit * stake;
+  // Avec des mises variables (Kelly), on ne peut plus multiplier le profit
+  // global par une mise unique : chaque pari a la sienne. Net et total mise
+  // sont donc recalcules pari par pari, et le ROI devient le rapport des
+  // deux — c'est-a-dire le rendement du CAPITAL engage, la seule lecture
+  // comparable entre mise fixe et Kelly.
+  const strategieBt = $("btMise") ? $("btMise").value : "fixe";
+  let net = 0, totalMise = 0;
+  rowsFiltrees.forEach(r => {
+    const m = btStakeFor(r);
+    totalMise += m;
+    net += r.profit * m;
+  });
+  const roiEff = totalMise > 0 ? net / totalMise : 0;
+
   const netEl = $("btNet");
   netEl.textContent = fmtEur(net);
   netEl.className = "st-value " + (net >= 0 ? "pos" : "neg");
-  $("btNetSub").textContent = `${g.n} pari(s) · ${(g.n * stake).toLocaleString("fr-FR")} € misés`;
+  $("btNetSub").textContent = `${g.n} pari(s) · ${totalMise.toLocaleString("fr-FR",
+      {maximumFractionDigits: 0})} € misés`
+    + (strategieBt === "fixe" ? "" : ` · mise moyenne ${(totalMise / Math.max(g.n,1)).toFixed(2)} €`);
 
   const roiEl = $("btRoi");
-  roiEl.textContent = fmtPct(g.roi);
-  roiEl.className = "st-value " + (g.roi >= 0 ? "pos" : "neg");
+  roiEl.textContent = fmtPct(roiEff);
+  roiEl.className = "st-value " + (roiEff >= 0 ? "pos" : "neg");
 
   $("btWin").textContent = (g.taux * 100).toFixed(1) + " %";
   $("btWinSub").textContent = `${g.wins} / ${g.n} gagnés` +
@@ -1729,7 +1763,7 @@ function renderBacktest() {
   const order = Object.keys(cats).sort((a,b) => (cats[b].roi ?? -99) - (cats[a].roi ?? -99));
   $("btCatBody").innerHTML = order.map(c => {
     const s = cats[c];
-    const cnet = s.profit * btStake();
+    const cnet = s.profit * btStakeFor(s);
     return `<tr>
       <td data-label=""><strong>${c}</strong></td>
       <td data-label="Paris" class="num">${s.n}</td>
@@ -1776,7 +1810,7 @@ function renderBacktestRows() {
   });
 
   $("btBody").innerHTML = rows.slice(0, 400).map(r => {
-    const gain = r.profit * btStake();
+    const gain = r.profit * btStakeFor(r);
     return `<tr>
       <td data-label="Date">${r.date}</td>
       <td data-label="Match"><span class="dc-match" data-dc="${encodeURIComponent(JSON.stringify({
@@ -2611,7 +2645,7 @@ function drawEvolution() {
     cursorDot.setAttribute("fill", best.gagne ? "var(--up)" : "var(--down)");
     cursorDot.setAttribute("opacity", "1");
 
-    const gain = best.profit * btStake();
+    const gain = best.profit * btStakeFor(best);
     tip.innerHTML = `
       <div class="tt-date">${best.date}</div>
       <div class="tt-match">${best.match}</div>
