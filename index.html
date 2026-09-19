@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919210414">
+<link rel="stylesheet" href="style.css?v=20260919213302">
 </head>
 <body>
 <div class="topbar">
@@ -544,6 +544,27 @@
       <div id="btEvoWrap"></div>
     </div>
 
+    <!-- ---------- Comparaison des ligues ---------- -->
+    <div class="panel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 17V3.8M5 4.2h9.5l-1.8 3.2 1.8 3.2H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Comparaison des ligues <span class="hint">— où l'avantage se concentre-t-il ?</span></h2>
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Recalculé sur l'ensemble filtré ci-dessus (mêmes réglages que le graphique et les KPI :
+        catégorie, edge, mise, etc.). Une ligue avec peu de paris ne dit presque rien — la
+        variance y domine largement ; elle est signalée plutôt que masquée, pour ne pas donner
+        l'illusion d'une conclusion là où il n'y en a pas encore.
+      </p>
+      <div class="tablewrap">
+        <table id="btLigueCompTable" class="cardify">
+          <thead><tr>
+            <th>Ligue</th><th class="num">Paris</th><th class="num">Réussite</th>
+            <th class="num">Cote moy.</th><th class="num">ROI</th><th class="num">Net</th>
+          </tr></thead>
+          <tbody id="btLigueCompBody"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="btLigueCompEmpty" style="display:none; font-size:.85rem">Pas assez de paris avec ces filtres pour comparer les ligues.</p>
+    </div>
+
     <!-- ---------- Répartitions ---------- -->
     <div class="panel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3.5v13" stroke="currentColor" stroke-width="1.4"/><path d="M10 6.5h5M10 10h-4M10 13.5h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Performance par gamme de cotes <span class="hint">— où le modèle est-il fiable ?</span></h2>
@@ -843,6 +864,7 @@
         poids du modèle, mouvement de cote et second avis sont synchronisés avec l'onglet
         « DC rétrospectif ».</p>
       <p class="muted" id="uEnrichiNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
 
       <div class="kpis">
         <div class="kpi"><div class="k">Paris recommandés</div><div class="v" id="uNb">0</div></div>
@@ -1176,7 +1198,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919210414"></script>
-<script src="app.js?v=20260919210414"></script>
+<script src="donnees.js?v=20260919213302"></script>
+<script src="app.js?v=20260919213302"></script>
 </body>
 </html>
