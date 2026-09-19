@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919202007">
+<link rel="stylesheet" href="style.css?v=20260919204411">
 </head>
 <body>
 <div class="topbar">
@@ -394,12 +394,18 @@
           </select>
         </div>
         <div class="field">
-          <label>Type de pari</label>
-          <div class="chk-group" id="btCat">
-            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Score exact" checked><span>Score exact</span></label>
-            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
-            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
-            <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+          <label id="btCatLabel">Type de pari</label>
+          <div class="msel" id="btCat">
+            <button type="button" class="msel-btn" id="btCatBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="btCatLabel">
+              <span class="msel-btn-text" id="btCatBtnText">Toutes</span>
+              <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="msel-panel">
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Score exact" checked><span>Score exact</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+            </div>
           </div>
         </div>
         <div class="field">
@@ -410,11 +416,13 @@
           <label for="btMvt">Mouvement de la cote</label>
           <select id="btMvt">
             <option value="">Peu importe</option>
-            <option value="sauf_allonge">Écarter les cotes qui s'allongent</option>
+            <option value="sauf_allonge">Écarter toutes les cotes qui s'allongent</option>
+            <option value="sauf_allonge_fort">Écarter seulement les cotes fortement allongées</option>
             <option value="racc">A raccourci (marché confiant)</option>
             <option value="racc_fort">A fortement raccourci</option>
             <option value="stable">Est restée stable</option>
-            <option value="allonge">S'est allongée</option>
+            <option value="allonge">Toutes les cotes qui s'allongent</option>
+            <option value="allonge_fort">S'est fortement allongée</option>
           </select>
         </div>
         <div class="field">
@@ -681,12 +689,18 @@
           <input type="number" id="uStake" value="10" min="0" step="1">
         </div>
         <div class="field">
-          <label>Type de pari</label>
-          <div class="chk-group" id="uCat">
-            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Score exact" checked><span>Score exact</span></label>
-            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
-            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
-            <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+          <label id="uCatLabel">Type de pari</label>
+          <div class="msel" id="uCat">
+            <button type="button" class="msel-btn" id="uCatBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="uCatLabel">
+              <span class="msel-btn-text" id="uCatBtnText">Toutes</span>
+              <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="msel-panel">
+              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Score exact" checked><span>Score exact</span></label>
+              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
+              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Intervalle de buts" checked><span>Intervalle de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Plus/Moins de buts" checked><span>Plus/Moins de buts</span></label>
+            </div>
           </div>
         </div>
         <div class="field">
@@ -706,11 +720,13 @@
           <label for="uMvt">Mouvement de la cote</label>
           <select id="uMvt">
             <option value="">Peu importe</option>
-            <option value="sauf_allonge">Écarter les cotes qui s'allongent</option>
+            <option value="sauf_allonge">Écarter toutes les cotes qui s'allongent</option>
+            <option value="sauf_allonge_fort">Écarter seulement les cotes fortement allongées</option>
             <option value="racc">A raccourci (marché confiant)</option>
             <option value="racc_fort">A fortement raccourci</option>
             <option value="stable">Est restée stable</option>
-            <option value="allonge">S'est allongée</option>
+            <option value="allonge">Toutes les cotes qui s'allongent</option>
+            <option value="allonge_fort">S'est fortement allongée</option>
           </select>
         </div>
         <div class="field">
@@ -1142,7 +1158,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919153958"></script>
-<script src="app.js?v=20260919202007"></script>
+<script src="donnees.js?v=20260919204411"></script>
+<script src="app.js?v=20260919204411"></script>
 </body>
 </html>
