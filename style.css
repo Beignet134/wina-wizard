@@ -944,6 +944,17 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
 }
 .chk-cat:hover { color: var(--ink); }
 .chk-cat span { flex: 1; }
+/* .field label {text-transform:uppercase; font-size:.68rem; color:var(--ink-faint)}
+   plus haut cible TOUT <label> descendant de .field, y compris ceux-ci (ils
+   sont nichés dans .field > .msel > .msel-panel) — et gagne sur les regles
+   ci-dessus a specificite egale de nom de classe puisqu'il ajoute le type
+   "label". Sans ce correctif le texte s'affichait tout petit et TOUT EN
+   MAJUSCULES au lieu de la casse normale lisible voulue. */
+.field .chk-cat {
+  text-transform: none; font-size: .8rem; font-weight: 400;
+  letter-spacing: normal; color: var(--ink-dim); margin-bottom: 0;
+}
+.field .chk-cat:hover { color: var(--ink); }
 /* Les cases à cocher de .chk-group héritent malgré tout de la règle
    générale ".field input" (width:100%, fond, bordure, padding...) plus
    haut : celle-ci vise les <input type=text/number/date> et <select> du
@@ -994,4 +1005,69 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
 .chk-group input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--violet);
   outline-offset: 2px;
+}
+
+/* Le groupe de cases ci-dessus, empilees sur 4 lignes, denotait au milieu
+   d'une rangee de champs qui font tous la hauteur d'un seul <select> : bloc
+   trop haut, mal aligne avec ses voisins. On le replie desormais dans un
+   menu deroulant "faux select" — un bouton de meme gabarit que les autres
+   champs, qui ouvre un petit panneau flottant reprenant les memes cases a
+   cocher (memes classes/valeurs : la logique de filtrage dans app.js n'a
+   pas besoin de changer). */
+.msel { position: relative; }
+.msel-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  background: var(--night); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 9px; padding: .55rem .7rem; font-size: .88rem; font-family: var(--font-body);
+  cursor: pointer; text-align: left;
+  transition: border-color .18s, box-shadow .18s, background .18s;
+}
+.msel-btn:hover { border-color: var(--ink-faint); }
+.msel-btn:focus-visible, .msel.open .msel-btn {
+  outline: none; border-color: var(--violet);
+  box-shadow: 0 0 0 3px rgba(139,111,255,.18), var(--glow-violet);
+  background: var(--night-2);
+}
+.msel-btn-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.msel-caret { width: 1rem; height: 1rem; flex: none; color: var(--ink-dim); transition: transform .15s; }
+.msel.open .msel-caret { transform: rotate(180deg); }
+.msel-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+  min-width: 100%; width: max-content; max-width: 240px;
+  display: none; flex-direction: column; gap: .3rem;
+  background: var(--night-2); border: 1px solid var(--line); border-radius: 9px;
+  padding: .5rem .6rem; box-shadow: 0 10px 28px rgba(10,6,30,.45), var(--edge);
+}
+.msel.open .msel-panel { display: flex; }
+/* A l'interieur du panneau, les cases reprennent exactement le rendu
+   "case nette" deja etabli pour .chk-group plus haut. */
+.msel-panel input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  width: 1rem; height: 1rem; flex: none;
+  margin: 0; padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  background: var(--night);
+  box-shadow: none;
+  cursor: pointer;
+  position: relative;
+  transition: background .15s, border-color .15s;
+}
+.msel-panel input[type="checkbox"]:hover { border-color: var(--violet); }
+.msel-panel input[type="checkbox"]:checked { background: var(--violet); border-color: var(--violet); }
+.msel-panel input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute; left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.msel-panel input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .msel-panel { left: auto; right: 0; max-width: min(280px, 80vw); }
 }
