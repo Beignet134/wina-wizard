@@ -66,6 +66,35 @@ function miseConseillee(v, selectId, miseFixe, bankroll) {
   return Math.round(kellyFraction(p, v.cote, frac) * bankroll * 100) / 100;
 }
 
+// --- Mode d'enrichissement xG ------------------------------------------
+// Trois comportements :
+//   "sans" : modele en buts seul, tous les matchs.
+//   "avec" : lecture xG UNIQUEMENT, donc les matchs sans historique xG
+//            suffisant disparaissent (environ 80 % d'entre eux).
+//   "auto" : xG quand il est disponible, modele en buts sinon. Aucun match
+//            n'est ecarte : on profite de l'xG la ou il existe sans perdre
+//            le reste. C'est le meilleur compromis par defaut.
+//
+// "auto" melange donc deux lectures dans un meme ensemble. C'est assume :
+// chaque pari garde la MEILLEURE estimation disponible pour SON match, ce
+// qui vaut mieux que d'appliquer partout la moins informee, ou de jeter
+// les quatre cinquiemes de l'echantillon.
+function appliquerXg(rows, mode) {
+  if (mode === "sans") return rows;
+  const substituer = r => ({
+    ...r,
+    p_model: r.p_model_xg, edge: r.edge_xg, edge_devig: r.edge_devig_xg,
+    ev: r.ev_xg, lam_home: r.lam_home_xg, lam_away: r.lam_away_xg,
+    // Conservees a part pour l'infobulle, qui montre les deux lectures.
+    p_model_buts: r.p_model, edge_buts: r.edge, edge_devig_buts: r.edge_devig,
+    lam_home_buts: r.lam_home, lam_away_buts: r.lam_away,
+    source_xg: true,
+  });
+  if (mode === "avec") return rows.filter(r => r.p_model_xg != null).map(substituer);
+  // mode "auto"
+  return rows.map(r => (r.p_model_xg != null ? substituer(r) : {...r, source_xg: false}));
+}
+
 function blendAlpha(selectId) {
   const el = $(selectId);
   const v = el ? parseFloat(el.value) : 1;
@@ -708,23 +737,12 @@ function renderUpcoming() {
   // mode actif, tout le reste de la fonction continue de les lire sans
   // rien savoir du mode. Les matchs sans historique xG suffisant sont
   // EXCLUS en mode "avec", jamais comblés par la valeur en buts déguisée.
-  const enrichi = $("uEnrichi") ? $("uEnrichi").value === "avec" : false;
+  const modeXg = $("uEnrichi") ? $("uEnrichi").value : "sans";
   // Correction de calibration appliquée à l'ensemble AVANT la substitution
   // xG — même ordre que sur la page DC rétrospectif, pour que les deux
   // pages restent strictement comparables quand leurs filtres sont liés.
   const calibActif = $("uCalib") ? $("uCalib").value === "1" : false;
-  let source = calibrer(UPCOMING, calibActif);
-  if (enrichi) {
-    source = source
-      .filter(v => v.p_model_xg != null)
-      .map(v => ({
-        ...v,
-        p_model: v.p_model_xg, edge: v.edge_xg, edge_devig: v.edge_devig_xg,
-        ev: v.ev_xg, lam_home: v.lam_home_xg, lam_away: v.lam_away_xg,
-        p_model_buts: v.p_model, edge_buts: v.edge, edge_devig_buts: v.edge_devig,
-        lam_home_buts: v.lam_home, lam_away_buts: v.lam_away,
-      }));
-  }
+  let source = appliquerXg(calibrer(UPCOMING, calibActif), modeXg);
 
   // Chaque pari reçoit ses valeurs recalculées selon le mode choisi, pour
   // que l'affichage (edge, espérance) corresponde bien au filtre appliqué.
@@ -819,23 +837,26 @@ function renderUpcoming() {
   const evEl=$("uEv"); evEl.textContent=fmtEur(evTotal); evEl.className="v "+(evTotal>=0?"pos":"neg");
   $("uMatches").textContent = matches;
 
-  // Même note de transparence que sur DC rétrospectif : en mode enrichi,
-  // les matchs sans historique xG suffisant des deux côtés disparaissent
-  // de la vue plutôt que d'être remplacés par l'estimation en buts seuls
-  // déguisée en xG — le dire explicitement évite de croire à une baisse de
-  // recommandations qui ne serait qu'une baisse de couverture xG.
+  // Transparence sur ce que le mode xG fait vraiment à l'échantillon :
+  // "avec" ÉCARTE les matchs sans historique xG, "auto" les conserve avec
+  // le modèle en buts. Sans cette note, la chute du nombre de paris en
+  // mode "avec" passerait pour une baisse de recommandations alors qu'il
+  // s'agit d'une baisse de couverture xG.
   const uEnrichiNote = $("uEnrichiNote");
   if (uEnrichiNote) {
-    if (enrichi) {
-      const avecXg = UPCOMING.filter(v => v.p_model_xg != null);
-      const nMatchsXg = new Set(avecXg.map(v => v.match + v.date)).size;
-      uEnrichiNote.style.display = "";
-      uEnrichiNote.innerHTML = `<strong>Mode enrichi actif</strong> — ${n} pari(s) affiché(s) `
-        + `après filtres, parmi ${avecXg.length} paris testés sur ${nMatchsXg} match(s) où `
-        + `l'historique xG était suffisant des deux côtés (${UPCOMING.length} paris à venir au `
-        + `total, modèle en buts seul compris).`;
-    } else {
+    if (modeXg === "sans") {
       uEnrichiNote.style.display = "none";
+    } else {
+      const avecXg = UPCOMING.filter(v => v.p_model_xg != null).length;
+      uEnrichiNote.style.display = "";
+      uEnrichiNote.innerHTML = modeXg === "auto"
+        ? `<strong>Mode « xG si disponible »</strong> — ${n} pari(s) affiché(s). `
+          + `${avecXg} des ${UPCOMING.length} paris à venir utilisent l'xG ; `
+          + `les autres gardent le modèle en buts, aucun n'est écarté.`
+        : `<strong>Mode « uniquement les matchs à xG »</strong> — ${n} pari(s) affiché(s), `
+          + `parmi ${avecXg} paris à xG sur ${UPCOMING.length} au total. Les `
+          + `${UPCOMING.length - avecXg} autres sont écartés faute d'historique xG `
+          + `suffisant des deux côtés.`;
     }
   }
 
@@ -1381,7 +1402,7 @@ function btFiltered() {
   const ligue = $("btLigue") ? $("btLigue").value : "";
   const dedup = $("btDedup") ? $("btDedup").value === "1" : false;
   const devig = $("btDevig") ? $("btDevig").value === "1" : false;
-  const enrichi = $("btEnrichi") ? $("btEnrichi").value === "avec" : false;
+  const modeXg = $("btEnrichi") ? $("btEnrichi").value : "sans";
   // Intervalle de dates choisi au calendrier — remplace l'ancienne fenêtre
   // fixe de 14 jours. r.date est au format AAAA-MM-JJ, exactement celui que
   // renvoie un <input type="date">, donc une comparaison de chaînes suffit
@@ -1408,20 +1429,7 @@ function btFiltered() {
   // Dans l'ordre inverse, seule la lecture active aurait été corrigée et
   // l'infobulle aurait affiché deux valeurs incohérentes entre elles.
   const calibActif = $("btCalib") ? $("btCalib").value === "1" : false;
-  let source = calibrer(BT_ROWS, calibActif);
-  if (enrichi) {
-    source = source
-      .filter(r => r.p_model_xg != null)
-      .map(r => ({
-        ...r,
-        p_model: r.p_model_xg, edge: r.edge_xg, edge_devig: r.edge_devig_xg,
-        ev: r.ev_xg, lam_home: r.lam_home_xg, lam_away: r.lam_away_xg,
-        // Conservées à part pour l'infobulle, qui affiche les deux lectures
-        // côte à côte quel que soit le mode actif.
-        p_model_buts: r.p_model, edge_buts: r.edge, edge_devig_buts: r.edge_devig,
-        lam_home_buts: r.lam_home, lam_away_buts: r.lam_away,
-      }));
-  }
+  let source = appliquerXg(calibrer(BT_ROWS, calibActif), modeXg);
 
   // Les paris sont stockés avec leurs DEUX edges (brut et marge retirée).
   // Selon le mode, on ne garde que ceux qui passaient le seuil dans cette
@@ -1625,17 +1633,19 @@ function renderBacktest() {
   // une baisse de performance qui ne serait qu'une baisse d'échantillon.
   const enrichiNote = $("btEnrichiNote");
   if (enrichiNote) {
-    const modeEnrichi = $("btEnrichi") ? $("btEnrichi").value === "avec" : false;
-    if (modeEnrichi) {
-      const avecXg = BT_ROWS.filter(r => r.p_model_xg != null);
-      const nMatchsXg = new Set(avecXg.map(r => r.match + r.date)).size;
-      enrichiNote.style.display = "";
-      enrichiNote.innerHTML = `<strong>Mode enrichi actif</strong> — ${g.n || 0} pari(s) affiché(s) `
-        + `après filtres, parmi ${avecXg.length} paris testés sur ${nMatchsXg} match(s) où `
-        + `l'historique xG était suffisant des deux côtés (${BT_ROWS.length} paris testés au total, `
-        + `modèle en buts seul compris).`;
-    } else {
+    const mode = $("btEnrichi") ? $("btEnrichi").value : "sans";
+    if (mode === "sans") {
       enrichiNote.style.display = "none";
+    } else {
+      const avecXg = BT_ROWS.filter(r => r.p_model_xg != null).length;
+      enrichiNote.style.display = "";
+      enrichiNote.innerHTML = mode === "auto"
+        ? `<strong>Mode « xG si disponible »</strong> — ${g.n || 0} pari(s) retenu(s). `
+          + `${avecXg} des ${BT_ROWS.length} paris testés utilisent l'xG ; les autres `
+          + `gardent le modèle en buts, aucun n'est écarté.`
+        : `<strong>Mode « uniquement les matchs à xG »</strong> — ${g.n || 0} pari(s) `
+          + `retenu(s), parmi ${avecXg} paris à xG sur ${BT_ROWS.length} testés. Les `
+          + `${BT_ROWS.length - avecXg} autres sont écartés faute d'historique xG suffisant.`;
     }
   }
 
