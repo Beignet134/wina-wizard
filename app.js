@@ -8,6 +8,14 @@ const OOS_MIN = WIZARD_DATA.config.oos_min_test;
 const UPCOMING_DAYS = WIZARD_DATA.config.upcoming_days;
 const MIN_EDGE = WIZARD_DATA.config.min_edge ?? 0.02;
 
+// Libellé de ligue non ambigu. Un nom de ligue seul peut désigner des
+// championnats totalement différents (ex. "Ligue 1" existe en France, en
+// Algérie, en Afrique du Sud...) : on affiche donc toujours "Pays - Ligue",
+// et les filtres par ligue se basent sur une clé combinée pays+ligue plutôt
+// que sur le seul nom, pour ne jamais confondre deux compétitions homonymes.
+const ligueLabel = (pays, ligue) => ligue ? (pays ? `${pays} - ${ligue}` : ligue) : "";
+const ligueKey = (pays, ligue) => `${pays || ""}␟${ligue || ""}`;
+
 /* ============================================================
    MÉLANGE AVEC LE MARCHÉ
    ------------------------------------------------------------
@@ -210,10 +218,25 @@ function initMeta() {
   $("metaPoissonSkipped").textContent = WIZARD_DATA.poisson_stats.n_skipped_history;
   $("metaUpcomingDays").textContent = UPCOMING_DAYS;
 
-  // Options de ligue du filtre (autrefois générées côté Python)
-  const ligues = [...new Set(BETS.map(b => b.ligue).filter(Boolean))].sort();
-  const sel = $("fLigue");
-  ligues.forEach(l => { const o=document.createElement("option"); o.value=l; o.textContent=l; sel.appendChild(o); });
+  // Options de ligue du filtre (autrefois générées côté Python). La VALEUR
+  // de chaque option est la clé combinée pays+ligue (ligueKey) — jamais le
+  // seul nom de ligue, qui peut être partagé par plusieurs pays — tandis que
+  // le TEXTE affiché est "Pays - Ligue" (ligueLabel), pour qu'on distingue
+  // d'un coup d'œil deux championnats homonymes dans le menu déroulant.
+  const ligueOptions = (rows) => {
+    const parKey = new Map();
+    rows.forEach(r => { if (r.ligue && !parKey.has(ligueKey(r.pays, r.ligue))) parKey.set(ligueKey(r.pays, r.ligue), r); });
+    return [...parKey.values()].sort((a, b) => ligueLabel(a.pays, a.ligue).localeCompare(ligueLabel(b.pays, b.ligue)));
+  };
+  const remplirLigues = (sel, rows) => {
+    if (!sel) return;
+    ligueOptions(rows).forEach(r => {
+      const o = document.createElement("option");
+      o.value = ligueKey(r.pays, r.ligue); o.textContent = ligueLabel(r.pays, r.ligue);
+      sel.appendChild(o);
+    });
+  };
+  remplirLigues($("fLigue"), BETS);
 
   // Idem pour le filtre Ligue de la page DC rétrospectif, à partir des
   // paris du backtest (dc_backtest), qui ont leur propre champ "ligue".
@@ -224,14 +247,9 @@ function initMeta() {
   // valeur de l'un est absente de la liste de l'autre.
   const btSel = $("btLigue"), uSelLigue = $("uLigue");
   if (btSel || uSelLigue) {
-    const toutesLigues = [...new Set([
-      ...(WIZARD_DATA.dc_backtest || []).map(r => r.ligue),
-      ...(WIZARD_DATA.value_bets || []).map(r => r.ligue),
-    ].filter(Boolean))].sort();
-    toutesLigues.forEach(l => {
-      if (btSel) { const o=document.createElement("option"); o.value=l; o.textContent=l; btSel.appendChild(o); }
-      if (uSelLigue) { const o=document.createElement("option"); o.value=l; o.textContent=l; uSelLigue.appendChild(o); }
-    });
+    const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])];
+    remplirLigues(btSel, toutes);
+    remplirLigues(uSelLigue, toutes);
   }
 }
 
@@ -288,7 +306,7 @@ function currentFilters() {
 function passesFilter(b, f) {
   if (f.cat && b.cat !== f.cat) return false;
   if (f.pari && b.col !== f.pari) return false;
-  if (f.ligue && b.ligue !== f.ligue) return false;
+  if (f.ligue && ligueKey(b.pays, b.ligue) !== f.ligue) return false;
   if (!isNaN(f.coteMin) && b.cote < f.coteMin) return false;
   if (!isNaN(f.coteMax) && b.cote > f.coteMax) return false;
   if (f.search && !(b.match.toLowerCase().includes(f.search))) return false;
@@ -535,7 +553,7 @@ function renderTable(rows, stake) {
     const g = betGain(b, stake);
     return `<tr>
       <td data-label=""><input type="checkbox" class="chk rowchk" data-id="${b.id}" ${selected.has(b.id)?"checked":""}></td>
-      <td data-label="Date">${b.date}</td><td data-label="Match">${b.match}</td><td data-label="Ligue"><span class="pill">${b.ligue}</span></td>
+      <td data-label="Date">${b.date}</td><td data-label="Match">${b.match}</td><td data-label="Ligue"><span class="pill">${ligueLabel(b.pays, b.ligue)}</span></td>
       <td data-label="Catégorie" class="tag-cat">${b.cat}</td><td data-label="Pari">${b.col}</td>
       <td data-label="Cote" class="num">${b.cote.toFixed(2)}</td>
       <td data-label="Résultat">${b.won?'<span class="pos">Gagné</span>':'<span class="neg">Perdu</span>'}</td>
@@ -614,7 +632,7 @@ function renderValueBets() {
   $("vBody").innerHTML = rows.slice(0,400).map(v => `
     <tr>
       <td data-label="Espérance" class="num ${v.ev>=0?'pos':'neg'}"><strong>${fmtPct(v.ev)}</strong></td>
-      <td data-label="Date">${v.date}</td><td data-label="Match">${v.match}</td><td data-label="Ligue"><span class="pill">${v.ligue}</span></td>
+      <td data-label="Date">${v.date}</td><td data-label="Match">${v.match}</td><td data-label="Ligue"><span class="pill">${ligueLabel(v.pays, v.ligue)}</span></td>
       <td data-label="Pari">${v.colonne}</td><td data-label="Cote" class="num">${v.cote.toFixed(2)}</td>
       <td data-label="Proba modèle" class="num">${(v.p_model*100).toFixed(1)} %</td>
       <td data-label="Proba cote" class="num muted">${(v.p_implied*100).toFixed(1)} %</td>
@@ -767,7 +785,7 @@ function renderUpcoming() {
     return Object.assign({}, v, {edge_aff: e, ev_aff: v.ev, p_aff: v.p_model});
   }).filter(v => {
     if (cats && !cats.includes(v.categorie)) return false;
-    if (ligue && v.ligue !== ligue) return false;
+    if (ligue && ligueKey(v.pays, v.ligue) !== ligue) return false;
     if (v.edge_aff < edge) return false;
     if (!dansPlageCote(v.cote, $("uCote") ? $("uCote").value : "")) return false;
     // Espérance : un edge dévigué positif ne garantit PAS une espérance
@@ -991,7 +1009,7 @@ function renderUpcoming() {
         <div class="rec-match">${v.match}${v.match_id ? ` <a href="https://www.winamax.fr/paris-sportifs/match/${v.match_id}" target="_blank" rel="noopener" class="rec-winamax-link" title="Parier sur ce match (Winamax)">↗</a>` : ""}</div>
         <div class="rec-when">${fmtKickoff(v.kickoff)}</div>
       </div>
-      <div class="rec-league">${v.ligue} · <span class="tag-cat">${v.categorie}</span></div>
+      <div class="rec-league">${ligueLabel(v.pays, v.ligue)} · <span class="tag-cat">${v.categorie}</span></div>
       <div class="rec-bet">
         <span class="rec-pill">${v.colonne}</span>
         <span class="muted">à la cote</span> <strong style="font-family:var(--mono)">${v.cote.toFixed(2)}</strong>
@@ -1248,12 +1266,27 @@ cablerCasesCategorie();
 })();
 
 /* ================= PAGE 4 — STATS ÉQUIPES ================= */
+function teamLigueOptions(pays) {
+  const parKey = new Map();
+  TEAM_STATS.filter(t => !pays || t.pays === pays).forEach(t => {
+    if (t.ligue && !parKey.has(ligueKey(t.pays, t.ligue))) parKey.set(ligueKey(t.pays, t.ligue), t);
+  });
+  return [...parKey.values()].sort((a, b) => ligueLabel(a.pays, a.ligue).localeCompare(ligueLabel(b.pays, b.ligue)));
+}
+
 (function initTeamFilters() {
   const pays = [...new Set(TEAM_STATS.map(t => t.pays).filter(Boolean))].sort();
-  const ligues = [...new Set(TEAM_STATS.map(t => t.ligue).filter(Boolean))].sort();
   const annees = [...new Set(TEAM_STATS.flatMap(t => t.annees || []))].sort();
   const fill = (sel, vals) => vals.forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; $(sel).appendChild(o); });
-  fill("tPays", pays); fill("tLigue", ligues); fill("tAnnee", annees);
+  fill("tPays", pays);
+  // Valeur = clé combinée pays+ligue (voir ligueKey), texte = "Pays - Ligue" :
+  // un nom de ligue seul (ex. "Ligue 1") peut désigner plusieurs championnats.
+  teamLigueOptions("").forEach(t => {
+    const o = document.createElement("option");
+    o.value = ligueKey(t.pays, t.ligue); o.textContent = ligueLabel(t.pays, t.ligue);
+    $("tLigue").appendChild(o);
+  });
+  fill("tAnnee", annees);
 })();
 
 let tSortKey = "atk_home", tSortDir = -1;
@@ -1261,11 +1294,14 @@ let tSortKey = "atk_home", tSortDir = -1;
 // Quand on choisit un pays, restreindre les ligues à ce pays
 $("tPays").addEventListener("change", () => {
   const pays = $("tPays").value;
-  const ligues = [...new Set(TEAM_STATS.filter(t=>!pays||t.pays===pays).map(t=>t.ligue).filter(Boolean))].sort();
   const sel = $("tLigue"), cur = sel.value;
   sel.innerHTML = '<option value="">Toutes</option>';
-  ligues.forEach(l => { const o=document.createElement("option"); o.value=l; o.textContent=l; sel.appendChild(o); });
-  if (ligues.includes(cur)) sel.value = cur;
+  teamLigueOptions(pays).forEach(t => {
+    const o = document.createElement("option");
+    o.value = ligueKey(t.pays, t.ligue); o.textContent = ligueLabel(t.pays, t.ligue);
+    sel.appendChild(o);
+  });
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
   renderTeams();
 });
 
@@ -1284,7 +1320,7 @@ function renderTeams() {
 
   let rows = TEAM_STATS.filter(t =>
     (!pays || t.pays === pays) &&
-    (!ligue || t.ligue === ligue) &&
+    (!ligue || ligueKey(t.pays, t.ligue) === ligue) &&
     (!annee || (t.annees || []).includes(annee)) &&
     (!search || t.equipe.toLowerCase().includes(search)) &&
     (Math.max(t.n_home||0, t.n_away||0) >= minM)
@@ -1299,7 +1335,7 @@ function renderTeams() {
   $("teamBody").innerHTML = rows.slice(0, 500).map(t => `
     <tr>
       <td><strong>${t.equipe}</strong></td>
-      <td><span class="pill">${t.ligue}</span></td>
+      <td><span class="pill">${ligueLabel(t.pays, t.ligue)}</span></td>
       ${teamCell(t.atk_home, false)}
       ${teamCell(t.def_home, true)}
       ${teamCell(t.atk_away, false)}
@@ -1536,7 +1572,7 @@ function btFiltered() {
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
     if (cats && !cats.includes(r.categorie)) return false;
-    if (ligue && r.ligue !== ligue) return false;
+    if (ligue && ligueKey(r.pays, r.ligue) !== ligue) return false;
     if (f === "won" && !r.gagne) return false;
     if (f === "lost" && r.gagne) return false;
     if (pred === "accord" && r.prediction_accord !== "accord") return false;
@@ -2829,7 +2865,7 @@ function renderMargeLigues() {
   if (!body) return;
 
   if (!ligues.length) {
-    body.innerHTML = `<tr><td colspan="6" class="muted">Pas encore assez de matchs par ligue ` +
+    body.innerHTML = `<tr><td colspan="5" class="muted">Pas encore assez de matchs par ligue ` +
       `(minimum ${MARGE.min_matchs_ligue ?? 8}). Ce classement se remplira au fil de la collecte.</td></tr>`;
     $("margeLigueInfo").textContent = "";
     return;
@@ -2846,13 +2882,12 @@ function renderMargeLigues() {
     const [label, cls] = niveauMarge(l.marge);
     return `<tr>
       <td data-label="#" class="num muted">${i + 1}</td>
-      <td data-label="Pays">${l.pays || "—"}</td>
-      <td data-label="Ligue"><strong>${l.ligue}</strong></td>
+      <td data-label="Ligue"><strong>${ligueLabel(l.pays, l.ligue)}</strong></td>
       <td data-label="Marge" class="num ${cls}"><strong>${l.marge.toFixed(1)} %</strong></td>
       <td data-label="Matchs" class="num muted">${l.n}</td>
       <td data-label="Niveau"><span class="marge-tag ${cls}">${label}</span></td>
     </tr>`;
-  }).join("") || `<tr><td colspan="6" class="muted">Aucune ligue ne correspond.</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="muted">Aucune ligue ne correspond.</td></tr>`;
 
   let info = `${rows.length} ligue(s) affichée(s) sur ${total}`;
   if (MARGE.mediane_ligues != null) info += ` · médiane ${MARGE.mediane_ligues.toFixed(1)} %`;
