@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919204411">
+<link rel="stylesheet" href="style.css?v=20260919210414">
 </head>
 <body>
 <div class="topbar">
@@ -409,8 +409,17 @@
           </div>
         </div>
         <div class="field">
-          <label for="btLigue">Ligue</label>
-          <select id="btLigue"><option value="">Toutes</option></select>
+          <label id="btLigueLabel">Ligue</label>
+          <div class="msel" id="btLigueMsel">
+            <button type="button" class="msel-btn" id="btLigueBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="btLigueLabel">
+              <span class="msel-btn-text" id="btLigueBtnText">Toutes</span>
+              <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="msel-panel msel-panel-ligues">
+              <input type="text" class="msel-search" id="btLigueSearch" placeholder="Rechercher une ligue…" autocomplete="off">
+              <div class="msel-options" id="btLigueOptions"><!-- peuplé en JS, voir initMeta() --></div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="btMvt">Mouvement de la cote</label>
@@ -704,8 +713,17 @@
           </div>
         </div>
         <div class="field">
-          <label for="uLigue">Ligue</label>
-          <select id="uLigue"><option value="">Toutes</option></select>
+          <label id="uLigueLabel">Ligue</label>
+          <div class="msel" id="uLigueMsel">
+            <button type="button" class="msel-btn" id="uLigueBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="uLigueLabel">
+              <span class="msel-btn-text" id="uLigueBtnText">Toutes</span>
+              <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="msel-panel msel-panel-ligues">
+              <input type="text" class="msel-search" id="uLigueSearch" placeholder="Rechercher une ligue…" autocomplete="off">
+              <div class="msel-options" id="uLigueOptions"><!-- peuplé en JS, voir initMeta() --></div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="uEdge">Edge minimum</label>
@@ -1158,7 +1176,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919204411"></script>
-<script src="app.js?v=20260919204411"></script>
+<script src="donnees.js?v=20260919210414"></script>
+<script src="app.js?v=20260919210414"></script>
 </body>
 </html>
