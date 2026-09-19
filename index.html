@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260919112653">
+<link rel="stylesheet" href="style.css?v=20260919122909">
 </head>
 <body>
 <div class="topbar">
@@ -440,21 +440,21 @@
           <label for="btDevig">Marge bookmaker</label>
           <select id="btDevig">
             <option value="0">Comparaison brute (1/cote)</option>
-            <option value="1">Marge retirée (de-vig)</option>
+            <option value="1" selected>Marge retirée (de-vig)</option>
           </select>
         </div>
         <div class="field">
           <label for="btEnrichi">Enrichissement xG</label>
           <select id="btEnrichi">
             <option value="sans">Sans — modèle en buts seul</option>
-            <option value="avec">Avec — mélangé à l'xG</option>
+            <option value="avec" selected>Avec — mélangé à l'xG</option>
           </select>
         </div>
         <div class="field">
           <label for="btDedup">Paris liés</label>
           <select id="btDedup">
             <option value="0">Tous les compter</option>
-            <option value="1">Un seul par match et par catégorie</option>
+            <option value="1" selected>Un seul par match et par catégorie</option>
           </select>
         </div>
         <div class="field">
@@ -465,10 +465,26 @@
           </select>
         </div>
         <div class="field">
+          <label for="btMise">Strategie de mise</label>
+          <select id="btMise">
+            <option value="fixe" selected>Montant fixe</option>
+            <option value="0.125">Kelly 1/8 (tres prudent)</option>
+            <option value="0.25">Kelly 1/4 (recommande)</option>
+            <option value="0.5">Kelly 1/2 (agressif)</option>
+            <option value="1">Kelly entier (deconseille)</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="btEvPos">Espérance</label>
           <select id="btEvPos">
-            <option value="0">Peu importe</option>
-            <option value="1" selected>Écarter les espérances négatives</option>
+            <option value="-999">Peu importe</option>
+            <option value="0" selected>Positive (&gt; 0 %)</option>
+            <option value="0.02">Au moins +2 %</option>
+            <option value="0.04">Au moins +4 %</option>
+            <option value="0.06">Au moins +6 %</option>
+            <option value="0.08">Au moins +8 %</option>
+            <option value="0.10">Au moins +10 %</option>
+            <option value="0.20">Au moins +20 %</option>
           </select>
         </div>
         <div class="field">
@@ -710,7 +726,7 @@
           <label for="uDevig">Marge bookmaker</label>
           <select id="uDevig">
             <option value="0">Comparaison brute (1/cote)</option>
-            <option value="1">Marge retirée (de-vig)</option>
+            <option value="1" selected>Marge retirée (de-vig)</option>
           </select>
         </div>
         <div class="field">
@@ -726,14 +742,14 @@
           <label for="uEnrichi">Enrichissement xG</label>
           <select id="uEnrichi">
             <option value="sans">Sans — modèle en buts seul</option>
-            <option value="avec">Avec — mélangé à l'xG</option>
+            <option value="avec" selected>Avec — mélangé à l'xG</option>
           </select>
         </div>
         <div class="field">
           <label for="uDedup">Paris liés</label>
           <select id="uDedup">
             <option value="0">Tous les compter</option>
-            <option value="1">Un seul par match et par catégorie</option>
+            <option value="1" selected>Un seul par match et par catégorie</option>
           </select>
         </div>
         <div class="field">
@@ -744,10 +760,26 @@
           </select>
         </div>
         <div class="field">
+          <label for="uMise2">Strategie de mise</label>
+          <select id="uMise2">
+            <option value="fixe" selected>Montant fixe</option>
+            <option value="0.125">Kelly 1/8 (tres prudent)</option>
+            <option value="0.25">Kelly 1/4 (recommande)</option>
+            <option value="0.5">Kelly 1/2 (agressif)</option>
+            <option value="1">Kelly entier (deconseille)</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="uEvPos">Espérance</label>
           <select id="uEvPos">
-            <option value="0">Peu importe</option>
-            <option value="1" selected>Écarter les espérances négatives</option>
+            <option value="-999">Peu importe</option>
+            <option value="0" selected>Positive (&gt; 0 %)</option>
+            <option value="0.02">Au moins +2 %</option>
+            <option value="0.04">Au moins +4 %</option>
+            <option value="0.06">Au moins +6 %</option>
+            <option value="0.08">Au moins +8 %</option>
+            <option value="0.10">Au moins +10 %</option>
+            <option value="0.20">Au moins +20 %</option>
           </select>
         </div>
         <div class="field">
@@ -1109,7 +1141,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260919112653"></script>
-<script src="app.js?v=20260919112653"></script>
+<script src="donnees.js?v=20260919122909"></script>
+<script src="app.js?v=20260919122909"></script>
 </body>
 </html>
