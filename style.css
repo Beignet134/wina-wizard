@@ -920,3 +920,12 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
      graphique et repoussait tout vers le bas sur un écran étroit. */
   .panel { padding: .9rem .8rem; }
 }
+
+/* Mise conseillee (Kelly) sur les cartes de "Paris a venir".
+   Affichee seulement quand une strategie Kelly est active : en mode
+   "Montant fixe" la valeur serait identique partout et n'apprendrait rien. */
+.rec-kelly {
+  margin-top: .6rem; padding-top: .55rem; border-top: 1px solid var(--line-soft);
+  font-size: .78rem; color: var(--ink-dim);
+}
+.rec-kelly strong { color: var(--violet); font-family: var(--font-mono); }
