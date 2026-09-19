@@ -949,17 +949,49 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
    haut : celle-ci vise les <input type=text/number/date> et <select> du
    panneau de filtres, pas des cases à cocher — elle les étirait en pavés
    flous, mal alignés avec leur étiquette, au lieu de la petite case nette
-   attendue. On neutralise ici, à la portée du seul groupe de cases, ce que
-   ".field input" leur impose à tort (même :hover/:focus, sinon la bordure
-   et le halo du champ texte restent visibles sur la case à cocher). */
+   attendue.
+   Un premier correctif s'est appuyé sur accent-color + border:none /
+   background:none pour neutraliser cet héritage, mais accent-color reste
+   un widget NATIF du navigateur : sa case décochée est dessinée par le
+   moteur de rendu lui-même, hors de portée de border/background, et se
+   colorait au petit bonheur selon le navigateur (constaté : un carré plein
+   jaune-olive au lieu d'une case nette, uniquement à l'état décoché). On
+   reprend donc la case entièrement en main avec appearance:none — plus
+   aucun rendu natif, cochée ou non, ni de variation d'un navigateur à
+   l'autre : le carré, sa bordure et le coche sont tous les trois définis
+   ci-dessous. */
 .chk-group input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
   width: 1rem; height: 1rem; flex: none;
-  padding: 0; margin: 0;
-  background: none; border: none; border-radius: 0; box-shadow: none;
-  transition: none;
-  accent-color: var(--violet); cursor: pointer;
+  margin: 0; padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  background: var(--night);
+  box-shadow: none;
+  cursor: pointer;
+  position: relative;
+  transition: background .15s, border-color .15s;
 }
-.chk-group input[type="checkbox"]:hover,
-.chk-group input[type="checkbox"]:focus {
-  background: none; border: none; box-shadow: none;
+.chk-group input[type="checkbox"]:hover {
+  border-color: var(--violet);
+}
+.chk-group input[type="checkbox"]:checked {
+  background: var(--violet);
+  border-color: var(--violet);
+}
+/* Le coche est dessiné à la main (deux bords d'un carré tournés à 45°)
+   plutôt qu'importé en image, pour rester net à toute résolution d'écran
+   et suivre --ink sans dépendance externe. */
+.chk-group input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.chk-group input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
 }
