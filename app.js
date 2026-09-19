@@ -3413,6 +3413,7 @@ function renderExposition() {
   const strategie = $("simStrategie") ? $("simStrategie").value : "fixe";
   const montantFixe = parseFloat($("simMontantFixe").value) || 0;
   const pctMax = (parseFloat($("simPct").value) || 0) / 100;
+  const fracKelly = parseFloat($("simKellyFrac") ? $("simKellyFrac").value : "0.25") || 0.25;
   const depart = parseFloat($("bkDepart") ? $("bkDepart").value : 100) || 0;
 
   const rows = btFiltered().slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -3420,20 +3421,47 @@ function renderExposition() {
   rows.forEach(r => { (parJour[r.date] = parJour[r.date] || []).push(r); });
   const dates = Object.keys(parJour).sort();
 
+  // Contrairement au backtest de la page « DC rétrospectif » (bankroll de
+  // référence figée pour rester indépendant de l'ordre des paris), la
+  // bankroll ICI compose vraiment jour après jour : c'est le but même de
+  // cette simulation — rendre visible ce que Kelly change réellement, ce
+  // qu'une bankroll figée ne peut pas montrer.
   let bankroll = depart, pic = 0, picJour = null;
   const pts = [{date: "Départ", y: depart}];
   const lignes = dates.map(date => {
     const paris = parJour[date];
     const n = paris.length;
-    // Mise fixe : chaque pari coûte le même montant, l'exposition du jour
-    // grandit avec le nombre de paris qualifiés ce jour-là (c'est
-    // justement ce qui a atteint 115€ un jour sur 5€/pari dans l'exemple
-    // qui a motivé cette page). % de la bankroll : l'exposition du jour
-    // est PLAFONNÉE d'avance, répartie également entre les paris du jour
-    // — elle ne dépend plus du hasard du nombre de matchs qualifiés.
-    const miseParPari = strategie === "pct" ? (bankroll * pctMax) / n : montantFixe;
-    const exposition = miseParPari * n;
-    const resultatJour = paris.reduce((s, r) => s + r.profit * miseParPari, 0);
+    let misesParPari;
+    if (strategie === "kelly") {
+      // Mise Kelly : propre à CHAQUE pari (edge et cote lui sont propres),
+      // calculée sur la bankroll telle qu'elle est au début de ce jour —
+      // pas répartie également comme le mode "%".
+      const brutes = paris.map(r => kellyFraction(r.p_aff ?? r.p_model, r.cote, fracKelly) * bankroll);
+      const totalBrut = brutes.reduce((s, m) => s + m, 0);
+      // kellyFraction plafonne déjà CHAQUE pari à 10 % de la bankroll
+      // (MISE_PLAFOND), mais plusieurs paris à fort edge le même jour
+      // peuvent quand même réclamer, ensemble, plus que la bankroll totale
+      // (jusqu'à 23 paris qualifiés le même jour sur l'historique récent,
+      // cf. l'avertissement plus haut sur cette page). On ne peut pas
+      // engager plus que ce qu'on a : les mises du jour sont réduites au
+      // prorata si leur somme dépasse la bankroll disponible.
+      const echelle = (totalBrut > bankroll && totalBrut > 0) ? bankroll / totalBrut : 1;
+      misesParPari = brutes.map(m => m * echelle);
+    } else if (strategie === "pct") {
+      // % de la bankroll par jour, réparti également : l'exposition du
+      // jour est PLAFONNÉE d'avance — elle ne dépend plus du hasard du
+      // nombre de matchs qualifiés.
+      const m = (bankroll * pctMax) / n;
+      misesParPari = paris.map(() => m);
+    } else {
+      // Mise fixe : chaque pari coûte le même montant, l'exposition du
+      // jour grandit avec le nombre de paris qualifiés ce jour-là (c'est
+      // justement ce qui a atteint 115€ un jour sur 5€/pari dans l'exemple
+      // qui a motivé cette page).
+      misesParPari = paris.map(() => montantFixe);
+    }
+    const exposition = misesParPari.reduce((s, m) => s + m, 0);
+    const resultatJour = paris.reduce((s, r, i) => s + r.profit * misesParPari[i], 0);
     bankroll += resultatJour;
     if (exposition > pic) { pic = exposition; picJour = date; }
     pts.push({date, y: bankroll, n, exposition, resultatJour});
@@ -3459,12 +3487,14 @@ function renderExposition() {
 
 if ($("simStrategie")) {
   $("simStrategie").addEventListener("change", () => {
-    const pct = $("simStrategie").value === "pct";
-    $("simFixeWrap").style.display = pct ? "none" : "";
-    $("simPctWrap").style.display = pct ? "" : "none";
+    const val = $("simStrategie").value;
+    $("simFixeWrap").style.display = val === "fixe" ? "" : "none";
+    $("simPctWrap").style.display = val === "pct" ? "" : "none";
+    $("simKellyWrap").style.display = val === "kelly" ? "" : "none";
+    if ($("simKellyNote")) $("simKellyNote").style.display = val === "kelly" ? "" : "none";
     renderExposition();
   });
-  ["simMontantFixe", "simPct"].forEach(id => {
+  ["simMontantFixe", "simPct", "simKellyFrac"].forEach(id => {
     $(id).addEventListener("input", renderExposition);
     $(id).addEventListener("change", renderExposition);
   });
@@ -3479,6 +3509,10 @@ refresh();
 renderValueBets();
 renderUpcoming();
 renderBankroll();
+// Sans cet appel, le panneau "Simulation sur l'historique" restait vide
+// (tirets) tant qu'on n'avait pas soi-meme touche un de ses reglages —
+// il ne se rendait qu'au premier "change", jamais au chargement.
+if (typeof renderExposition === "function") renderExposition();
 renderTeams();
 renderOverview();
 /* ================= PAGE — TIRS CADRÉS (récap) ================= */
