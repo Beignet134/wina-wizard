@@ -565,7 +565,7 @@ function drawChart(rows, stake, wrapId, height) {
           </linearGradient>
         </defs>
         ${yticks}${zeroLine}
-        <path d="${area}" fill="url(#${gradId})"/>
+        <path class="chart-area" d="${area}" fill="url(#${gradId})"/>
         <path class="curve" d="${line}" stroke="${stroke}"/>
         ${dots}${markers}
         <line class="chart-cursor" x1="0" y1="${padT}" x2="0" y2="${H-padB}" opacity="0"/>
@@ -575,6 +575,22 @@ function drawChart(rows, stake, wrapId, height) {
       </svg>
       <div class="chart-tooltip" hidden></div>
     </div>`;
+
+  // Effet "dessiné en direct" au premier affichage : la ligne se trace
+  // plutôt que d'apparaître d'un coup — l'aire, les points et les repères
+  // MAX/MIN suivent juste après (voir les animations CSS .chart-area/
+  // .chart-dot/.chart-marker). Purement cosmétique, sans état à mémoriser :
+  // changer un filtre redessine tout à l'identique. getTotalLength() n'a de
+  // sens qu'une fois le <path> dans le DOM, d'où ce bloc après l'injection.
+  const curvePath = wrap.querySelector(".curve");
+  if (curvePath) {
+    const len = curvePath.getTotalLength();
+    curvePath.style.strokeDasharray = len;
+    curvePath.style.strokeDashoffset = len;
+    curvePath.getBoundingClientRect();  // force le reflow avant de lancer la transition
+    curvePath.style.transition = "stroke-dashoffset 1.1s cubic-bezier(.22,1,.36,1)";
+    requestAnimationFrame(() => { curvePath.style.strokeDashoffset = "0"; });
+  }
 
   // --- Interaction : ligne de suivi + infobulle ---
   const holder = wrap.querySelector(".chart-holder");
@@ -700,6 +716,99 @@ $("chkAll").addEventListener("change", e => {
   else lastFilteredRows.forEach(b=>selected.delete(b.id));
   refresh();
 });
+// --- Générateur d'alias : "copier l'entrée Python" ------------------------
+// Les panneaux de diagnostic ci-dessous (matchs non rapprochés, compétitions
+// non alignées) affichent déjà le nom EXACT côté résultats à côté du nom
+// Winamax — tout ce qu'il faut pour écrire un alias, sauf le taper à la
+// main. Cette section génère la ligne Python prête à coller directement à
+// partir de ces deux noms, avec la MÊME normalisation que normalize_name()
+// côté Python (accents retirés, minuscules, ponctuation aplatie) : copier
+// colle un texte qui matche vraiment la clé que le script calculerait lui-
+// même, pas une approximation.
+function normalizeNameJs(name) {
+  if (!name) return "";
+  let s = String(name);
+  s = s.replace(/ø/g, "o").replace(/Ø/g, "O").replace(/æ/g, "ae").replace(/Æ/g, "Ae");
+  s = s.normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  s = s.toLowerCase();
+  s = s.replace(/[^a-z0-9 ]/g, " ");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
+// Copie dans le presse-papiers avec repli si l'API est refusée (fréquent en
+// ouverture de fichier local, file://) — même mécanisme que "Copier le
+// texte" de la page Bankroll (initCopyPlaced), pour rester cohérent.
+async function copierTexte(texte, btn) {
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(texte);
+    btn.textContent = "Copié !";
+  } catch {
+    // Repli : place le texte dans un champ temporaire sélectionné, l'utilisateur
+    // n'a plus qu'à faire Ctrl+C — pas de presse-papiers auto sans API.
+    const ta = document.createElement("textarea");
+    ta.value = texte; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); btn.textContent = "Copié !"; }
+    catch { btn.textContent = "Sélectionne + Ctrl+C"; }
+    document.body.removeChild(ta);
+  }
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1800);
+}
+
+// Suggestion TEAM_ALIASES à partir d'un exemple non rapproché avec near-miss.
+// t.candidat a la forme "Home - Away (Pays · Ligue)" (voir build_evaluated_bets
+// côté Python) ; t.match la forme "Home - Away" côté Winamax. Une ligne par
+// équipe dont le nom normalisé diffère réellement ; la forme la plus COURTE
+// devient la clé et la plus longue la valeur canonique — la même convention
+// que celle suivie à la main dans tout TEAM_ALIASES existant (ex: 'psg':
+// 'paris saint germain'). Reste une SUGGESTION : à relire avant de coller,
+// exactement comme pour les 116 alias ajoutés aujourd'hui à la main.
+function suggestionAliasEquipes(t) {
+  if (!t.candidat || !t.match || t.match.indexOf(" - ") < 0) return null;
+  const m = t.candidat.match(/^(.+?) - (.+?)\s*\(/);
+  if (!m) return null;
+  const [homeOdds, awayOdds] = t.match.split(" - ", 2);
+  const [, homeRes, awayRes] = m;
+  const lignes = [];
+  [[homeOdds, homeRes], [awayOdds, awayRes]].forEach(([a, b]) => {
+    const na = normalizeNameJs(a), nb = normalizeNameJs(b);
+    if (!na || !nb || na === nb) return;
+    const [court, long] = na.length <= nb.length ? [na, nb] : [nb, na];
+    lignes.push(`    '${court}': '${long}',`);
+  });
+  return lignes.length ? lignes.join("\n") : null;
+}
+
+// Suggestion PAYS_ALIASES_RESULTATS / LEAGUE_ALIASES_RESULTATS à partir
+// d'une ligue non alignée. cle = "Pays — Ligue" côté Winamax, candidat =
+// "Pays — Ligue" réel côté résultats (voir ligues_non_alignees_detail).
+function suggestionAliasLigue(cle, candidat) {
+  const partsOdds = cle.split(" — "), partsRes = candidat.split(" — ");
+  if (partsOdds.length < 2 || partsRes.length < 2) return null;
+  const [paysOdds, ligueOdds] = partsOdds, [paysRes, ligueRes] = partsRes;
+  const nPaysOdds = normalizeNameJs(paysOdds), nPaysRes = normalizeNameJs(paysRes);
+  const nLigueOdds = normalizeNameJs(ligueOdds), nLigueRes = normalizeNameJs(ligueRes);
+  const lignes = [];
+  if (nPaysOdds !== nPaysRes) {
+    lignes.push(`    "${nPaysRes}": "${nPaysOdds}",   # PAYS_ALIASES_RESULTATS`);
+  }
+  if (nLigueOdds !== nLigueRes || nPaysOdds !== nPaysRes) {
+    lignes.push(`    ("${nPaysOdds}", "${nLigueRes}"): "${nLigueOdds}",   # LEAGUE_ALIASES_RESULTATS`);
+  }
+  return lignes.length ? lignes.join("\n") : null;
+}
+
+// Un seul écouteur délégué pour tous les boutons "Copier l'entrée Python",
+// quel que soit le panneau : évite d'en attacher un par ligne générée.
+document.addEventListener("click", e => {
+  const btn = e.target.closest(".btn-copy-alias");
+  if (!btn) return;
+  copierTexte(decodeURIComponent(btn.dataset.alias || ""), btn);
+});
+
 (function initUnmatched() {
   const box = $("unmatchedBox"), list = $("unmatchedList");
   if (!UNMATCHED.length) { box.style.display="none"; return; }
@@ -728,7 +837,16 @@ $("chkAll").addEventListener("change", e => {
     } else if (t.candidat === null) {
       suffix = ` <br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
     }
-    return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}</li>`;
+    // Bouton de génération : n'apparaît que si au moins une ligne d'alias a
+    // vraiment quelque chose à proposer (deux noms déjà identiques une fois
+    // normalisés n'ont rien à corriger, même avec un candidat affiché).
+    let copyBtn = "";
+    const suggestion = t.candidat ? suggestionAliasEquipes(t) : null;
+    if (suggestion) {
+      copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
+        data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
+    }
+    return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}${copyBtn}</li>`;
   }).join("");
 })();
 
@@ -759,10 +877,16 @@ $("chkAll").addEventListener("change", e => {
   ajouterDetail((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees_detail);
   list.innerHTML = lignes.map(([cle, n]) => {
     const candidat = detail.get(cle);
-    const suffix = candidat
-      ? ` <br><span class="muted">↳ côté résultats, cette compétition s'appelle : ${candidat}</span>`
-      : "";
-    return `<li><strong>${cle}</strong> <span class="muted">— ${n} match(s)</span>${suffix}</li>`;
+    let suffix = "", copyBtn = "";
+    if (candidat) {
+      suffix = ` <br><span class="muted">↳ côté résultats, cette compétition s'appelle : ${candidat}</span>`;
+      const suggestion = suggestionAliasLigue(cle, candidat);
+      if (suggestion) {
+        copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
+          data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
+      }
+    }
+    return `<li><strong>${cle}</strong> <span class="muted">— ${n} match(s)</span>${suffix}${copyBtn}</li>`;
   }).join("");
 })();
 
@@ -1264,7 +1388,8 @@ function renderUpcoming() {
         <div class="rec-match">${v.match}${v.match_id ? ` <a href="https://www.winamax.fr/paris-sportifs/match/${v.match_id}" target="_blank" rel="noopener" class="rec-winamax-link" title="Parier sur ce match (Winamax)">↗</a>` : ""}</div>
         <div class="rec-when">${fmtKickoff(v.kickoff)}</div>
       </div>
-      <div class="rec-league">${ligueLabel(v.pays, v.ligue)} · <span class="tag-cat">${v.categorie}</span></div>
+      <div class="rec-league">${ligueLabel(v.pays, v.ligue)} · <span class="tag-cat">${v.categorie}</span>
+        ${catBadgeHtml(v.categorie)}</div>
       <div class="rec-bet">
         <span class="rec-pill">${v.colonne}</span>
         <span class="muted">à la cote</span> <strong style="font-family:var(--mono)">${v.cote.toFixed(2)}</strong>
@@ -1758,17 +1883,43 @@ document.querySelectorAll("#teamTable th.sortable").forEach(th => {
 });
 
 /* ================= PAGE 0 — VUE D'ENSEMBLE ================= */
+// Bascule vers un autre onglet en JS — utilisé par le chip d'alerte
+// "Qualité des données" ci-dessous pour renvoyer directement au panneau de
+// diagnostic concerné (matchs non rapprochés / compétitions non alignées),
+// plutôt que de laisser deviner où cliquer.
+function irVersOnglet(page) {
+  const tab = document.querySelector(`.tab[data-page="${page}"]`);
+  if (tab) tab.click();
+}
+document.addEventListener("click", e => {
+  const chip = e.target.closest(".ov-jump-tab");
+  if (chip) irVersOnglet(chip.dataset.page);
+});
+
+// Cette page servait auparavant les stats du "pari sur tout" (BETS) :
+// trompeur, car ce n'est pas une stratégie jouable — juste une mesure du
+// coût de la marge bookmaker (utile sur la page Rétrospectif, où c'est
+// explicite, pas ici en vitrine). Ce qui compte vraiment, c'est le backtest
+// Dixon-Coles sur les VALUE BETS (BT_ROWS, edge déjà positif) : la seule
+// chose qui ressemble à ce qu'on jouerait réellement. Voir aussi
+// dcCategoryVerdicts()/catBadgeHtml(), déjà utilisés sur "Paris à venir" et
+// "DC rétrospectif" — réutilisés ici pour que le verdict par catégorie soit
+// visible dès la première page, pas seulement dans les onglets de détail.
 function renderOverview() {
   const stake = 10; // mise de référence pour la vue d'ensemble (indépendante des filtres des autres onglets)
-  const n = BETS.length, mise = n * stake;
+  const n = BT_ROWS.length;
   let net = 0, wins = 0;
-  BETS.forEach(b => { net += betGain(b, stake); if (b.won) wins++; });
-  const roi = mise > 0 ? net / mise : null;
+  BT_ROWS.forEach(r => { net += r.profit * stake; if (r.gagne) wins++; });
+  const roi = n > 0 ? net / (n * stake) : null;
+
+  const verdicts = dcCategoryVerdicts();
+  const catNoms = Object.keys(verdicts);
+  const nRobustes = catNoms.filter(c => verdicts[c].verdict.code === "robuste").length;
 
   const netEl = $("ovNet");
   netEl.textContent = fmtEur(net);
   netEl.className = "st-value " + (net >= 0 ? "pos" : "neg");
-  $("ovNetSub").textContent = `${n} pari(s) évalué(s)`;
+  $("ovNetSub").textContent = `${n} value bet(s) évalué(s)`;
   const bar = $("ovNetBar");
   bar.style.width = Math.min(100, Math.abs(roi || 0) * 150).toFixed(0) + "%";
   bar.style.background = net >= 0 ? "var(--pitch)" : "var(--card-red)";
@@ -1776,37 +1927,57 @@ function renderOverview() {
   const roiEl = $("ovRoi");
   roiEl.textContent = fmtPct(roi);
   roiEl.className = "st-value " + (roi >= 0 ? "pos" : "neg");
-  $("ovRoiSub").textContent = n > 0 ? `sur ${n} paris` : "aucune donnée";
+  // Un ROI global positif peut cacher un mélange (1 catégorie qui tire tout
+  // vers le haut, les autres perdantes) — d'où ce rappel explicite plutôt
+  // qu'un simple "sur N paris", avec le détail juste en dessous.
+  $("ovRoiSub").textContent = catNoms.length
+    ? `${nRobustes} / ${catNoms.length} catégorie(s) robuste(s) — détail ci-dessous`
+    : "aucune donnée";
 
   $("ovWin").textContent = n > 0 ? (wins / n * 100).toFixed(1) + " %" : "—";
-  $("ovWinSub").textContent = n > 0 ? `${wins} / ${n} gagnés` : "tous paris confondus";
+  $("ovWinSub").textContent = n > 0 ? `${wins} / ${n} gagnés` : "value bets";
 
   $("ovUpcoming").textContent = UPCOMING.length;
   $("ovUpcomingSub").textContent = `sur ${UPCOMING_DAYS} jours · modèle Dixon-Coles`;
 
-  drawChart(BETS, stake, "ovChartWrap", 300);
+  // Même mécanique que drawChart (mise fixe, cumul par ordre chronologique),
+  // mais sur les value bets réels : profit/gagne/categorie/colonne portent
+  // des noms différents côté DC backtest (voir build_dc_backtest), d'où ce
+  // petit mappage vers les champs attendus par drawChart.
+  const chartRows = BT_ROWS.map(r => ({
+    date: r.date, match: r.match, cote: r.cote, won: r.gagne, col: r.colonne,
+  }));
+  drawChart(chartRows, stake, "ovChartWrap", 300);
 
-  const cats = {};
-  BETS.forEach(b => { (cats[b.cat] = cats[b.cat] || []).push(b); });
-  const catRows = Object.keys(cats).map(cat => {
-    const arr = cats[cat], cn = arr.length;
-    const cnet = arr.reduce((s, b) => s + betGain(b, stake), 0);
-    return { cat, n: cn, roi: cn > 0 ? cnet / (cn * stake) : null };
-  }).sort((a, b) => (b.roi ?? -99) - (a.roi ?? -99));
-  $("ovCatList").innerHTML = catRows.slice(0, 5).map(c => `
+  const catRows = catNoms.map(cat => ({ cat, ...verdicts[cat] }))
+    .sort((a, b) => (b.roi ?? -99) - (a.roi ?? -99));
+  $("ovCatList").innerHTML = catRows.map(c => `
     <li>
-      <div><div class="ov-name">${c.cat}</div><div class="ov-meta">${c.n} pari(s)</div></div>
+      <div><div class="ov-name">${c.cat} ${catBadgeHtml(c.cat)}</div><div class="ov-meta">${c.n} value bet(s)</div></div>
       <div class="ov-val ${c.roi >= 0 ? 'pos' : 'neg'}">${fmtPct(c.roi)}</div>
     </li>`).join("") || `<li class="muted">Pas encore de données.</li>`;
 
   const topUpcoming = UPCOMING.slice().sort((a, b) => b.ev - a.ev).slice(0, 5);
   $("ovUpcomingList").innerHTML = topUpcoming.map(v => `
     <li>
-      <div><div class="ov-name">${v.match}</div><div class="ov-meta">${v.colonne} · cote ${v.cote.toFixed(2)}</div></div>
+      <div><div class="ov-name">${v.match} ${catBadgeHtml(v.categorie)}</div><div class="ov-meta">${v.colonne} · cote ${v.cote.toFixed(2)}</div></div>
       <div class="ov-val pos">${fmtPct(v.ev)}</div>
     </li>`).join("") || `<li class="muted">Aucune piste pour l'instant — reviens après la prochaine collecte.</li>`;
 
+  // Qualité des données : chips de contexte (comme avant) + un chip
+  // d'alerte cliquable si des matchs/compétitions restent mal alignés
+  // (fusion backtest + poisson, même logique qu'initLiguesNonAlignees), ou
+  // un chip rassurant sinon — pour qu'un problème d'alignement saute aux
+  // yeux dès la première page plutôt que d'être découvert par hasard sur
+  // Rétrospectif.
   const m = WIZARD_DATA.meta;
+  const totalNonRapproches = m.unmatched || 0;
+  const compteLigues = new Map();
+  const ajouterLigues = src => (src || []).forEach(([cle, cnt]) => compteLigues.set(cle, (compteLigues.get(cle) || 0) + cnt));
+  ajouterLigues((WIZARD_DATA.dc_stats || {}).ligues_non_alignees);
+  ajouterLigues((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees);
+  const totalLiguesNonAlignees = compteLigues.size;
+
   const chips = [
     `${m.n_odds_files} fichier(s) cotes`,
     `${m.n_results_files} fichier(s) résultats`,
@@ -1814,7 +1985,16 @@ function renderOverview() {
     `${TEAM_STATS.length} équipe(s) modélisée(s)`,
     `${VALUE_BETS.length} value bet(s) au total`,
   ];
-  $("ovCoverage").innerHTML = chips.map(c => `<span class="coverage-chip">${c}</span>`).join("");
+  let html = chips.map(c => `<span class="coverage-chip">${c}</span>`).join("");
+  if (totalNonRapproches > 0 || totalLiguesNonAlignees > 0) {
+    const details = [];
+    if (totalNonRapproches > 0) details.push(`${totalNonRapproches} match(s) non rapproché(s)`);
+    if (totalLiguesNonAlignees > 0) details.push(`${totalLiguesNonAlignees} compétition(s) non alignée(s)`);
+    html += `<button type="button" class="coverage-chip alert link ov-jump-tab" data-page="retro">⚠ ${details.join(" · ")} — corriger</button>`;
+  } else {
+    html += `<span class="coverage-chip ok">✓ Aucun souci d'alignement détecté</span>`;
+  }
+  $("ovCoverage").innerHTML = html;
 }
 
 /* ================= PAGE — DIXON-COLES RÉTROSPECTIF ================= */
@@ -1843,6 +2023,74 @@ const BT_ROWS = WIZARD_DATA.dc_backtest || [];
 }
 
 const BT_STATS = WIZARD_DATA.dc_stats || {};
+
+// --- Fiabilité historique par catégorie de pari --------------------------
+// Même méthode que le tableau "Par catégorie" plus bas (split train/test,
+// mêmes seuils MIN_BETS/OOS_MIN), mais appliquée ici au dataset qui compte
+// vraiment pour juger si UN MARCHÉ vaut la peine d'être joué : les VALUE
+// BETS du backtest Dixon-Coles (BT_ROWS, edge déjà positif), pas "parier
+// sur tout" (ce que fait updateCategoryTable sur la page Rétrospectif —
+// utile pour montrer le coût de la marge bookmaker, mais pas pour juger le
+// modèle). Calculé une seule fois puis réutilisé partout où une catégorie
+// apparaît : filtre de "Paris à venir", badge sur chaque carte de
+// recommandation, et colonne de ce même tableau "Par catégorie" ci-dessous.
+let _dcCatVerdicts = null;
+function dcCategoryVerdicts() {
+  if (_dcCatVerdicts) return _dcCatVerdicts;
+  const cats = {};
+  BT_ROWS.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
+  const out = {};
+  Object.keys(cats).forEach(cat => {
+    const arr = cats[cat].slice().sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+    const n = arr.length;
+    const split = Math.floor(n / 2);
+    const roiOf = list => list.length ? list.reduce((s, r) => s + r.profit, 0) / list.length : null;
+    const train = arr.slice(0, split), test = arr.slice(split);
+    const roi = roiOf(arr), trainRoi = roiOf(train), testRoi = roiOf(test);
+    let verdict;
+    if (n < MIN_BETS || test.length < OOS_MIN) {
+      verdict = { code: "insuffisant", label: "Données insuffisantes", color: "#555" };
+    } else if (trainRoi > 0 && testRoi > 0) {
+      verdict = { code: "robuste", label: "Robuste", color: "#1a7f5a" };
+    } else if (trainRoi > 0 && testRoi <= 0) {
+      verdict = { code: "overfit", label: "Disparaît en test", color: "#b23b3b" };
+    } else {
+      verdict = { code: "non_rentable", label: "Non rentable", color: "#8a6d1f" };
+    }
+    out[cat] = { n, roi, trainRoi, testRoi, verdict };
+  });
+  _dcCatVerdicts = out;
+  return out;
+}
+
+// Badge compact réutilisé partout où une catégorie de pari est affichée à
+// côté d'un verdict (carte de recommandation, filtre). Le survol détaille
+// le ROI réel et la taille de l'échantillon, pour ne pas se fier au seul
+// mot ("Robuste" sur 31 paris et sur 900 n'inspire pas la même confiance,
+// même si le badge est identique).
+function catBadgeHtml(categorie) {
+  const v = dcCategoryVerdicts()[categorie];
+  if (!v) return "";
+  const titre = v.roi != null
+    ? `Backtest Dixon-Coles (value bets) : ${v.n} pari(s), ROI ${fmtPct(v.roi)} `
+      + `(entraînement ${fmtPct(v.trainRoi)} / test ${fmtPct(v.testRoi)})`
+    : `${v.n} pari(s) testé(s) — pas encore assez pour un verdict`;
+  return `<span class="badge cat-verdict" style="background:${v.verdict.color}" title="${titre}">${v.verdict.label}</span>`;
+}
+
+// Étiquette le filtre "Type de pari" (Paris à venir ET DC rétrospectif) avec
+// le même badge que les cartes, pour qu'on voie d'emblée qu'une catégorie
+// est historiquement perdante SANS avoir à décocher/recocher pour vérifier.
+// Purement informatif : ne change aucune case cochée par défaut — la
+// décision de jouer une catégorie reste à l'utilisateur, pas décidée à sa
+// place par le tableau de bord.
+(function initCategoryFilterBadges() {
+  document.querySelectorAll(".uCatChk, .btCatChk").forEach(input => {
+    const badge = catBadgeHtml(input.value);
+    const span = input.nextElementSibling;
+    if (badge && span) span.insertAdjacentHTML("afterend", badge);
+  });
+})();
 
 // Bornes du calendrier : toute la période disponible, calculée côté Python
 // (BT_STATS.date_min/max) — avec repli sur un balayage de BT_ROWS pour un
@@ -2164,7 +2412,7 @@ function renderBacktest() {
     $("btWinSub").textContent = "—";
     $("btMatches").textContent = "—";
     $("btNbSub").textContent = "—";
-    $("btCatBody").innerHTML = '<tr><td colspan="6" class="muted">Pas encore de données.</td></tr>';
+    $("btCatBody").innerHTML = '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>';
     $("btBody").innerHTML = '<tr><td colspan="9" class="muted">Pas encore de données.</td></tr>';
     empty.style.display = "block";
     empty.textContent = "Aucun match récent ne dispose à la fois de cotes capturées, d'un résultat connu et d'un historique suffisant. Ce test se remplira au fil de la collecte quotidienne.";
@@ -2298,8 +2546,9 @@ function renderBacktest() {
       <td data-label="Cote moy." class="num">${s.cote_moy != null ? s.cote_moy.toFixed(2) : "—"}</td>
       <td data-label="ROI" class="num ${s.roi>=0?'pos':'neg'}"><strong>${fmtPct(s.roi)}</strong></td>
       <td data-label="Net" class="num ${cnet>=0?'pos':'neg'}">${fmtEur(cnet)}</td>
+      <td data-label="Verdict">${catBadgeHtml(c)}</td>
     </tr>`;
-  }).join("") || '<tr><td colspan="6" class="muted">Aucune catégorie.</td></tr>';
+  }).join("") || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
 
   renderLigueComparaison(rowsFiltrees);
   renderBacktestRows();
