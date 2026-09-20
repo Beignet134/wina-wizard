@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920051317">
+<link rel="stylesheet" href="style.css?v=20260920080009">
 </head>
 <body>
 <div class="topbar">
@@ -671,6 +671,17 @@
         la commission de Winamax. Quand les deux lectures divergent en signe, la seconde valeur
         apparaît en petit sous la première.
       </p>
+      <p class="muted" style="margin:0 0 .9rem; font-size:.83rem">
+        <strong>Pour retravailler ces chiffres dans Excel</strong>, exporte-les plutôt ci-dessous
+        que de refaire les filtres sur la feuille « Paris testés » du classeur : cette dernière est
+        volontairement large (seuil d'edge seul, sans espérance ni dédoublonnage) et ne peut pas
+        redonner les mêmes résultats que cette page. Le bouton exporte exactement les paris retenus
+        par <strong>les filtres actuellement réglés ci-dessus</strong>.
+      </p>
+      <div class="placed-actions" style="margin-bottom:.9rem">
+        <button type="button" id="btExportCsv" class="btn btn-primary">Exporter en CSV (paris affichés)</button>
+        <span id="btExportFeedback" class="muted" style="font-size:.82rem"></span>
+      </div>
       <div class="tablewrap">
         <table id="btTable" class="cardify">
           <thead><tr>
@@ -1215,7 +1226,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920051317"></script>
-<script src="app.js?v=20260920051317"></script>
+<script src="donnees.js?v=20260920080009"></script>
+<script src="app.js?v=20260920080009"></script>
 </body>
 </html>
