@@ -103,6 +103,60 @@ function appliquerXg(rows, mode) {
   return rows.map(r => (r.p_model_xg != null ? substituer(r) : {...r, source_xg: false}));
 }
 
+// --- Lecture binomiale négative (facultative, off par défaut) ----------
+// Simple bascule (pas de mode "auto" comme l'xG) : p_model_nb existe pour
+// chaque pari dès qu'un r global a pu être estimé sur le backtest (voir
+// estimer_dispersion_nbinom côté Python) — il n'y a pas de sous-ensemble de
+// matchs à exclure comme pour l'xG (historique insuffisant).
+//
+// Volontairement EXCLUSIF avec l'enrichissement xG (voir l'appelant) : les
+// deux lectures portent sur des choses différentes — l'xG change le λ
+// estimé, la binomiale négative change la VARIANCE autour du même λ — et
+// p_model_nb n'a été calculé que sur le λ "buts", jamais sur le λ mélangé à
+// l'xG. Les combiner donnerait un résultat que personne ne pourrait
+// interpréter correctement.
+// Note affichée sous le sélecteur "Loi statistique (buts)", sur les deux
+// pages qui le proposent (préfixe "bt" ou "u"). Centralisée ici pour ne pas
+// dupliquer la logique de disponibilité/exclusivité avec l'xG.
+function majLoiNote(prefixe) {
+  const note = $(prefixe + "LoiNote");
+  const sel = $(prefixe + "Loi");
+  if (!note || !sel) return;
+  if (!NB_R) {
+    note.style.display = "none";
+    return;
+  }
+  if (sel.value !== "nbinom") {
+    note.style.display = "none";
+    return;
+  }
+  const modeXg = $(prefixe + "Enrichi") ? $(prefixe + "Enrichi").value : "sans";
+  note.style.display = "";
+  if (modeXg !== "sans") {
+    note.innerHTML = `<strong>Sans effet ici</strong> — l'enrichissement xG est actif et prend `
+      + `le pas sur ce filtre (les deux ne se combinent pas, voir l'infobulle du panneau `
+      + `« Binomiale négative » sur DC rétrospectif). Repassez l'enrichissement xG sur « Sans » `
+      + `pour comparer Poisson et binomiale négative.`;
+  } else {
+    const v = NB_VALIDATION || {};
+    note.innerHTML = `<strong>Binomiale négative active</strong> — r estimé = ${v.r_estime}`
+      + (v.brier_gain_pct != null ? `, gain de Brier ${v.brier_gain_pct > 0 ? "+" : ""}${v.brier_gain_pct} % sur le backtest` : "")
+      + `. Diagnostic complet sur DC rétrospectif. N'affecte que ce filtre : les autres pages `
+      + `et l'export continuent d'utiliser Poisson tant qu'il reste le réglage par défaut ici.`;
+  }
+}
+
+function appliquerNb(rows, actif) {
+  if (!actif) return rows;
+  return rows.map(r => (r.p_model_nb == null ? r : {
+    ...r,
+    p_model: r.p_model_nb, edge: r.edge_nb, edge_devig: r.edge_devig_nb, ev: r.ev_nb,
+    // Conservées à part pour l'infobulle, qui montre les deux lectures.
+    p_model_poisson: r.p_model, edge_poisson: r.edge, edge_devig_poisson: r.edge_devig,
+    source_nb: true,
+  }));
+}
+
 // --- Type de pari : selection multiple par cases a cocher ---------------
 // Renvoie la liste des categories cochees. Un ensemble VIDE (aucune case)
 // est traite comme "toutes" : afficher zero pari quand l'utilisateur
@@ -155,6 +209,13 @@ function pMarche(r) {
 // les résultats, parce que ces filtres retiennent déjà les paris les mieux
 // calibrés et que les corriger à la baisse les pénalise à tort.
 const CALIB_RATIO = (WIZARD_DATA.dc_stats || {}).calib_ratio || null;
+
+// --- Lecture binomiale négative (facultative, filtre off par défaut) ---
+// r_estime/validation calculés côté Python (build_dc_backtest →
+// estimer_dispersion_nbinom + valider_nbinom) sur le MÊME backtest que
+// CALIB_RATIO. Voir appliquerNb plus bas pour la substitution.
+const NB_VALIDATION = (WIZARD_DATA.dc_stats || {}).nb_validation || null;
+const NB_R = (NB_VALIDATION && NB_VALIDATION.r_estime) || null;
 
 function calibrer(rows, actif) {
   if (!actif || !CALIB_RATIO) return rows;
@@ -809,7 +870,10 @@ function renderUpcoming() {
   // xG — même ordre que sur la page DC rétrospectif, pour que les deux
   // pages restent strictement comparables quand leurs filtres sont liés.
   const calibActif = $("uCalib") ? $("uCalib").value === "1" : false;
-  let source = appliquerXg(calibrer(UPCOMING, calibActif), modeXg);
+  // Binomiale négative : même bascule et même exclusivité avec l'xG que
+  // sur "DC rétrospectif" (voir btFiltered/appliquerNb).
+  const nbActif = $("uLoi") && $("uLoi").value === "nbinom" && modeXg === "sans";
+  let source = appliquerXg(appliquerNb(calibrer(UPCOMING, calibActif), nbActif), modeXg);
 
   // Chaque pari reçoit ses valeurs recalculées selon le mode choisi, pour
   // que l'affichage (edge, espérance) corresponde bien au filtre appliqué.
@@ -961,6 +1025,8 @@ function renderUpcoming() {
           + `suffisant des deux côtés.`;
     }
   }
+
+  majLoiNote("u");
 
   const grid = $("recGrid"), empty = $("uEmpty");
   if (n===0) {
@@ -1214,7 +1280,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
+["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1389,7 +1455,8 @@ function cablerMenusDeroulants() {
 cablerMenusDeroulants();
 
 [["btDevig","uDevig"], ["btAlpha","uAlpha"],
- ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btDedup","uDedup"],
+ ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
+ ["btDedup","uDedup"],
  ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
  ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
 
@@ -1410,6 +1477,25 @@ cablerMenusDeroulants();
              + `surestime ses probabilités d'environ `
              + `${((1 - CALIB_RATIO) * 100).toFixed(1)} %. La correction les ramène `
              + `à leur niveau réellement observé.`;
+  }
+});
+
+// Même principe que btCalib/uCalib ci-dessus : sans r estimable (backtest
+// trop court, ou aucune survariance détectable — voir
+// estimer_dispersion_nbinom côté Python), le filtre n'a rien à appliquer.
+["btLoi", "uLoi"].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  if (!NB_R) {
+    el.value = "poisson";
+    el.disabled = true;
+    el.title = "Indisponible : le backtest est trop court, ou aucune survariance "
+             + "n'est détectable pour l'instant par rapport à Poisson (voir le panneau "
+             + "« Binomiale négative » sur DC rétrospectif).";
+  } else {
+    const v = NB_VALIDATION || {};
+    el.title = `r estimé sur le backtest : ${v.r_estime}. Off par défaut : Poisson reste `
+             + `le modèle actif tant que vous n'activez pas ce filtre vous-même.`;
   }
 });
 
@@ -1695,7 +1781,11 @@ function btFiltered() {
   // Dans l'ordre inverse, seule la lecture active aurait été corrigée et
   // l'infobulle aurait affiché deux valeurs incohérentes entre elles.
   const calibActif = $("btCalib") ? $("btCalib").value === "1" : false;
-  let source = appliquerXg(calibrer(BT_ROWS, calibActif), modeXg);
+  // Binomiale négative : exclusive avec l'xG (voir appliquerNb) — sans
+  // effet tant que l'enrichissement xG est actif, quelle que soit la valeur
+  // du sélecteur.
+  const nbActif = $("btLoi") && $("btLoi").value === "nbinom" && modeXg === "sans";
+  let source = appliquerXg(appliquerNb(calibrer(BT_ROWS, calibActif), nbActif), modeXg);
 
   // Les paris sont stockés avec leurs DEUX edges (brut et marge retirée).
   // Selon le mode, on ne garde que ceux qui passaient le seuil dans cette
@@ -1928,6 +2018,8 @@ function renderBacktest() {
           + `${BT_ROWS.length - avecXg} autres sont écartés faute d'historique xG suffisant.`;
     }
   }
+
+  majLoiNote("bt");
 
   // Le mélange avec le marché (alpha < 1) utilise TOUJOURS la probabilité
   // marché dévigée en interne (cf. blended()/pMarche()) — mélanger avec la
@@ -3234,7 +3326,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
