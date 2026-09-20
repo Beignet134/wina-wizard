@@ -1637,6 +1637,39 @@ function filtrerOptionsLigue(prefixe) {
   if (rech) rech.addEventListener("input", () => filtrerOptionsLigue(pref));
 });
 
+// Tout cocher / Tout décocher (menu Ligue) : n'agit que sur les options
+// actuellement VISIBLES (voir filtrerOptionsLigue ci-dessus) — taper
+// "France" puis "Tout cocher" sélectionne uniquement les championnats
+// français sans toucher au reste de la liste, et "Tout décocher" vide la
+// recherche en cours plutôt que la totalité des ~50-60 ligues. Répercute
+// la sélection sur l'autre page (comme cablerCasesLigue) et ne redessine
+// qu'une seule fois à la fin, plutôt qu'à chaque case comme un clic manuel
+// l'aurait fait — sinon cocher 40 ligues d'un coup redessinerait 40 fois.
+function cablerActionsLigue(prefixe) {
+  const boutonCocher = $(prefixe + "LigueCheckAll");
+  const boutonDecocher = $(prefixe + "LigueUncheckAll");
+  if (!boutonCocher && !boutonDecocher) return;
+  const autre = prefixe === "bt" ? "u" : "bt";
+  const appliquer = (valeur) => {
+    document.querySelectorAll("#" + prefixe + "LigueOptions .chk-cat").forEach(label => {
+      if (label.style.display === "none") return;
+      const input = label.querySelector("input." + prefixe + "LigueChk");
+      if (!input) return;
+      input.checked = valeur;
+      document.querySelectorAll("." + autre + "LigueChk").forEach(jumelle => {
+        if (jumelle.value === input.value) jumelle.checked = valeur;
+      });
+    });
+    libelleMselLigue(prefixe);
+    libelleMselLigue(autre);
+    if (typeof renderBacktest === "function") renderBacktest();
+    if (typeof renderUpcoming === "function") renderUpcoming();
+  };
+  if (boutonCocher) boutonCocher.addEventListener("click", () => appliquer(true));
+  if (boutonDecocher) boutonDecocher.addEventListener("click", () => appliquer(false));
+}
+["bt", "u"].forEach(cablerActionsLigue);
+
 // Ouverture/fermeture d'un menu "case a cocher" du gabarit .msel — factorise
 // pour servir aussi bien Type de pari que Ligue (et tout futur menu du même
 // genre) : un seul menu ouvert a la fois, fermeture au clic ailleurs ou sur
