@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920120657">
+<link rel="stylesheet" href="style.css?v=20260920125628">
 </head>
 <body>
 <div class="topbar">
@@ -224,9 +224,10 @@
         <summary></summary>
         <p class="muted">Ces compétitions n'ont jamais pu être alignées entre les cotes et les résultats (nom de
         pays ou de ligue trop différent d'une source à l'autre) : <strong>tous</strong> leurs matchs sont perdus
-        d'un coup, backtest et paris à venir compris. Une seule entrée ajoutée à
-        <code>LEAGUE_ALIASES_RESULTATS</code> (ou <code>PAYS_ALIASES_RESULTATS</code>) dans le script Python
-        récupère généralement toute la ligne d'un coup — à traiter en priorité sur la liste ci-dessus.</p>
+        d'un coup, backtest et paris à venir compris. Quand une ligne indique "côté résultats, cette compétition
+        s'appelle...", c'est le libellé RÉEL retrouvé dans les résultats pour cette compétition (pas une
+        supposition) : une entrée <code>LEAGUE_ALIASES_RESULTATS</code> (ou <code>PAYS_ALIASES_RESULTATS</code>)
+        dans le script Python, avec ce texte exact, récupère généralement toute la ligne d'un coup.</p>
         <ul id="unalignedLeaguesList"></ul>
       </details>
     </div>
@@ -1281,7 +1282,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920120657"></script>
-<script src="app.js?v=20260920120657"></script>
+<script src="donnees.js?v=20260920125628"></script>
+<script src="app.js?v=20260920125628"></script>
 </body>
 </html>
