@@ -339,6 +339,42 @@ details.unmatched { margin-top: 1rem; background: var(--bg-3); border: 1px solid
 details.unmatched summary { cursor: pointer; color: var(--ink-dim); font-size: .85rem; }
 details.unmatched code { background: var(--bg); padding: .1rem .3rem; border-radius: 4px; font-family: var(--font-mono); }
 
+/* Petit intitulé de section entre deux groupes de panneaux d'une même page
+   (ex. "Résultats détaillés" sur DC rétrospectif) : sépare visuellement sans
+   le poids visuel d'un panneau à part entière. */
+.section-divider {
+  font-family: var(--font-display); font-size: .78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint);
+  margin: 2rem 0 -.4rem; padding-left: .1rem;
+}
+
+/* Groupe de panneaux secondaires, repliable — pour les blocs "analyse" que
+   la plupart des visites n'ont pas besoin d'ouvrir mais qui restent à un
+   clic. Le résumé (summary) prend le look d'un panneau fermé ; une fois
+   ouvert, les .panel qu'il contient gardent leur propre carte. */
+details.panel-group { margin: 1.3rem 0; }
+details.panel-group > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  display: flex; align-items: center; gap: .6rem;
+  background: linear-gradient(170deg, var(--night-2) 0%, rgba(18,16,42,.92) 100%);
+  border: 1px solid var(--line-soft); border-radius: var(--radius);
+  padding: 1rem 1.4rem;
+  font-family: var(--font-display); font-weight: 700; font-size: 1.02rem;
+  letter-spacing: -.02em;
+  box-shadow: var(--shadow-1), var(--edge);
+}
+details.panel-group > summary::-webkit-details-marker { display: none; }
+details.panel-group > summary .sub {
+  font-weight: 400; color: var(--ink-faint); font-size: .78rem; letter-spacing: 0;
+}
+details.panel-group > summary .chev {
+  margin-left: auto; flex-shrink: 0; transition: transform .2s ease;
+  color: var(--ink-faint);
+}
+details.panel-group[open] > summary .chev { transform: rotate(180deg); }
+details.panel-group > summary:hover { border-color: var(--violet-lo); }
+details.panel-group > .panel-group-inner { padding-top: .2rem; }
+
 /* Cartes-tableau responsive */
 @media (max-width: 720px) {
   table.cardify thead { display: none; }
@@ -659,10 +695,14 @@ td.lvl-bad { color: var(--down); }
 .score-tile .st-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .11em; color: var(--ink-dim); font-weight: 600; }
 .score-tile .st-value {
   font-family: var(--font-display);
-  font-size: clamp(2rem, 4.8vw, 2.9rem);
+  /* Plafonné assez bas pour qu'un montant à 4-5 chiffres ("+12 458,3 €")
+     tienne sur une seule ligne même dans la colonne la plus étroite de la
+     grille (160px) : au-delà, "€" repassait seul à la ligne suivante. */
+  font-size: clamp(1.5rem, 2.6vw, 2.2rem);
   font-weight: 700; letter-spacing: -.04em;
   line-height: 1; margin-top: .35rem; font-variant-numeric: tabular-nums;
   text-shadow: 0 0 18px color-mix(in srgb, currentColor 45%, transparent);
+  white-space: nowrap;
 }
 .score-tile .st-sub { font-size: .73rem; color: var(--ink-faint); margin-top: .3rem; font-family: var(--font-mono); }
 .score-tile .st-bar { height: 2px; border-radius: 1px; background: var(--line); margin-top: .6rem; overflow: hidden; }
@@ -719,6 +759,9 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   th, td { padding: .45rem .5rem; }
   .panel { padding: .95rem; }
   .score-tiles { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  /* Deux colonnes sur mobile = moins large par tuile qu'en desktop malgré
+     le clamp() : on redescend encore pour éviter tout retour à la ligne. */
+  .score-tile .st-value { font-size: clamp(1.3rem, 6.5vw, 1.7rem); }
   .tabs {
     -webkit-mask-image: linear-gradient(90deg, black calc(100% - 26px), transparent 100%);
     mask-image: linear-gradient(90deg, black calc(100% - 26px), transparent 100%);
