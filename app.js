@@ -712,12 +712,23 @@ $("chkAll").addEventListener("change", e => {
       ? `${totalReel} match(s) non rapproché(s) (${UNMATCHED.length} exemple(s) ci-dessous)`
       : `${UNMATCHED.length} exemple(s) de match non rapproché`)
     + " — cliquer pour voir";
-  // Chaque exemple est un objet {match, pays, ligue, date} depuis le
-  // correctif du 20/09/2026 (avant : une simple chaîne "Équipe A - Équipe B",
-  // sans assez de contexte pour repérer un motif par compétition).
+  // Chaque exemple est un objet {match, pays, ligue, date, candidat, score}
+  // depuis le correctif du 20/09/2026 (avant : une simple chaîne
+  // "Équipe A - Équipe B", sans assez de contexte pour repérer un motif par
+  // compétition). candidat/score (ajout ultérieur) distinguent un near-miss
+  // exploitable (un résultat existe ce jour-là mais sous le seuil de
+  // similarité — souvent un TEAM_ALIASES manquant) d'un vrai trou de
+  // couverture (candidat === null : aucun résultat ce jour-là, un alias n'y
+  // changerait rien).
   list.innerHTML = UNMATCHED.map(t => {
     if (typeof t === "string") return `<li>${t}</li>`;  // anciennes données (donnees.js pas régénéré)
-    return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span></li>`;
+    let suffix = "";
+    if (t.candidat) {
+      suffix = ` <br><span class="muted">↳ candidat le plus proche (score ${t.score}) : ${t.candidat}</span>`;
+    } else if (t.candidat === null) {
+      suffix = ` <br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
+    }
+    return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}</li>`;
   }).join("");
 })();
 
