@@ -66,7 +66,14 @@
   --bg-3: var(--night-3);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  /* Sans ça, un tap sur mobile (Chrome/Safari) affiche un flash gris par
+     défaut au-dessus de l'élément touché — détonne sur ce thème sombre
+     travaillé. Remplacé par des retours :active dédiés ci-dessous, pour ne
+     pas perdre le feedback tactile en échange. */
+  -webkit-tap-highlight-color: transparent;
+}
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -151,11 +158,12 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
   color: var(--ink-dim); font-family: var(--font-body);
   font-size: .85rem; font-weight: 600; letter-spacing: -.005em;
   padding: .6rem .9rem; margin-bottom: .35rem; border-radius: 9px;
-  white-space: nowrap; transition: color .18s, background .18s;
+  white-space: nowrap; transition: color .18s, background .18s, transform .12s;
   position: relative;
 }
 .tab svg { width: 14px; height: 14px; opacity: .65; flex: none; }
 .tab:hover { color: var(--ink); background: rgba(139,111,255,.1); }
+.tab:active { background: rgba(139,111,255,.18); transform: scale(.97); }
 .tab.active {
   color: #fff;
   background: linear-gradient(135deg, var(--violet-lo), var(--violet));
@@ -172,8 +180,27 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 }
 
 .page { display: none; }
-.page.active { display: block; animation: reveal .28s cubic-bezier(.22,1,.36,1); }
-@keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.page.active { display: block; }
+/* Entrée en cascade au changement d'onglet : chaque bloc de premier niveau
+   (scoreboard, panneau, grille...) apparaît avec un léger décalage plutôt
+   que tout d'un bloc — l'oeil suit la page de haut en bas au lieu de tout
+   recevoir d'un coup. Portée aux enfants DIRECTS de .page.active : comme
+   ceux-ci restent dans le DOM en permanence (seul le display du parent
+   change), l'animation ne se rejoue QUE lors d'un changement d'onglet —
+   jamais lors d'un simple re-rendu de filtre à l'intérieur d'une page (qui
+   ne touche que l'innerHTML d'un conteneur précis, pas le display de
+   .page). backwards : garde chaque bloc invisible pendant son délai, sinon
+   il flasherait visible avant que l'animation ne démarre. */
+.page.active > * {
+  animation: reveal-child .5s cubic-bezier(.22,1,.36,1) backwards;
+}
+.page.active > *:nth-child(1) { animation-delay: 0s; }
+.page.active > *:nth-child(2) { animation-delay: .05s; }
+.page.active > *:nth-child(3) { animation-delay: .1s; }
+.page.active > *:nth-child(4) { animation-delay: .15s; }
+.page.active > *:nth-child(5) { animation-delay: .2s; }
+.page.active > *:nth-child(n+6) { animation-delay: .25s; }
+@keyframes reveal-child { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 .lead { color: var(--ink-dim); margin: .1rem 0 1.3rem; font-size: .92rem; max-width: 72ch; }
 
@@ -294,6 +321,16 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .chart-cursor-dot { stroke: var(--bg); stroke-width: 2; pointer-events: none; }
 .chart-marker circle { pointer-events: none; }
 
+/* Entrée animée au premier affichage : la ligne se dessine (stroke-
+   dashoffset piloté en JS, voir drawChart) pendant que l'aire, les points
+   et les repères MAX/MIN apparaissent juste derrière, dans cet ordre —
+   pour que l'oeil suive la courbe plutôt que tout recevoir d'un bloc. */
+.chart-area { opacity: 0; animation: chart-fade-in .8s ease .5s forwards; }
+.chart-dot { animation: chart-dot-in .4s ease .8s backwards; }
+.chart-marker { opacity: 0; animation: chart-fade-in .5s ease 1.05s forwards; }
+@keyframes chart-fade-in { to { opacity: 1; } }
+@keyframes chart-dot-in { from { opacity: 0; } to { opacity: .55; } }
+
 .chart-tooltip {
   position: absolute; pointer-events: none; z-index: 5;
   background: rgba(17,24,39,.97); border: 1px solid var(--line);
@@ -332,11 +369,18 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
   font-family: var(--font-mono);
 }
 .tag-cat { font-size: .72rem; color: var(--ink-faint); }
+/* Badge de fiabilité historique par catégorie (voir dcCategoryVerdicts en
+   JS) : réutilisé sur les cartes "Paris à venir", le filtre "Type de pari"
+   et la colonne "Verdict" de DC rétrospectif — une seule taille compacte
+   pour rester lisible dans les trois contextes, même les plus serrés. */
+.cat-verdict { margin-left: .4rem; font-size: .62rem; padding: .1rem .4rem; cursor: help; }
 
 .muted { color: var(--ink-dim); }
 .tablefoot { margin-top: .7rem; color: var(--ink-faint); font-size: .78rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 details.unmatched { margin-top: 1rem; background: var(--bg-3); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: .55rem 1rem; }
-details.unmatched summary { cursor: pointer; color: var(--ink-dim); font-size: .85rem; }
+details.unmatched summary { cursor: pointer; color: var(--ink-dim); font-size: .85rem; transition: color .15s; }
+details.unmatched summary:hover { color: var(--ink); }
+details.unmatched summary:active { color: var(--cyan); }
 details.unmatched code { background: var(--bg); padding: .1rem .3rem; border-radius: 4px; font-family: var(--font-mono); }
 
 /* Petit intitulé de section entre deux groupes de panneaux d'une même page
@@ -372,7 +416,9 @@ details.panel-group > summary .chev {
   color: var(--ink-faint);
 }
 details.panel-group[open] > summary .chev { transform: rotate(180deg); }
+details.panel-group > summary { transition: border-color .18s, transform .1s; }
 details.panel-group > summary:hover { border-color: var(--violet-lo); }
+details.panel-group > summary:active { transform: scale(.995); border-color: var(--violet); }
 details.panel-group > .panel-group-inner { padding-top: .2rem; }
 
 /* Cartes-tableau responsive */
@@ -454,6 +500,7 @@ details.panel-group > .panel-group-inner { padding-top: .2rem; }
   transition: color .15s;
 }
 .rec-check:hover { color: var(--ink-dim); }
+.rec-check:active { color: var(--ink); }
 .rec-check .chk { width: .9rem; height: .9rem; }
 .mise-placee-wrap {
   display: inline-flex; align-items: center; gap: .2rem; margin-left: auto;
@@ -478,13 +525,27 @@ details.panel-group > .panel-group-inner { padding-top: .2rem; }
 .btn {
   appearance: none; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink);
   border-radius: 7px; padding: .42rem .85rem; font-family: var(--font-body); font-size: .84rem;
-  font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s;
+  font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s, transform .1s;
 }
 .btn:hover { border-color: var(--cyan); background: rgba(34,211,238,.08); }
+.btn:active { transform: scale(.96); }
 .btn-primary {
   background: rgba(34,211,238,.12); border-color: rgba(34,211,238,.4); color: var(--cyan);
 }
 .btn-primary:hover { background: rgba(34,211,238,.2); border-color: var(--cyan); }
+/* Boutons "Copier l'entrée Python" des panneaux de diagnostic (matchs non
+   rapprochés, compétitions non alignées) : inline dans une liste dense, donc
+   nettement plus petits qu'un .btn normal. Le survol (title=) montre le
+   code généré en entier avant de cliquer. */
+.btn-copy-alias {
+  appearance: none; background: var(--bg-3); border: 1px solid var(--line); color: var(--cyan);
+  border-radius: 5px; padding: .15rem .5rem; margin-left: .5rem; font-family: var(--mono);
+  font-size: .68rem; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s, transform .1s;
+  vertical-align: middle;
+}
+.btn-copy-alias:hover { border-color: var(--cyan); background: rgba(34,211,238,.1); }
+.btn-copy-alias:active:not(:disabled) { transform: scale(.94); }
+.btn-copy-alias:disabled { opacity: .7; cursor: default; }
 .placed-actions { flex-wrap: wrap; }
 
 /* Analyse des marges */
@@ -746,6 +807,25 @@ td.lvl-bad { color: var(--down); }
   padding: .35rem .7rem; font-size: .73rem; color: var(--ink-dim);
   font-family: var(--font-mono); box-shadow: var(--edge);
 }
+/* Variantes utilisées par la vue d'ensemble pour signaler l'état
+   d'alignement des données (matchs non rapprochés, compétitions non
+   alignées) : rouge = à corriger, vert = rien à signaler. .link rend le
+   chip cliquable (renvoie vers le panneau de diagnostic concerné, voir
+   irVersOnglet() dans app.js) plutôt que de laisser deviner où chercher. */
+.coverage-chip.alert {
+  border-color: rgba(178,59,59,.5); color: #e2a0a0;
+  background: linear-gradient(150deg, rgba(178,59,59,.16), var(--night-2));
+}
+.coverage-chip.ok {
+  border-color: rgba(26,127,90,.5); color: #7fd3a8;
+  background: linear-gradient(150deg, rgba(26,127,90,.14), var(--night-2));
+}
+.coverage-chip.link {
+  cursor: pointer; font-family: inherit; font-size: .73rem;
+  transition: border-color .15s, transform .15s;
+}
+.coverage-chip.link:hover { border-color: var(--violet-lo); transform: translateY(-1px); }
+.coverage-chip.link:active { transform: translateY(0) scale(.96); }
 
 footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-align: center; line-height: 1.8; }
 
@@ -1025,11 +1105,12 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   box-shadow: none;
   cursor: pointer;
   position: relative;
-  transition: background .15s, border-color .15s;
+  transition: background .15s, border-color .15s, transform .1s;
 }
 .chk-group input[type="checkbox"]:hover {
   border-color: var(--violet);
 }
+.chk-group input[type="checkbox"]:active { transform: scale(.85); }
 .chk-group input[type="checkbox"]:checked {
   background: var(--violet);
   border-color: var(--violet);
@@ -1067,6 +1148,7 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   transition: border-color .18s, box-shadow .18s, background .18s;
 }
 .msel-btn:hover { border-color: var(--ink-faint); }
+.msel-btn:active { background: var(--night-2); }
 .msel-btn:focus-visible, .msel.open .msel-btn {
   outline: none; border-color: var(--violet);
   box-shadow: 0 0 0 3px rgba(139,111,255,.18), var(--glow-violet);
@@ -1116,9 +1198,10 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   box-shadow: none;
   cursor: pointer;
   position: relative;
-  transition: background .15s, border-color .15s;
+  transition: background .15s, border-color .15s, transform .1s;
 }
 .msel-panel input[type="checkbox"]:hover { border-color: var(--violet); }
+.msel-panel input[type="checkbox"]:active { transform: scale(.85); }
 .msel-panel input[type="checkbox"]:checked { background: var(--violet); border-color: var(--violet); }
 .msel-panel input[type="checkbox"]:checked::after {
   content: "";
