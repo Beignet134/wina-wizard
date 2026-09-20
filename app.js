@@ -2095,6 +2095,7 @@ function renderBacktest() {
   renderLigueComparaison(rowsFiltrees);
   renderBacktestRows();
   renderOosValidation();
+  renderNbValidation();
   renderMouvement();
   drawCalibration();
   drawParCote();
@@ -2528,6 +2529,59 @@ function renderOosValidation() {
     </div>
     <div class="verdict-box ${cls}" style="margin-top:1rem">
       <strong>${titre}</strong> ${texte}
+    </div>`;
+}
+
+/* Diagnostic : la binomiale négative calibre-t-elle mieux que Poisson ?
+   Purement informatif — n'affecte jamais p_model/edge/ev, calculés par
+   Python côté serveur toujours en Poisson. Voir estimer_dispersion_nbinom
+   et valider_nbinom dans wina_wizard.py pour la méthodologie. */
+function renderNbValidation() {
+  const box = $("btNbValid");
+  if (!box) return;
+  const v = BT_STATS.nb_validation;
+
+  if (!v) {
+    box.innerHTML = '<p class="muted">En attente de données.</p>';
+    return;
+  }
+  if (v.insuffisant || !v.r_estime) {
+    const nm = v.n_matchs != null ? v.n_matchs : 0;
+    box.innerHTML = `<p class="muted">Pas assez de matchs testés pour trancher (${nm}, il en ` +
+      `faut environ 100) — ou aucune survariance détectable pour l'instant : Poisson colle déjà ` +
+      `à la variance observée sur ce backtest.</p>`;
+    return;
+  }
+
+  const brierGagne = v.brier_nbinom < v.brier_poisson;
+  const bloc = (nom, valeur, sousTexte, gagne) => `
+    <div class="oos-half">
+      <div class="oos-label">${nom}</div>
+      <div class="oos-periode">${sousTexte}</div>
+      <div class="oos-roi ${gagne ? 'pos' : ''}">${valeur}</div>
+    </div>`;
+
+  const ratioTxt = v.calib_ratio_nbinom != null
+    ? `· ratio de calibration NB ${v.calib_ratio_nbinom.toFixed(3)}` +
+      (CALIB_RATIO ? ` (Poisson : ${CALIB_RATIO.toFixed(3)}, cible 1.0)` : "")
+    : "";
+
+  box.innerHTML = `
+    <div class="oos-grid">
+      ${bloc("Poisson (actif)", v.brier_poisson.toFixed(5), "score de Brier — plus bas = mieux calibré", !brierGagne)}
+      <div class="oos-arrow" aria-hidden="true">vs</div>
+      ${bloc("Binomiale négative", v.brier_nbinom.toFixed(5), `r estimé = ${v.r_estime}`, brierGagne)}
+    </div>
+    <p class="muted" style="margin-top:.8rem; font-size:.85rem">
+      ${v.n_paris} paris testés
+      · gain de Brier ${v.brier_gain_pct != null ? (v.brier_gain_pct > 0 ? "+" : "") + v.brier_gain_pct + " %" : "—"}
+      · favorable dans ${v.favorable_bootstrap_pct} % des tirages bootstrap
+      ${ratioTxt}
+    </p>
+    <div class="verdict-box ${v.concluant ? "bon" : "neutre"}" style="margin-top:.8rem">
+      <strong>${v.concluant ? "Amélioration nette et stable." : "Pas encore concluant."}</strong>
+      ${v.conclusion} La loi active reste Poisson : ce panneau est un diagnostic, pas un
+      changement automatique de modèle.
     </div>`;
 }
 
