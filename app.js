@@ -4261,8 +4261,12 @@ function renderTirsTable() {
   const search = $("tiSearch").value.trim().toLowerCase();
   const minM = parseInt($("tiMinMatches").value) || 0;
 
+  // ligueKey(pays, ligue) plutôt que le seul nom de ligue : "Serie A",
+  // "Primera División" ou "Super League" existent dans plusieurs pays sans
+  // aucun rapport entre eux (voir _index_pays_equipes côté Python) — filtrer
+  // sur le nom seul mélangerait ces championnats homonymes.
   let rows = equipes.filter(e =>
-    (!ligue || e.ligue === ligue) &&
+    (!ligue || ligueKey(e.pays, e.ligue) === ligue) &&
     (!search || e.equipe.toLowerCase().includes(search)) &&
     e.n >= minM
   );
@@ -4276,7 +4280,7 @@ function renderTirsTable() {
   $("tirsBody").innerHTML = rows.slice(0, 500).map(e => `
     <tr>
       <td><strong>${e.equipe}</strong></td>
-      <td><span class="pill">${e.ligue || "—"}</span></td>
+      <td><span class="pill">${ligueLabel(e.pays, e.ligue) || e.ligue || "—"}</span></td>
       ${tirsCell(e.attaque, false)}
       ${tirsCell(e.defense, true)}
       <td class="num muted">${e.n}</td>
@@ -4287,9 +4291,22 @@ function renderTirsTable() {
 
 (function initTirsFilters() {
   const c = WIZARD_DATA.shots_coverage || {};
-  const ligues = [...new Set((c.equipes || []).map(e => e.ligue).filter(Boolean))].sort();
+  // Une entrée par (pays, ligue) — pas par seul nom de ligue — pour ne pas
+  // fusionner deux championnats homonymes de pays différents dans le menu.
+  const parKey = new Map();
+  (c.equipes || []).forEach(e => {
+    if (!e.ligue) return;
+    const k = ligueKey(e.pays, e.ligue);
+    if (!parKey.has(k)) parKey.set(k, e);
+  });
+  const options = [...parKey.values()].sort((a, b) =>
+    ligueLabel(a.pays, a.ligue).localeCompare(ligueLabel(b.pays, b.ligue)));
   const sel = $("tiLigue");
-  ligues.forEach(l => { const o = document.createElement("option"); o.value = l; o.textContent = l; sel.appendChild(o); });
+  options.forEach(e => {
+    const o = document.createElement("option");
+    o.value = ligueKey(e.pays, e.ligue); o.textContent = ligueLabel(e.pays, e.ligue);
+    sel.appendChild(o);
+  });
 })();
 ["tiLigue", "tiSearch", "tiMinMatches"].forEach(id => {
   const el = $(id);
