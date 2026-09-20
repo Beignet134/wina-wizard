@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920111333">
+<link rel="stylesheet" href="style.css?v=20260920112411">
 </head>
 <body>
 <div class="topbar">
@@ -213,9 +213,19 @@
       </div>
       <details class="unmatched" id="unmatchedBox">
         <summary></summary>
-        <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant (noms trop différents ?).
-        Enrichir <code>TEAM_ALIASES</code> dans le script Python pour les récupérer.</p>
+        <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant (noms trop différents, ou
+        résultat pas encore collecté). Enrichir <code>TEAM_ALIASES</code> dans le script Python pour les récupérer
+        — le pays/la ligue affichés aident à repérer un motif (une même compétition qui revient souvent).</p>
         <ul id="unmatchedList"></ul>
+      </details>
+      <details class="unmatched" id="unalignedLeaguesBox">
+        <summary></summary>
+        <p class="muted">Ces compétitions n'ont jamais pu être alignées entre les cotes et les résultats (nom de
+        pays ou de ligue trop différent d'une source à l'autre) : <strong>tous</strong> leurs matchs sont perdus
+        d'un coup, backtest et paris à venir compris. Une seule entrée ajoutée à
+        <code>LEAGUE_ALIASES_RESULTATS</code> (ou <code>PAYS_ALIASES_RESULTATS</code>) dans le script Python
+        récupère généralement toute la ligne d'un coup — à traiter en priorité sur la liste ci-dessus.</p>
+        <ul id="unalignedLeaguesList"></ul>
       </details>
     </div>
   </section>
@@ -930,7 +940,9 @@
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10.2l2 2 4-4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Mes paris joués <span class="hint">— <span id="uPlacedCount">0</span> pari(s) coché(s), <span id="uPlacedTotal">0 €</span> engagé(s)</span></h2>
       <p class="muted" style="margin:-.4rem 0 .9rem; font-size:.85rem">
         Coche « Pari joué » sur une carte pour garder la trace de ce que tu as réellement misé.
-        Pour que ces coches survivent à la prochaine génération, télécharge le fichier
+        Ce navigateur retient déjà tes coches tout seul (filet de sécurité local), mais ça reste
+        propre à cet appareil et ce navigateur : pour que ces coches survivent à une nouvelle
+        génération lancée d'ailleurs, ou changent d'appareil, télécharge le fichier
         et dépose-le à côté de <code>wina_wizard.py</code> (remplace l'ancien).
       </p>
       <div class="placed-actions">
@@ -1267,7 +1279,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920111333"></script>
-<script src="app.js?v=20260920111333"></script>
+<script src="donnees.js?v=20260920112411"></script>
+<script src="app.js?v=20260920112411"></script>
 </body>
 </html>
