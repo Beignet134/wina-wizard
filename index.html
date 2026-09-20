@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920182239">
+<link rel="stylesheet" href="style.css?v=20260920185225">
 </head>
 <body>
 <div class="topbar">
@@ -530,6 +530,15 @@
           </select>
         </div>
         <div class="field">
+          <label for="btEvMax" title="Une espérance très élevée est presque toujours un signal d'erreur du modèle, pas une vraie opportunité — voir le bandeau d'avertissement de la page « Paris à venir ». Mesuré le 20/09/2026 : les paris à plus de +50 % d'espérance étaient à 0 % de réussite (0/14) sur un échantillon réel.">Espérance maximum</label>
+          <select id="btEvMax">
+            <option value="999">Illimitée</option>
+            <option value="0.3">Max +30 %</option>
+            <option value="0.5" selected>Max +50 % (recommandé)</option>
+            <option value="1">Max +100 %</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="btEdge">Edge minimum</label>
           <select id="btEdge">
             <option value="0.02">2 % (tous)</option>
@@ -912,6 +921,15 @@
           </select>
         </div>
         <div class="field">
+          <label for="uEvMax" title="Une espérance très élevée est presque toujours un signal d'erreur du modèle, pas une vraie opportunité. Mesuré le 20/09/2026 : les paris à plus de +50 % d'espérance étaient à 0 % de réussite (0/14) sur un échantillon réel.">Espérance maximum</label>
+          <select id="uEvMax">
+            <option value="999">Illimitée</option>
+            <option value="0.3">Max +30 %</option>
+            <option value="0.5" selected>Max +50 % (recommandé)</option>
+            <option value="1">Max +100 %</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="uCote">Plage de cotes</label>
           <select id="uCote">
             <option value="">Toutes</option>
@@ -1290,7 +1308,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920182239"></script>
-<script src="app.js?v=20260920182239"></script>
+<script src="donnees.js?v=20260920185225"></script>
+<script src="app.js?v=20260920185225"></script>
 </body>
 </html>
