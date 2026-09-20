@@ -1140,6 +1140,18 @@ function renderUpcoming() {
         if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
       }
     }
+    // Plafond d'espérance : au-delà, l'espérance affichée n'est presque
+    // jamais une vraie opportunité mais une erreur du modèle (voir le
+    // commentaire détaillé sur seuilEvMax dans btFiltered, page DC
+    // rétrospectif — même mesure empirique, même seuil par défaut).
+    // 999 = pas de plafond ; une espérance manquante n'est jamais exclue.
+    if ($("uEvMax")) {
+      const seuilEvMax = parseFloat($("uEvMax").value);
+      if (seuilEvMax < 900) {
+        const ev = v.ev_aff ?? v.ev;
+        if (ev != null && ev > seuilEvMax) return false;
+      }
+    }
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
@@ -1522,7 +1534,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uCalib","uCote","uMise2"].forEach(id => {
+["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uCalib","uCote","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1732,7 +1744,7 @@ cablerMenusDeroulants();
 [["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
- ["btEvPos","uEvPos"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
+ ["btEvPos","uEvPos"], ["btEvMax","uEvMax"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
  ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
 
 // Sans ratio mesurable (backtest de moins de 100 paris, ou ratio aberrant
@@ -2222,6 +2234,15 @@ function btFiltered() {
   // ce qu'un pari rapporte vraiment.
   // -999 = pas de filtre ; 0 = strictement positive ; 0.02 = au moins +2 %.
   const seuilEv = $("btEvPos") ? parseFloat($("btEvPos").value) : -999;
+  // Plafond d'espérance : 999 = pas de plafond. Mesure empirique du
+  // 20/09/2026 (export réel, catégories Plus/Moins de buts + Intervalle de
+  // buts) — les paris affichant plus de +50 % d'espérance étaient à 0 %
+  // de réussite (0 sur 14), contre un taux normal ailleurs dans le même
+  // échantillon : une espérance aussi extrême signale presque toujours une
+  // erreur du modèle (queue de distribution des buts totaux surestimée),
+  // pas une vraie opportunité — voir aussi le bandeau d'avertissement de
+  // la page "Paris à venir", qui dit la même chose en mots.
+  const seuilEvMax = $("btEvMax") ? parseFloat($("btEvMax").value) : 999;
   // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
   // être vu comme gagnant par TOUS les filtres qui suivent (y compris
   // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
@@ -2249,10 +2270,15 @@ function btFiltered() {
     // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
     // pas celle du modèle seul — sinon le filtre contredirait les chiffres
     // affichés dans les colonnes.
-    if (seuilEv > -900) {
+    if (seuilEv > -900 || seuilEvMax < 900) {
       const ev = alpha < 1 ? blended(r, alpha).ev : r.ev;
-      if (ev == null) return false;
-      if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
+      if (seuilEv > -900) {
+        if (ev == null) return false;
+        if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
+      }
+      // Une espérance manquante n'est jamais "trop haute" : le plafond ne
+      // l'exclut pas, contrairement au plancher ci-dessus.
+      if (seuilEvMax < 900 && ev != null && ev > seuilEvMax) return false;
     }
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
@@ -3725,7 +3751,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btEvMax","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
