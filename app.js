@@ -747,8 +747,23 @@ $("chkAll").addEventListener("change", e => {
   const total = lignes.reduce((s, [, n]) => s + n, 0);
   box.querySelector("summary").textContent =
     `${lignes.length} compétition(s) non alignée(s), ${total} match(s) perdu(s) — cliquer pour voir`;
-  list.innerHTML = lignes.map(([cle, n]) =>
-    `<li><strong>${cle}</strong> <span class="muted">— ${n} match(s)</span></li>`).join("");
+  // ligues_non_alignees_detail (ajout du 20/09/2026) donne, pour chaque
+  // ligue non alignée, le libellé pays/ligue RÉEL côté résultats — retrouvé
+  // via le rapprochement par nom d'équipe (indépendant de l'alignement de
+  // ligue), donc fiable même quand ce dernier échoue. Seul dc_stats le
+  // fournit (voir le commentaire Python) ; on fusionne les deux sources par
+  // clé au cas où poisson_stats en gagnerait un jour.
+  const detail = new Map();
+  const ajouterDetail = src => (src || []).forEach(d => { if (d.candidat && !detail.has(d.cle)) detail.set(d.cle, d.candidat); });
+  ajouterDetail((WIZARD_DATA.dc_stats || {}).ligues_non_alignees_detail);
+  ajouterDetail((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees_detail);
+  list.innerHTML = lignes.map(([cle, n]) => {
+    const candidat = detail.get(cle);
+    const suffix = candidat
+      ? ` <br><span class="muted">↳ côté résultats, cette compétition s'appelle : ${candidat}</span>`
+      : "";
+    return `<li><strong>${cle}</strong> <span class="muted">— ${n} match(s)</span>${suffix}</li>`;
+  }).join("");
 })();
 
 /* ================= PAGE 2 — DIXON-COLES ================= */
