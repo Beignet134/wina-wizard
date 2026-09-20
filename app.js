@@ -2244,6 +2244,127 @@ function renderBacktestRows() {
   attachDcTooltips();
 }
 
+// --- Export CSV du tableau "Détail des paris testés" --------------------
+// La feuille « Paris testés » du classeur Excel (write_backtest_xlsx côté
+// Python) est un dump LARGE : elle ne filtre que sur un seuil d'edge lâche
+// (brut OU dévigué >= 2 %) et n'a même pas de colonne Espérance — elle ne
+// contient ni le dédoublonnage « un seul par match et catégorie », ni les
+// corrections calibration/xG/mélange marché, ni la mise Kelly. Reproduire
+// « les mêmes filtres » à la main dans Excel à partir de là ne peut PAS
+// retomber sur les mêmes résultats que le site : la matière première n'est
+// pas la même, et c'est justement ce qui avait faussé une analyse plus tôt
+// dans cette conversation.
+//
+// Ce bouton exporte à la place EXACTEMENT ce que btFiltered() retient sous
+// les filtres actuellement affichés à l'écran — la même fonction que celle
+// qui alimente les KPI, le graphique et le tableau de cette page. Il ne
+// peut donc pas exister d'écart entre le CSV et ce qui est affiché : c'est
+// littéralement les mêmes données, au même instant.
+function exporterBacktestCsv() {
+  const devigActif = $("btDevig") && $("btDevig").value === "1";
+  // Tri chronologique, indépendant du tri courant du tableau à l'écran (qui
+  // peut être sur n'importe quelle colonne) — un ordre stable et prévisible
+  // pour un fichier destiné à être retravaillé dans Excel.
+  const rows = btFiltered().slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const fb = $("btExportFeedback");
+  if (!rows.length) {
+    if (fb) fb.textContent = "Aucun pari à exporter avec les filtres actuels.";
+    return;
+  }
+
+  // Point-virgule (pas virgule) : Excel en français scinde une colonne au
+  // point-virgule, la virgule étant déjà le séparateur décimal.
+  const champ = v => {
+    if (v == null) return "";
+    const s = String(v).replace(/"/g, '""');
+    return /[;"\n]/.test(s) ? `"${s}"` : s;
+  };
+  const pct = v => (v == null ? "" : (v * 100).toFixed(1) + "%");
+  const num = v => (v == null ? "" : v.toFixed(2));
+
+  // Reprend AU MOINS toutes les colonnes de la feuille « Paris testés » du
+  // classeur Excel (mêmes intitulés, pour s'y retrouver), plus l'Espérance
+  // — absente du classeur, alors que c'est justement l'un des filtres qui
+  // fait diverger le site d'un filtrage manuel dans Excel — et la mise/le
+  // gain réellement appliqués ici (fixe ou Kelly selon "Stratégie de mise").
+  const entetes = [
+    "Date", "Match", "Pays", "Ligue", "Catégorie", "Pari", "Cote",
+    "Proba modèle", "Proba modèle (xG)",
+    "Edge brut", "Edge brut (xG)", "Edge dévigué", "Edge dévigué (xG)",
+    "Espérance", "Espérance (xG)", "Marge marché",
+    "Score réel", "Gagné", "Profit (unités)",
+    "Buts att. dom.", "Buts att. dom. (xG)", "Buts att. ext.", "Buts att. ext. (xG)",
+    "Force att. dom.", "Force déf. dom.", "Force att. ext.", "Force déf. ext.",
+    "Hist. dom.", "Hist. ext.",
+    "Cote ouverture", "Variation proba", "A raccourci", "Nb captures",
+    "Edge affiché (site)", "Mise (€)", "Gain/perte (€)",
+  ];
+  const lignes = rows.map(r => {
+    // appliquerXg() (voir plus haut) substitue p_model/edge/edge_devig/
+    // lam_home/lam_away par leur lecture xG QUAND elle est active, en
+    // sauvegardant l'originale "en buts" dans *_buts — sauf pour l'espérance,
+    // qui n'a pas de sauvegarde dédiée : on la recalcule nous-mêmes avec la
+    // même formule qu'ailleurs dans ce fichier (ev = p·(cote−1) − (1−p)),
+    // pour offrir les DEUX lectures ici comme pour proba/edge.
+    const probaButs = r.p_model_buts ?? r.p_model;
+    const probaXg = r.p_model_xg;
+    const edgeButs = r.edge_buts ?? r.edge;
+    const edgeXg = r.edge_xg;
+    const edgeDevigButs = r.edge_devig_buts ?? r.edge_devig;
+    const edgeDevigXg = r.edge_devig_xg;
+    const lamHomeButs = r.lam_home_buts ?? r.lam_home;
+    const lamHomeXg = r.lam_home_xg;
+    const lamAwayButs = r.lam_away_buts ?? r.lam_away;
+    const lamAwayXg = r.lam_away_xg;
+    const evButs = probaButs != null ? probaButs * (r.cote - 1) - (1 - probaButs) : null;
+    const evXg = probaXg != null ? probaXg * (r.cote - 1) - (1 - probaXg) : null;
+
+    // Même lecture d'edge que la colonne "Edge" du tableau juste au-dessus
+    // (celle du mode actif, brut ou dévigué) — utile pour vérifier d'un
+    // coup d'œil laquelle des deux a fait passer le pari sous ce filtre.
+    const edgeAffiche = devigActif ? (r.edge_devig ?? r.edge) : r.edge;
+    // Même mise que la colonne "Gain/perte" du tableau : suit la stratégie
+    // choisie dans "Stratégie de mise" (fixe ou Kelly).
+    const mise = btStakeFor(r);
+    const gain = r.profit * mise;
+
+    return [
+      r.date, r.match, r.pays || "", r.ligue || "", r.categorie, r.colonne,
+      num(r.cote),
+      pct(probaButs), pct(probaXg),
+      pct(edgeButs), pct(edgeXg), pct(edgeDevigButs), pct(edgeDevigXg),
+      pct(evButs), pct(evXg), pct(r.marge_marche),
+      r.score_reel, r.gagne ? "Oui" : "Non", num(r.profit),
+      num(lamHomeButs), num(lamHomeXg), num(lamAwayButs), num(lamAwayXg),
+      num(r.force_att_dom), num(r.force_def_dom), num(r.force_att_ext), num(r.force_def_ext),
+      r.n_hist_dom ?? "", r.n_hist_ext ?? "",
+      num(r.cote_ouverture), pct(r.variation_proba),
+      r.raccourcit == null ? "" : (r.raccourcit ? "Oui" : "Non"), r.n_captures ?? "",
+      pct(edgeAffiche), num(mise), num(gain),
+    ].map(champ).join(";");
+  });
+  // ﻿ (BOM) : sans lui, Excel Windows interprète les caractères
+  // accentués du fichier comme du Latin-1 et affiche "Ã©" au lieu de "é".
+  const csv = "﻿" + entetes.join(";") + "\n" + lignes.join("\n");
+  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `wina_wizard_filtre_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  if (fb) {
+    fb.textContent = `${rows.length} pari(s) exporté(s) — exactement ceux retenus par les filtres actuels de cette page.`;
+    setTimeout(() => { fb.textContent = ""; }, 7000);
+  }
+}
+(function initExportBacktestCsv() {
+  const btn = $("btExportCsv");
+  if (btn) btn.addEventListener("click", exporterBacktestCsv);
+})();
+
 /* Infobulle détaillant les paramètres du modèle pour un match donné :
    comprendre POURQUOI il a misé là, et avec quelle solidité d'historique. */
 function attachDcTooltips() {
