@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920154634">
+<link rel="stylesheet" href="style.css?v=20260920164259">
 </head>
 <body>
 <div class="topbar">
@@ -430,6 +430,10 @@
             </button>
             <div class="msel-panel msel-panel-ligues">
               <input type="text" class="msel-search" id="btLigueSearch" placeholder="Rechercher une ligue…" autocomplete="off">
+              <div class="msel-actions">
+                <button type="button" class="msel-action" id="btLigueCheckAll">Tout cocher</button>
+                <button type="button" class="msel-action" id="btLigueUncheckAll">Tout décocher</button>
+              </div>
               <div class="msel-options" id="btLigueOptions"><!-- peuplé en JS, voir initMeta() --></div>
             </div>
           </div>
@@ -799,6 +803,10 @@
             </button>
             <div class="msel-panel msel-panel-ligues">
               <input type="text" class="msel-search" id="uLigueSearch" placeholder="Rechercher une ligue…" autocomplete="off">
+              <div class="msel-actions">
+                <button type="button" class="msel-action" id="uLigueCheckAll">Tout cocher</button>
+                <button type="button" class="msel-action" id="uLigueUncheckAll">Tout décocher</button>
+              </div>
               <div class="msel-options" id="uLigueOptions"><!-- peuplé en JS, voir initMeta() --></div>
             </div>
           </div>
@@ -1282,7 +1290,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920154634"></script>
-<script src="app.js?v=20260920154634"></script>
+<script src="donnees.js?v=20260920164259"></script>
+<script src="app.js?v=20260920164259"></script>
 </body>
 </html>
