@@ -751,14 +751,11 @@ document.querySelectorAll("#vTable th.sortable").forEach(th => {
 
 /* ================= PAGE 3 — PARIS À VENIR ================= */
 const UPCOMING = VALUE_BETS.filter(v => v.is_upcoming && v.days_until!=null && v.days_until <= UPCOMING_DAYS);
-// Nombre de paris du JOUR précisément (pas le total sur toute la fenêtre
-// à venir) : cohérent avec un usage "je mise chaque matin pour les matchs
-// du jour" — la fenêtre entière reste consultable sur la page elle-même,
-// triée par date par défaut.
-{
-  const aujourdhui = new Date().toISOString().slice(0, 10);
-  $("tabUpCount").textContent = UPCOMING.filter(v => v.date === aujourdhui).length;
-}
+// Le badge sur l'onglet est mis à jour dans renderUpcoming() (voir plus
+// bas, juste à côté de $("uNb")) : il doit refléter le nombre de cartes
+// RÉELLEMENT affichées compte tenu des filtres actifs, pas un total figé
+// calculé une seule fois au chargement — sans quoi le chiffre de l'onglet
+// pouvait ne plus correspondre du tout à ce qu'il y avait en dessous.
 
 /* --- Suivi des paris réellement joués ---------------------------------
    L'identifiant doit rester stable d'un jour à l'autre (les cotes bougent,
@@ -980,6 +977,12 @@ function renderUpcoming() {
   const evTotal = rows.reduce((s,v,i) => s+(v.ev_aff ?? v.ev)*miseParPari[i], 0);
   const matches = new Set(rows.map(v=>v.match)).size;
   $("uNb").textContent = n;
+  // Même chiffre que "uNb" ci-dessus, dupliqué sur le badge de l'onglet :
+  // toujours égal au nombre de cartes réellement affichées dans la grille
+  // plus bas (rows.map(...) sans aucune pagination), quels que soient les
+  // filtres actifs — jamais un total indépendant qui pourrait diverger.
+  const tabCount = $("tabUpCount");
+  if (tabCount) tabCount.textContent = n;
   $("uMise").textContent = mise.toLocaleString("fr-FR", {maximumFractionDigits: 0}) + " €";
   const evEl=$("uEv"); evEl.textContent=fmtEur(evTotal); evEl.className="v "+(evTotal>=0?"pos":"neg");
   $("uMatches").textContent = matches;
