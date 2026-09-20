@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920141404">
+<link rel="stylesheet" href="style.css?v=20260920154634">
 </head>
 <body>
 <div class="topbar">
@@ -44,11 +44,11 @@
   <!-- PAGE 0 — VUE D'ENSEMBLE                                            -->
   <!-- ================================================================= -->
   <section class="page active" id="page-overview" role="tabpanel">
-    <p class="lead">L'essentiel avant de creuser un onglet précis — performance rétrospective simulée et meilleures pistes du modèle prédictif.</p>
+    <p class="lead">L'essentiel avant de creuser un onglet précis — santé réelle du modèle (backtest value bets) et meilleures pistes à venir.</p>
 
     <div class="scoreboard">
       <div class="scoreboard-head">
-        <span class="eyebrow">Rétrospectif — mise 10 € par pari</span>
+        <span class="eyebrow">Backtest Dixon-Coles — value bets réels, mise 10 € de référence</span>
       </div>
       <div class="score-tiles">
         <div class="score-tile">
@@ -65,7 +65,7 @@
         <div class="score-tile">
           <div class="st-label">Taux de réussite</div>
           <div class="st-value" id="ovWin">—</div>
-          <div class="st-sub" id="ovWinSub">tous paris confondus</div>
+          <div class="st-sub" id="ovWinSub">value bets</div>
         </div>
         <div class="score-tile">
           <div class="st-label">Pistes à venir</div>
@@ -76,13 +76,13 @@
     </div>
 
     <div class="panel panel-chart">
-      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7.5V11l2.6 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 2.2 3.7 4.3l2.1 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Évolution du gain cumulé <span class="hint">— survole la courbe pour le détail de chaque pari</span></h2>
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7.5V11l2.6 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 2.2 3.7 4.3l2.1 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Évolution du gain cumulé — value bets <span class="hint">— survole la courbe pour le détail de chaque pari</span></h2>
       <div id="ovChartWrap"></div>
     </div>
 
     <div class="ov-grid-3">
       <div class="panel">
-        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 15V9M10 15V4M16 15v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Catégories les plus rentables <span class="hint">rétrospectif</span></h2>
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 15V9M10 15V4M16 15v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Par catégorie <span class="hint">backtest réel</span></h2>
         <ul class="ov-list" id="ovCatList"></ul>
       </div>
       <div class="panel">
@@ -90,7 +90,7 @@
         <ul class="ov-list" id="ovUpcomingList"></ul>
       </div>
       <div class="panel">
-        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5L10 3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10.5 10 14l7-3.5M3 14 10 17.5 17 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Couverture des données</h2>
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5L10 3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10.5 10 14l7-3.5M3 14 10 17.5 17 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Qualité des données</h2>
         <div class="coverage-strip" id="ovCoverage"></div>
       </div>
     </div>
@@ -573,7 +573,7 @@
         <table id="btCatTable" class="cardify">
           <thead><tr>
             <th>Catégorie</th><th class="num">Paris</th><th class="num">Réussite</th>
-            <th class="num">Cote moy.</th><th class="num">ROI</th><th class="num">Net</th>
+            <th class="num">Cote moy.</th><th class="num">ROI</th><th class="num">Net</th><th>Verdict</th>
           </tr></thead>
           <tbody id="btCatBody"></tbody>
         </table>
@@ -1282,7 +1282,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920141404"></script>
-<script src="app.js?v=20260920141404"></script>
+<script src="donnees.js?v=20260920154634"></script>
+<script src="app.js?v=20260920154634"></script>
 </body>
 </html>
