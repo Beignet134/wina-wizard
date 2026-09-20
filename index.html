@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920114648">
+<link rel="stylesheet" href="style.css?v=20260920120657">
 </head>
 <body>
 <div class="topbar">
@@ -213,9 +213,11 @@
       </div>
       <details class="unmatched" id="unmatchedBox">
         <summary></summary>
-        <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant (noms trop différents, ou
-        résultat pas encore collecté). Enrichir <code>TEAM_ALIASES</code> dans le script Python pour les récupérer
-        — le pays/la ligue affichés aident à repérer un motif (une même compétition qui revient souvent).</p>
+        <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant. Quand un candidat le plus
+        proche est affiché sous une entrée, un résultat existe bien à cette date mais sous le seuil de similarité
+        — souvent un <code>TEAM_ALIASES</code> manquant, à ajouter dans le script Python en comparant les deux noms.
+        Sans candidat affiché, aucun résultat n'existe ce jour-là pour ce match : un trou de couverture réel, pas un
+        problème de nom (un alias n'y changerait rien).</p>
         <ul id="unmatchedList"></ul>
       </details>
       <details class="unmatched" id="unalignedLeaguesBox">
@@ -1279,7 +1281,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920114648"></script>
-<script src="app.js?v=20260920114648"></script>
+<script src="donnees.js?v=20260920120657"></script>
+<script src="app.js?v=20260920120657"></script>
 </body>
 </html>
