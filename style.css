@@ -1180,6 +1180,25 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   outline: none; border-color: var(--violet);
   box-shadow: 0 0 0 3px rgba(139,111,255,.18);
 }
+/* Tout cocher / Tout décocher (menu Ligue) : n'agissent que sur les options
+   actuellement visibles dans la recherche (voir cablerActionsLigue en JS) —
+   taper "France" puis "Tout cocher" sélectionne uniquement les championnats
+   français, sans toucher au reste de la liste. */
+.msel-actions {
+  display: flex; gap: .5rem; flex: none;
+}
+.msel-action {
+  flex: 1 1 0;
+  background: var(--night); border: 1px solid var(--line); color: var(--ink-dim);
+  border-radius: 6px; padding: .3rem .5rem; font-size: .74rem; font-family: var(--font-body);
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s, transform .1s;
+}
+.msel-action:hover { border-color: var(--violet); color: var(--ink); }
+.msel-action:active { transform: scale(.96); background: var(--night-2); }
+.msel-action:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
 .msel-options {
   display: flex; flex-direction: column; gap: .75rem;
   max-height: 260px; overflow-y: auto;
