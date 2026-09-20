@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260920083108">
+<link rel="stylesheet" href="style.css?v=20260920090359">
 </head>
 <body>
 <div class="topbar">
@@ -468,6 +468,14 @@
           </select>
         </div>
         <div class="field">
+          <label for="btLoi">Loi statistique (buts)</label>
+          <select id="btLoi">
+            <option value="poisson" selected>Poisson (défaut)</option>
+            <option value="nbinom">Binomiale négative</option>
+          </select>
+          <p id="btLoiNote" class="muted" style="margin:.35rem 0 0; font-size:.8rem"></p>
+        </div>
+        <div class="field">
           <label for="btDedup">Paris liés</label>
           <select id="btDedup">
             <option value="0">Tous les compter</option>
@@ -826,6 +834,14 @@
             <option value="auto">xG si disponible, sinon buts</option>
             <option value="avec">Avec — uniquement les matchs à xG</option>
           </select>
+        </div>
+        <div class="field">
+          <label for="uLoi">Loi statistique (buts)</label>
+          <select id="uLoi">
+            <option value="poisson" selected>Poisson (défaut)</option>
+            <option value="nbinom">Binomiale négative</option>
+          </select>
+          <p id="uLoiNote" class="muted" style="margin:.35rem 0 0; font-size:.8rem"></p>
         </div>
         <div class="field">
           <label for="uDedup">Paris liés</label>
@@ -1241,7 +1257,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260920083108"></script>
-<script src="app.js?v=20260920083108"></script>
+<script src="donnees.js?v=20260920090359"></script>
+<script src="app.js?v=20260920090359"></script>
 </body>
 </html>
