@@ -703,8 +703,41 @@ $("chkAll").addEventListener("change", e => {
 (function initUnmatched() {
   const box = $("unmatchedBox"), list = $("unmatchedList");
   if (!UNMATCHED.length) { box.style.display="none"; return; }
-  box.querySelector("summary").textContent = UNMATCHED.length + " exemple(s) de match non rapproché — cliquer pour voir";
-  list.innerHTML = UNMATCHED.map(t=>`<li>${t}</li>`).join("");
+  // Le total réel (WIZARD_DATA.meta.unmatched) peut dépasser le nombre
+  // d'exemples embarqués (plafonné côté Python) — l'afficher évite de
+  // laisser croire que la liste ci-dessous est exhaustive.
+  const totalReel = (WIZARD_DATA.meta || {}).unmatched;
+  box.querySelector("summary").textContent =
+    (totalReel != null && totalReel > UNMATCHED.length
+      ? `${totalReel} match(s) non rapproché(s) (${UNMATCHED.length} exemple(s) ci-dessous)`
+      : `${UNMATCHED.length} exemple(s) de match non rapproché`)
+    + " — cliquer pour voir";
+  // Chaque exemple est un objet {match, pays, ligue, date} depuis le
+  // correctif du 20/09/2026 (avant : une simple chaîne "Équipe A - Équipe B",
+  // sans assez de contexte pour repérer un motif par compétition).
+  list.innerHTML = UNMATCHED.map(t => {
+    if (typeof t === "string") return `<li>${t}</li>`;  // anciennes données (donnees.js pas régénéré)
+    return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span></li>`;
+  }).join("");
+})();
+
+(function initLiguesNonAlignees() {
+  const box = $("unalignedLeaguesBox"), list = $("unalignedLeaguesList");
+  if (!box || !list) return;
+  // Fusionne les deux diagnostics (backtest + value bets) qui peuvent
+  // chacun rencontrer des matchs de la même ligue non alignée — voir le
+  // commentaire de ligues_non_alignees côté Python (wina_wizard.py).
+  const compte = new Map();
+  const ajouter = src => (src || []).forEach(([cle, n]) => compte.set(cle, (compte.get(cle) || 0) + n));
+  ajouter((WIZARD_DATA.dc_stats || {}).ligues_non_alignees);
+  ajouter((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees);
+  const lignes = [...compte.entries()].sort((a, b) => b[1] - a[1]);
+  if (!lignes.length) { box.style.display = "none"; return; }
+  const total = lignes.reduce((s, [, n]) => s + n, 0);
+  box.querySelector("summary").textContent =
+    `${lignes.length} compétition(s) non alignée(s), ${total} match(s) perdu(s) — cliquer pour voir`;
+  list.innerHTML = lignes.map(([cle, n]) =>
+    `<li><strong>${cle}</strong> <span class="muted">— ${n} match(s)</span></li>`).join("");
 })();
 
 /* ================= PAGE 2 — DIXON-COLES ================= */
@@ -796,6 +829,55 @@ const PLACED = new Map(
   ).map(([k, v]) => reparerClePlacee(k, v))
 );
 
+// --- Filet de sécurité local : le fichier paris_joues.json ci-dessus n'est
+// mis à jour QUE quand vous téléchargez/copiez l'export et remplacez le
+// fichier sur le disque avant de relancer wina_wizard.py. Si vous cochez
+// des paris puis relancez le script sans avoir fait cet export, la page
+// régénérée repart de l'ancien fichier et ces coches disparaissent — c'est
+// le bug qu'on corrige ici.
+//
+// Le navigateur retient donc lui aussi, dans localStorage, un instantané
+// de chaque clé jamais touchée dans CE navigateur : {mise} si cochée,
+// `null` si décochée (un "tombstone" — sinon un simple retrait de la Map
+// ne suffirait pas à empêcher le fichier disque, resté périmé, de la faire
+// réapparaître). Au chargement, on part du fichier disque (source
+// "officielle", partageable) et on rejoue par-dessus l'historique local :
+// ça comble les coches jamais exportées, sans jamais rien perdre du fichier.
+// localStorage est isolé par origine ET par chemin de fichier — tant que
+// vous rouvrez ce même index.html (même dossier), l'historique suit.
+const PLACED_LS_KEY = "wina_placed_overrides_v1";
+
+function chargerOverridesLocaux() {
+  try {
+    const brut = localStorage.getItem(PLACED_LS_KEY);
+    if (!brut) return {};
+    const parsed = JSON.parse(brut);
+    return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+// Objet mutable {clé: {mise} | null} — persisté tel quel à chaque
+// changement. C'est la mémoire longue de ce navigateur, distincte de
+// PLACED (qui ne connaît que l'état ACTUEL, pas les retraits).
+const LOCAL_OVERRIDES = chargerOverridesLocaux();
+
+// Rejoue les overrides locaux par-dessus la Map issue du disque.
+Object.entries(LOCAL_OVERRIDES).forEach(([cle, valeur]) => {
+  if (valeur) PLACED.set(cle, valeur);
+  else PLACED.delete(cle);
+});
+
+function sauverOverridesLocaux() {
+  try {
+    localStorage.setItem(PLACED_LS_KEY, JSON.stringify(LOCAL_OVERRIDES));
+  } catch (e) {
+    // Navigation privée, quota dépassé, storage désactivé… tant pis,
+    // le fichier paris_joues.json (export manuel) reste le filet de secours.
+  }
+}
+
 function betKey(v) {
   return `${v.date}|${v.match}|${v.colonne}`;
 }
@@ -803,6 +885,12 @@ function betKey(v) {
 function togglePlaced(key, on, mise) {
   if (on) PLACED.set(key, {mise: mise != null ? mise : (PLACED.get(key)?.mise ?? null)});
   else PLACED.delete(key);
+  // Trace locale : {mise} si coché, `null` si décoché (tombstone) — voir
+  // le commentaire au-dessus de LOCAL_OVERRIDES. Persisté immédiatement,
+  // pas seulement au rechargement, pour survivre à un crash/fermeture
+  // d'onglet entre la coche et la prochaine régénération.
+  LOCAL_OVERRIDES[key] = on ? PLACED.get(key) : null;
+  sauverOverridesLocaux();
   updatePlacedSummary();
   renderPlacedExport();
   // La page Bankroll n'est pas forcément visible au moment du clic (les
