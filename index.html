@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260921051448">
+<link rel="stylesheet" href="style.css?v=20260921055722">
 </head>
 <body>
 <div class="topbar">
@@ -539,6 +539,22 @@
           </select>
         </div>
         <div class="field">
+          <label for="btFiltreQueue" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts » — rien n'indique le même biais ailleurs. Mesuré le 20/09/2026 (3084 paris réels) : sur ces deux catégories, les marchés extrêmes (Buts 7 et plus, Plus de 4/4.5/5, Moins de 0.5/1) affichent une probabilité modèle 2 à 3 fois supérieure au taux de réussite réel — une petite erreur sur les buts attendus se répercute de façon très non linéaire dans la queue de la distribution.">Marchés de queue (Interv. / Plus-Moins)</label>
+          <select id="btFiltreQueue">
+            <option value="0">Les inclure</option>
+            <option value="1" selected>Les exclure (recommandé)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="btEdgeDevigMax" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts ». Mesuré le 20/09/2026 : sur ces deux catégories, l'écart entre probabilité modèle et réussite réelle croît avec l'edge affiché (2-5 % → environ 4 pt d'écart, 15-25 % → environ 15 pt) — signe d'un « winner's curse » : plus le modèle s'écarte du marché sur ces marchés, plus l'écart tient au bruit de l'estimation qu'à un vrai désaccord informé, face à un marché globalement efficient.">Edge dévigué maximum (Interv. / Plus-Moins)</label>
+          <select id="btEdgeDevigMax">
+            <option value="999">Illimité</option>
+            <option value="0.10">Max 10 %</option>
+            <option value="0.15" selected>Max 15 % (recommandé)</option>
+            <option value="0.20">Max 20 %</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="btEdge">Edge minimum</label>
           <select id="btEdge">
             <option value="0.02">2 % (tous)</option>
@@ -930,6 +946,22 @@
           </select>
         </div>
         <div class="field">
+          <label for="uFiltreQueue" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts ». Mesuré le 20/09/2026 (3084 paris réels) : sur ces deux catégories, les marchés extrêmes (Buts 7 et plus, Plus de 4/4.5/5, Moins de 0.5/1) affichent une probabilité modèle 2 à 3 fois supérieure au taux de réussite réel.">Marchés de queue (Interv. / Plus-Moins)</label>
+          <select id="uFiltreQueue">
+            <option value="0">Les inclure</option>
+            <option value="1" selected>Les exclure (recommandé)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="uEdgeDevigMax" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts ». Mesuré le 20/09/2026 : l'écart entre probabilité modèle et réussite réelle croît avec l'edge affiché sur ces deux catégories — signe de « winner's curse » plutôt que d'un vrai signal.">Edge dévigué maximum (Interv. / Plus-Moins)</label>
+          <select id="uEdgeDevigMax">
+            <option value="999">Illimité</option>
+            <option value="0.10">Max 10 %</option>
+            <option value="0.15" selected>Max 15 % (recommandé)</option>
+            <option value="0.20">Max 20 %</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="uCote">Plage de cotes</label>
           <select id="uCote">
             <option value="">Toutes</option>
@@ -1308,7 +1340,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260921051448"></script>
-<script src="app.js?v=20260921051448"></script>
+<script src="donnees.js?v=20260921055722"></script>
+<script src="app.js?v=20260921055722"></script>
 </body>
 </html>
