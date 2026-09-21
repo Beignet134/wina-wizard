@@ -16,6 +16,30 @@ const MIN_EDGE = WIZARD_DATA.config.min_edge ?? 0.02;
 const ligueLabel = (pays, ligue) => ligue ? (pays ? `${pays} - ${ligue}` : ligue) : "";
 const ligueKey = (pays, ligue) => `${pays || ""}␟${ligue || ""}`;
 
+// --- Filtre "marchés de queue" — Intervalle de buts / Plus-Moins de buts --
+// Mesure empirique du 20/09/2026 (export réel, 3084 paris, ces deux
+// catégories) : sur les marchés proches du total de buts le plus probable,
+// le modèle est raisonnablement calibré (proba prédite ~1,1x le taux réel).
+// Sur les extrémités de la distribution, l'écart explose en proportion :
+// "Buts 7 et plus" prédisait 8,9 % pour 0 % de réussite réelle (N=26),
+// "Plus de 5" 16,9 % pour 5,6 % (N=18), "Moins de 1" 15,5 % pour 6,9 %
+// (N=29). Une petite erreur sur les buts attendus (λ) se répercute de façon
+// très non-linéaire sur la probabilité d'un score extrême (Poisson/binomiale
+// négative) — la correction ρ de Dixon-Coles ne corrige que les scores bas
+// (0-0, 1-0, 0-1, 1-1), rien d'équivalent n'existe pour cette queue-ci.
+// Volontairement scopé à CES DEUX catégories : rien n'indique le même biais
+// ailleurs (1X2, Handicap...), donc pas de généralisation non justifiée —
+// et volontairement une LISTE de marchés à exclure (pas une correction du
+// modèle lui-même), pour rester un filtre réversible plutôt qu'un
+// réétalonnage fitté sur cet échantillon (risque de surapprentissage sur à
+// peine un mois de données, cf. discussion du 20/09/2026).
+const CATEGORIES_FILTRE_QUEUE = new Set(["Intervalle de buts", "Plus/Moins de buts"]);
+const MARCHES_QUEUE = new Set([
+  "Buts 7 et plus",
+  "Plus de 4", "Plus de 4.5", "Plus de 5",
+  "Moins de 0.5", "Moins de 1",
+]);
+
 /* ============================================================
    MÉLANGE AVEC LE MARCHÉ
    ------------------------------------------------------------
@@ -1152,6 +1176,17 @@ function renderUpcoming() {
         if (ev != null && ev > seuilEvMax) return false;
       }
     }
+    // Marchés de queue / plafond d'edge dévigué — même logique et même
+    // portée (Intervalle de buts / Plus-Moins de buts uniquement) que sur
+    // la page DC rétrospectif (btFiltered) ; voir le commentaire détaillé
+    // sur MARCHES_QUEUE en tête de fichier.
+    if (CATEGORIES_FILTRE_QUEUE.has(v.categorie)) {
+      if ($("uFiltreQueue") && $("uFiltreQueue").value === "1" && MARCHES_QUEUE.has(v.colonne)) return false;
+      if ($("uEdgeDevigMax")) {
+        const seuilEdgeDevigMax = parseFloat($("uEdgeDevigMax").value);
+        if (seuilEdgeDevigMax < 900 && v.edge_aff != null && v.edge_aff > seuilEdgeDevigMax) return false;
+      }
+    }
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
@@ -1534,7 +1569,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uCalib","uCote","uMise2"].forEach(id => {
+["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uFiltreQueue","uEdgeDevigMax","uCalib","uCote","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1744,7 +1779,8 @@ cablerMenusDeroulants();
 [["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
- ["btEvPos","uEvPos"], ["btEvMax","uEvMax"], ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
+ ["btEvPos","uEvPos"], ["btEvMax","uEvMax"], ["btFiltreQueue","uFiltreQueue"], ["btEdgeDevigMax","uEdgeDevigMax"],
+ ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
  ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
 
 // Sans ratio mesurable (backtest de moins de 100 paris, ou ratio aberrant
@@ -2243,6 +2279,18 @@ function btFiltered() {
   // pas une vraie opportunité — voir aussi le bandeau d'avertissement de
   // la page "Paris à venir", qui dit la même chose en mots.
   const seuilEvMax = $("btEvMax") ? parseFloat($("btEvMax").value) : 999;
+  // Filtre "marchés de queue" — voir le commentaire sur MARCHES_QUEUE en
+  // tête de fichier. Ne s'applique qu'aux deux catégories concernées.
+  const filtreQueue = $("btFiltreQueue") ? $("btFiltreQueue").value === "1" : false;
+  // Plafond d'edge dévigué, réservé aux deux mêmes catégories : mesure
+  // empirique du 20/09/2026 — l'écart entre proba modèle et réussite réelle
+  // CROÎT avec l'edge affiché (edge 2-5 % -> ~4 pt d'écart de calibration,
+  // 15-25 % -> ~15 pt). Plus notre modèle s'écarte du marché sur CES
+  // marchés-là, plus l'écart tient au bruit de notre propre estimation qu'à
+  // un vrai désaccord informé — un "winner's curse" classique : sélectionner
+  // les plus gros désaccords avec un marché globalement efficient revient à
+  // sélectionner le bruit qui va dans notre sens. 999 = pas de plafond.
+  const seuilEdgeDevigMax = $("btEdgeDevigMax") ? parseFloat($("btEdgeDevigMax").value) : 999;
   // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
   // être vu comme gagnant par TOUS les filtres qui suivent (y compris
   // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
@@ -2279,6 +2327,12 @@ function btFiltered() {
       // Une espérance manquante n'est jamais "trop haute" : le plafond ne
       // l'exclut pas, contrairement au plancher ci-dessus.
       if (seuilEvMax < 900 && ev != null && ev > seuilEvMax) return false;
+    }
+    // Marchés de queue / plafond d'edge dévigué : réservé aux deux
+    // catégories identifiées (voir MARCHES_QUEUE, CATEGORIES_FILTRE_QUEUE).
+    if (CATEGORIES_FILTRE_QUEUE.has(r.categorie)) {
+      if (filtreQueue && MARCHES_QUEUE.has(r.colonne)) return false;
+      if (seuilEdgeDevigMax < 900 && e != null && e > seuilEdgeDevigMax) return false;
     }
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
@@ -3751,7 +3805,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btEvMax","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btEvMax","btFiltreQueue","btEdgeDevigMax","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
