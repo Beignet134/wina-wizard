@@ -752,7 +752,10 @@ $("chkAll").addEventListener("change", e => {
 function normalizeNameJs(name) {
   if (!name) return "";
   let s = String(name);
-  s = s.replace(/ø/g, "o").replace(/Ø/g, "O").replace(/æ/g, "ae").replace(/Æ/g, "Ae");
+  // þ islandais (ex: "Þór Akureyri") : même traitement que ø/æ, voir
+  // normalize_name côté Python pour le détail (near-miss "Þór"/"Thór").
+  s = s.replace(/ø/g, "o").replace(/Ø/g, "O").replace(/æ/g, "ae").replace(/Æ/g, "Ae")
+       .replace(/þ/g, "th").replace(/Þ/g, "Th");
   s = s.normalize("NFKD").replace(/[̀-ͯ]/g, "");
   s = s.toLowerCase();
   s = s.replace(/[^a-z0-9 ]/g, " ");
@@ -833,60 +836,78 @@ document.addEventListener("click", e => {
   copierTexte(decodeURIComponent(btn.dataset.alias || ""), btn);
 });
 
+// Un exemple non rapproché est un objet {match, pays, ligue, date, candidat,
+// score, candidat_pays, candidat_ligue, ligue_ok} — les 3 derniers champs
+// (ajout du 25/09/2026) distinguent une vérification de DATE/LIGUE d'une
+// vérification de NOM : la date est toujours la même par construction
+// (find_result_for ne cherche jamais un autre jour), affichée quand même en
+// vert pour rassurer explicitement. La ligue n'est PAS garantie : la
+// recherche de candidat prend le nom le plus proche CE JOUR-LÀ toutes
+// compétitions confondues, donc un candidat peut très bien venir d'un autre
+// championnat que celui recherché (cas réel : "Karlsruhe" en 2. Bundesliga
+// apparié à "Sankt Pauli II" en Regionalliga — simple hasard de score de
+// similarité, pas le même match). Vérifier date puis ligue AVANT les noms
+// évite justement de suivre une suggestion d'alias qui casserait plus
+// qu'elle ne corrigerait.
+function classifierUnmatched(t) {
+  if (typeof t === "string") return "string";     // anciennes données (donnees.js pas régénéré)
+  if (t.candidat === null) return "none";          // aucun candidat, trou de couverture pur
+  return t.ligue_ok ? "ligue_ok" : "ligue_ko";
+}
+
+function renderUnmatchedItem(t) {
+  if (typeof t === "string") return `<li>${t}</li>`;
+  let suffix = "";
+  let suggestion = null;
+  if (t.candidat) {
+    const checks =
+      `<span class="match-check ok" title="Le candidat vient du même jour (toujours vrai : la recherche ne regarde jamais un autre jour).">✓ même date</span>` +
+      (t.ligue_ok
+        ? `<span class="match-check ok" title="Pays/ligue alignés entre cotes et résultats.">✓ même ligue</span>`
+        : `<span class="match-check warn" title="Côté résultats : ${t.candidat_pays} · ${t.candidat_ligue} — différent de ${t.pays} · ${t.ligue}. Probablement un trou de couverture (aucun match de cette ligue ce jour-là) plutôt qu'un nom mal rapproché : à vérifier avant de faire confiance au nom suggéré ci-dessous.">⚠ ligue différente</span>`);
+    suffix = ` <br>${checks}<br><span class="muted">↳ candidat le plus proche (score ${t.score}) : ${t.candidat}</span>`;
+    // La ligue doit être alignée pour proposer un alias : un candidat
+    // d'une autre compétition n'est presque jamais le bon match (voir
+    // l'exemple Karlsruhe/Sankt Pauli II ci-dessus) — générer un alias
+    // dans ce cas casserait plus qu'il ne corrigerait.
+    suggestion = t.ligue_ok ? suggestionAliasEquipes(t) : null;
+  } else if (t.candidat === null) {
+    suffix = ` <br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
+  }
+  // Bouton de génération : n'apparaît que si au moins une ligne d'alias a
+  // vraiment quelque chose à proposer (deux noms déjà identiques une fois
+  // normalisés n'ont rien à corriger, même avec un candidat affiché).
+  let copyBtn = "";
+  if (suggestion) {
+    copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
+      data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
+  }
+  return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}${copyBtn}</li>`;
+}
+
 (function initUnmatched() {
   const box = $("unmatchedBox"), list = $("unmatchedList");
   if (!UNMATCHED.length) { box.style.display="none"; return; }
-  // Le total réel (WIZARD_DATA.meta.unmatched) peut dépasser le nombre
-  // d'exemples embarqués (plafonné côté Python) — l'afficher évite de
-  // laisser croire que la liste ci-dessous est exhaustive.
+  // Panneau affichant désormais l'ensemble des matchs non rapprochés (plus
+  // de plafond à 80 côté Python depuis le 25/09/2026) : totalReel et
+  // UNMATCHED.length coïncident toujours, mais le test reste en place par
+  // sécurité si un plafond était un jour réintroduit.
   const totalReel = (WIZARD_DATA.meta || {}).unmatched;
   box.querySelector("summary").textContent =
     (totalReel != null && totalReel > UNMATCHED.length
-      ? `${totalReel} match(s) non rapproché(s) (${UNMATCHED.length} exemple(s) ci-dessous)`
-      : `${UNMATCHED.length} exemple(s) de match non rapproché`)
+      ? `${totalReel} match(s) non rapproché(s) (${UNMATCHED.length} affiché(s) ci-dessous)`
+      : `${UNMATCHED.length} match(s) non rapproché(s)`)
     + " — cliquer pour voir";
-  // Chaque exemple est un objet {match, pays, ligue, date, candidat, score,
-  // candidat_pays, candidat_ligue, ligue_ok} — les 3 derniers champs (ajout
-  // du 25/09/2026) distinguent une vérification de DATE/LIGUE d'une
-  // vérification de NOM : la date est toujours la même par construction
-  // (find_result_for ne cherche jamais un autre jour), affichée quand même
-  // en vert pour rassurer explicitement. La ligue n'est PAS garantie : la
-  // recherche de candidat prend le nom le plus proche CE JOUR-LÀ toutes
-  // compétitions confondues, donc un candidat peut très bien venir d'un
-  // autre championnat que celui recherché (cas réel : "Karlsruhe" en 2.
-  // Bundesliga apparié à "Sankt Pauli II" en Regionalliga — simple hasard
-  // de score de similarité, pas le même match). Vérifier date puis ligue
-  // AVANT les noms évite justement de suivre une suggestion d'alias qui
-  // casserait plus qu'elle ne corrigerait.
-  list.innerHTML = UNMATCHED.map(t => {
-    if (typeof t === "string") return `<li>${t}</li>`;  // anciennes données (donnees.js pas régénéré)
-    let suffix = "";
-    let suggestion = null;
-    if (t.candidat) {
-      const checks =
-        `<span class="match-check ok" title="Le candidat vient du même jour (toujours vrai : la recherche ne regarde jamais un autre jour).">✓ même date</span>` +
-        (t.ligue_ok
-          ? `<span class="match-check ok" title="Pays/ligue alignés entre cotes et résultats.">✓ même ligue</span>`
-          : `<span class="match-check warn" title="Côté résultats : ${t.candidat_pays} · ${t.candidat_ligue} — différent de ${t.pays} · ${t.ligue}. Probablement un trou de couverture (aucun match de cette ligue ce jour-là) plutôt qu'un nom mal rapproché : à vérifier avant de faire confiance au nom suggéré ci-dessous.">⚠ ligue différente</span>`);
-      suffix = ` <br>${checks}<br><span class="muted">↳ candidat le plus proche (score ${t.score}) : ${t.candidat}</span>`;
-      // La ligue doit être alignée pour proposer un alias : un candidat
-      // d'une autre compétition n'est presque jamais le bon match (voir
-      // l'exemple Karlsruhe/Sankt Pauli II ci-dessus) — générer un alias
-      // dans ce cas casserait plus qu'il ne corrigerait.
-      suggestion = t.ligue_ok ? suggestionAliasEquipes(t) : null;
-    } else if (t.candidat === null) {
-      suffix = ` <br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
-    }
-    // Bouton de génération : n'apparaît que si au moins une ligne d'alias a
-    // vraiment quelque chose à proposer (deux noms déjà identiques une fois
-    // normalisés n'ont rien à corriger, même avec un candidat affiché).
-    let copyBtn = "";
-    if (suggestion) {
-      copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
-        data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
-    }
-    return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}${copyBtn}</li>`;
-  }).join("");
+
+  const select = $("unmatchedFilter"), countEl = $("unmatchedFilterCount");
+  function rerender() {
+    const filtre = select.value;
+    const visibles = filtre === "all" ? UNMATCHED : UNMATCHED.filter(t => classifierUnmatched(t) === filtre);
+    list.innerHTML = visibles.map(renderUnmatchedItem).join("");
+    countEl.textContent = filtre === "all" ? "" : `${visibles.length} / ${UNMATCHED.length} affiché(s)`;
+  }
+  select.addEventListener("change", rerender);
+  rerender();
 })();
 
 (function initLiguesNonAlignees() {
