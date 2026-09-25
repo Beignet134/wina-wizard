@@ -845,19 +845,35 @@ document.addEventListener("click", e => {
       ? `${totalReel} match(s) non rapproché(s) (${UNMATCHED.length} exemple(s) ci-dessous)`
       : `${UNMATCHED.length} exemple(s) de match non rapproché`)
     + " — cliquer pour voir";
-  // Chaque exemple est un objet {match, pays, ligue, date, candidat, score}
-  // depuis le correctif du 20/09/2026 (avant : une simple chaîne
-  // "Équipe A - Équipe B", sans assez de contexte pour repérer un motif par
-  // compétition). candidat/score (ajout ultérieur) distinguent un near-miss
-  // exploitable (un résultat existe ce jour-là mais sous le seuil de
-  // similarité — souvent un TEAM_ALIASES manquant) d'un vrai trou de
-  // couverture (candidat === null : aucun résultat ce jour-là, un alias n'y
-  // changerait rien).
+  // Chaque exemple est un objet {match, pays, ligue, date, candidat, score,
+  // candidat_pays, candidat_ligue, ligue_ok} — les 3 derniers champs (ajout
+  // du 25/09/2026) distinguent une vérification de DATE/LIGUE d'une
+  // vérification de NOM : la date est toujours la même par construction
+  // (find_result_for ne cherche jamais un autre jour), affichée quand même
+  // en vert pour rassurer explicitement. La ligue n'est PAS garantie : la
+  // recherche de candidat prend le nom le plus proche CE JOUR-LÀ toutes
+  // compétitions confondues, donc un candidat peut très bien venir d'un
+  // autre championnat que celui recherché (cas réel : "Karlsruhe" en 2.
+  // Bundesliga apparié à "Sankt Pauli II" en Regionalliga — simple hasard
+  // de score de similarité, pas le même match). Vérifier date puis ligue
+  // AVANT les noms évite justement de suivre une suggestion d'alias qui
+  // casserait plus qu'elle ne corrigerait.
   list.innerHTML = UNMATCHED.map(t => {
     if (typeof t === "string") return `<li>${t}</li>`;  // anciennes données (donnees.js pas régénéré)
     let suffix = "";
+    let suggestion = null;
     if (t.candidat) {
-      suffix = ` <br><span class="muted">↳ candidat le plus proche (score ${t.score}) : ${t.candidat}</span>`;
+      const checks =
+        `<span class="match-check ok" title="Le candidat vient du même jour (toujours vrai : la recherche ne regarde jamais un autre jour).">✓ même date</span>` +
+        (t.ligue_ok
+          ? `<span class="match-check ok" title="Pays/ligue alignés entre cotes et résultats.">✓ même ligue</span>`
+          : `<span class="match-check warn" title="Côté résultats : ${t.candidat_pays} · ${t.candidat_ligue} — différent de ${t.pays} · ${t.ligue}. Probablement un trou de couverture (aucun match de cette ligue ce jour-là) plutôt qu'un nom mal rapproché : à vérifier avant de faire confiance au nom suggéré ci-dessous.">⚠ ligue différente</span>`);
+      suffix = ` <br>${checks}<br><span class="muted">↳ candidat le plus proche (score ${t.score}) : ${t.candidat}</span>`;
+      // La ligue doit être alignée pour proposer un alias : un candidat
+      // d'une autre compétition n'est presque jamais le bon match (voir
+      // l'exemple Karlsruhe/Sankt Pauli II ci-dessus) — générer un alias
+      // dans ce cas casserait plus qu'il ne corrigerait.
+      suggestion = t.ligue_ok ? suggestionAliasEquipes(t) : null;
     } else if (t.candidat === null) {
       suffix = ` <br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
     }
@@ -865,7 +881,6 @@ document.addEventListener("click", e => {
     // vraiment quelque chose à proposer (deux noms déjà identiques une fois
     // normalisés n'ont rien à corriger, même avec un candidat affiché).
     let copyBtn = "";
-    const suggestion = t.candidat ? suggestionAliasEquipes(t) : null;
     if (suggestion) {
       copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
         data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
