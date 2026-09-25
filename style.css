@@ -400,6 +400,17 @@ details.unmatched code { background: var(--bg); padding: .1rem .3rem; border-rad
 .match-check.ok { color: #7fd3a8; background: rgba(26,127,90,.14); border: 1px solid rgba(26,127,90,.4); }
 .match-check.warn { color: #f0d9a8; background: rgba(255,194,77,.1); border: 1px solid rgba(255,194,77,.35); cursor: help; }
 
+/* Filtre compact du panneau "matchs non rapprochés" (Rétrospectif) : une
+   variante étroite de .field (pensé pour la grille .controls) plutôt qu'un
+   nouveau système de contrôle — même look, mais alignée en ligne et sans
+   s'étirer sur toute la largeur du panneau. */
+.field.unmatched-filter {
+  display: flex; align-items: center; gap: .5rem; margin: .7rem 0 .5rem; max-width: 100%;
+}
+.field.unmatched-filter label { margin-bottom: 0; white-space: nowrap; }
+.field.unmatched-filter select { width: auto; min-width: 220px; }
+.field.unmatched-filter .muted { font-size: .75rem; }
+
 /* Petit intitulé de section entre deux groupes de panneaux d'une même page
    (ex. "Résultats détaillés" sur DC rétrospectif) : sépare visuellement sans
    le poids visuel d'un panneau à part entière. */
