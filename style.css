@@ -382,6 +382,23 @@ details.unmatched summary { cursor: pointer; color: var(--ink-dim); font-size: .
 details.unmatched summary:hover { color: var(--ink); }
 details.unmatched summary:active { color: var(--cyan); }
 details.unmatched code { background: var(--bg); padding: .1rem .3rem; border-radius: 4px; font-family: var(--font-mono); }
+/* Puces de vérification date/ligue d'un candidat non rapproché (panneau
+   "matchs non rapprochés", page Rétrospectif) : affichées AVANT la
+   comparaison des noms d'équipe, pour juger la fiabilité du candidat sans
+   avoir à lire les noms en détail. La date est toujours vraie par
+   construction (le candidat vient forcément du même jour — voir
+   find_result_for côté Python) ; la ligue, elle, ne l'est PAS : un
+   candidat peut être le nom le plus proche trouvé ce jour-là toutes
+   compétitions confondues (cas réel : "Karlsruhe" en 2. Bundesliga
+   apparié à "Sankt Pauli II" en Regionalliga, simple hasard de score de
+   similarité, pas le même match). D'où .warn plutôt que .ok quand
+   ligue_ok est faux — un signal à vérifier, pas une alerte bloquante. */
+.match-check {
+  display: inline-flex; align-items: center; gap: .3rem; font-size: .72rem; font-weight: 700;
+  padding: .1rem .45rem; border-radius: 5px; margin: .3rem .35rem .1rem 0; white-space: nowrap;
+}
+.match-check.ok { color: #7fd3a8; background: rgba(26,127,90,.14); border: 1px solid rgba(26,127,90,.4); }
+.match-check.warn { color: #f0d9a8; background: rgba(255,194,77,.1); border: 1px solid rgba(255,194,77,.35); cursor: help; }
 
 /* Petit intitulé de section entre deux groupes de panneaux d'une même page
    (ex. "Résultats détaillés" sur DC rétrospectif) : sépare visuellement sans
