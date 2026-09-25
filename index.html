@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260925220901">
+<link rel="stylesheet" href="style.css?v=20260925223630">
 </head>
 <body>
 <div class="topbar">
@@ -224,6 +224,17 @@
         différente</span> signale un candidat pris dans une autre compétition ce jour-là, donc probablement un
         trou de couverture plutôt qu'un vrai alias manquant ; le bouton "Copier l'entrée Python" n'apparaît alors
         pas, pour éviter de suivre une suggestion qui casserait plus qu'elle ne corrige.</p>
+        <div class="field unmatched-filter">
+          <label for="unmatchedFilter">Filtrer</label>
+          <select id="unmatchedFilter">
+            <option value="all">Tous</option>
+            <option value="candidat">Avec candidat (✓ même date)</option>
+            <option value="ligue_ok">✓ même ligue</option>
+            <option value="ligue_ko">⚠ ligue différente</option>
+            <option value="none">Aucun candidat (trou de couverture)</option>
+          </select>
+          <span class="muted" id="unmatchedFilterCount"></span>
+        </div>
         <ul id="unmatchedList"></ul>
       </details>
       <details class="unmatched" id="unalignedLeaguesBox">
@@ -1350,7 +1361,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260925220901"></script>
-<script src="app.js?v=20260925220901"></script>
+<script src="donnees.js?v=20260925223630"></script>
+<script src="app.js?v=20260925223630"></script>
 </body>
 </html>
