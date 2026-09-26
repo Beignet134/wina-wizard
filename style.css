@@ -426,8 +426,12 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
 .score-legend-note { font-size: .74rem; }
 /* Infobulle détaillée au survol d'une case (voir initScoreMatrixTooltip en
    JS) : variante plus large du .chart-tooltip générique, pour accueillir la
-   liste des matchs derrière la case plutôt qu'un seul point de courbe. */
-.score-tooltip { min-width: 250px; max-width: 320px; }
+   liste des matchs derrière la case plutôt qu'un seul point de courbe.
+   .chart-tooltip pose "pointer-events: none" (utile pour les tooltips à
+   valeur unique, jamais interactifs) — mais ça rendait la liste ci-dessous
+   IMPOSSIBLE à faire défiler : tout événement souris la traversait sans
+   jamais l'atteindre. On la réactive donc ici spécifiquement. */
+.score-tooltip { min-width: 250px; max-width: 320px; pointer-events: auto; }
 .score-tooltip .tt-score-head {
   display: flex; justify-content: space-between; align-items: baseline; gap: .6rem;
   font-weight: 700; color: var(--ink);
@@ -435,8 +439,12 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
 .score-tooltip .tt-score-agg { font-size: .72rem; color: var(--ink-dim); margin-top: .1rem; }
 .score-tooltip .tt-score-list {
   margin-top: .45rem; padding-top: .4rem; border-top: 1px solid var(--line-soft);
-  display: flex; flex-direction: column; gap: .4rem; max-height: 260px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: .4rem; max-height: 300px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
 }
+.score-tooltip .tt-score-list::-webkit-scrollbar { width: 7px; }
+.score-tooltip .tt-score-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.score-tooltip .tt-score-list::-webkit-scrollbar-track { background: transparent; }
 .score-tooltip .tt-score-row { display: flex; justify-content: space-between; gap: .5rem; }
 .score-tooltip .tt-score-info { min-width: 0; }
 .score-tooltip .tt-score-match { font-weight: 600; font-size: .77rem; color: var(--ink); overflow-wrap: anywhere; }
