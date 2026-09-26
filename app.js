@@ -507,6 +507,19 @@ function updateCategoryTable(rows, stake) {
     </tr>`).join("") || `<tr><td colspan="7" class="muted">Aucun pari ne correspond aux filtres.</td></tr>`;
 }
 
+// Min/max d'un tableau SANS spread (Math.min(...arr)) : au-delà d'environ
+// 65 000 éléments, étaler un tableau en arguments individuels dépasse la
+// limite de la pile d'appel du moteur JS ("Maximum call stack size
+// exceeded") — silencieux à petite échelle, mais devenu réel le 26/09/2026
+// avec 130 042 paris évalués sur Rétrospectif (page qui affiche TOUS les
+// paris, sans plafond), qui a fait planter le script entier en cours de
+// route : plus aucune page ne se rendait après ce point, y compris la Vue
+// d'ensemble pourtant sans rapport (un script <script> classique s'arrête
+// net à la première exception non rattrapée). reduce() n'a aucune limite de
+// ce genre, quelle que soit la taille du tableau.
+function arrMin(a) { return a.reduce((m, x) => x < m ? x : m, a[0]); }
+function arrMax(a) { return a.reduce((m, x) => x > m ? x : m, a[0]); }
+
 function drawChart(rows, stake, wrapId, height) {
   const wrap = $(wrapId || "chartWrap");
   const H = height || 320;
@@ -524,7 +537,7 @@ function drawChart(rows, stake, wrapId, height) {
   const W = 1180, padL = 62, padR = 22, padT = 26, padB = 38;
   const ys = pts.map(p=>p.y).concat([0]);
   const xMin = 1, xMax = Math.max(2, pts.length);
-  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  let yMin = arrMin(ys), yMax = arrMax(ys);
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const yPad = (yMax-yMin)*0.12; yMin -= yPad; yMax += yPad;
   const sx = x => padL + (x-xMin)/(xMax-xMin)*(W-padL-padR);
@@ -3388,7 +3401,7 @@ function drawCalibration() {
       <text x="${(pad - 10).toFixed(1)}" y="${(sy(v) + 4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${(v*100).toFixed(0)}%</text>`;
   }
 
-  const maxN = Math.max(...data.map(d => d.n));
+  const maxN = arrMax(data.map(d => d.n));
   const points = data.map(d => {
     const r = 4 + 9 * Math.sqrt(d.n / maxN);      // aire ∝ nombre de paris
     const bon = Math.abs(d.ecart) < 0.05;
@@ -3557,7 +3570,7 @@ function drawShotsAnalysis() {
   const vb = $("btShotsVerdict");
   if (vb && data.length >= 2) {
     const rois = data.map(d => d.roi);
-    const etendue = Math.max(...rois) - Math.min(...rois);
+    const etendue = arrMax(rois) - arrMin(rois);
     let titre, texte, cls;
     if (matchs < 30) {
       cls = "neutre";
@@ -3695,7 +3708,7 @@ function drawEvolution() {
   const W = 1180, H = 300, padL = 62, padR = 22, padT = 26, padB = 38;
   const ys = pts.map(p => p.y).concat([0]);
   const xMin = 1, xMax = Math.max(2, pts.length);
-  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  let yMin = arrMin(ys), yMax = arrMax(ys);
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.12; yMin -= pad; yMax += pad;
   const sx = x => padL + (x - xMin) / (xMax - xMin) * (W - padL - padR);
@@ -4048,7 +4061,7 @@ function drawBankrollChart(pts, wrapId) {
   const W = 1180, H = 260, padL = 66, padR = 22, padT = 26, padB = 38;
   const ys = pts.map(p => p.y);
   const xMax = pts.length - 1;
-  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  let yMin = arrMin(ys), yMax = arrMax(ys);
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.12; yMin -= pad; yMax += pad;
   const sx = i => padL + i / (xMax || 1) * (W - padL - padR);
