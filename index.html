@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926133234">
+<link rel="stylesheet" href="style.css?v=20260926140600">
 </head>
 <body>
 <div class="topbar">
@@ -458,18 +458,21 @@
             </div>
           </div>
         </div>
-        <div class="field">
-          <label for="btMvt">Mouvement de la cote</label>
-          <select id="btMvt">
-            <option value="">Peu importe</option>
-            <option value="sauf_allonge" selected>Écarter toutes les cotes qui s'allongent</option>
-            <option value="sauf_allonge_fort">Écarter seulement les cotes fortement allongées</option>
-            <option value="racc">A raccourci (marché confiant)</option>
-            <option value="racc_fort">A fortement raccourci</option>
-            <option value="stable">Est restée stable</option>
-            <option value="allonge">Toutes les cotes qui s'allongent</option>
-            <option value="allonge_fort">S'est fortement allongée</option>
-          </select>
+        <div class="field field-wide">
+          <label for="btMvtMin">Mouvement de la cote</label>
+          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
+          <div class="mvt-slider">
+            <div class="mvt-slider-track">
+              <div class="mvt-slider-fill" id="btMvtFill"></div>
+              <input type="range" id="btMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
+              <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="20" aria-label="Mouvement de la cote — borne haute (%)">
+            </div>
+            <div class="mvt-slider-readout">
+              <input type="number" id="btMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
+              <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="20" aria-label="Borne haute, en %"><span>%</span>
+              <button type="button" class="msel-action mvt-reset" id="btMvtReset">Tout inclure</button>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="btPred">Second avis (API)</label>
@@ -864,18 +867,21 @@
             </div>
           </div>
         </div>
-        <div class="field">
-          <label for="uMvt">Mouvement de la cote</label>
-          <select id="uMvt">
-            <option value="">Peu importe</option>
-            <option value="sauf_allonge" selected>Écarter toutes les cotes qui s'allongent</option>
-            <option value="sauf_allonge_fort">Écarter seulement les cotes fortement allongées</option>
-            <option value="racc">A raccourci (marché confiant)</option>
-            <option value="racc_fort">A fortement raccourci</option>
-            <option value="stable">Est restée stable</option>
-            <option value="allonge">Toutes les cotes qui s'allongent</option>
-            <option value="allonge_fort">S'est fortement allongée</option>
-          </select>
+        <div class="field field-wide">
+          <label for="uMvtMin">Mouvement de la cote</label>
+          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
+          <div class="mvt-slider">
+            <div class="mvt-slider-track">
+              <div class="mvt-slider-fill" id="uMvtFill"></div>
+              <input type="range" id="uMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
+              <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="20" aria-label="Mouvement de la cote — borne haute (%)">
+            </div>
+            <div class="mvt-slider-readout">
+              <input type="number" id="uMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
+              <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="20" aria-label="Borne haute, en %"><span>%</span>
+              <button type="button" class="msel-action mvt-reset" id="uMvtReset">Tout inclure</button>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="uAlpha">Poids du modèle</label>
@@ -1341,7 +1347,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926133234"></script>
-<script src="app.js?v=20260926133234"></script>
+<script src="donnees.js?v=20260926140600"></script>
+<script src="app.js?v=20260926140600"></script>
 </body>
 </html>
