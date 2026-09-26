@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926153641">
+<link rel="stylesheet" href="style.css?v=20260926163308">
 </head>
 <body>
 <div class="topbar">
@@ -218,12 +218,15 @@
         <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant. Quand un candidat le plus
         proche est affiché sous une entrée, un résultat existe bien à cette date mais sous le seuil de similarité
         — souvent un <code>TEAM_ALIASES</code> manquant, à ajouter dans le script Python en comparant les deux noms.
-        Sans candidat affiché, aucun résultat n'existe ce jour-là pour ce match : un trou de couverture réel, pas un
-        problème de nom (un alias n'y changerait rien). Deux puces vérifient le candidat AVANT les noms d'équipe :
-        la date (toujours la même) et la ligue — <span class="match-check warn" style="cursor:default">⚠ ligue
-        différente</span> signale un candidat pris dans une autre compétition ce jour-là, donc probablement un
-        trou de couverture plutôt qu'un vrai alias manquant ; le bouton "Copier l'entrée Python" n'apparaît alors
-        pas, pour éviter de suivre une suggestion qui casserait plus qu'elle ne corrige.</p>
+        Quand l'entrée indique <span class="match-check warn" style="cursor:default">≠ date</span>, aucun résultat
+        n'existait à la date attendue mais un candidat aux noms très proches a été trouvé à quelques jours d'écart —
+        probablement un match reporté ou avancé plutôt qu'un problème de nom. Sans aucun candidat affiché, aucun
+        résultat n'existe non plus dans les jours voisins : un vrai trou de couverture (un alias n'y changerait
+        rien). Des puces vérifient le candidat AVANT les noms d'équipe : la date et la ligue — <span
+        class="match-check warn" style="cursor:default">⚠ ligue différente</span> signale un candidat pris dans une
+        autre compétition, donc probablement un trou de couverture plutôt qu'un vrai alias manquant ; le bouton
+        "Copier l'entrée Python" n'apparaît alors pas, pour éviter de suivre une suggestion qui casserait plus
+        qu'elle ne corrige.</p>
         <div class="field unmatched-filter">
           <label for="unmatchedFilter">Filtrer</label>
           <select id="unmatchedFilter">
@@ -231,6 +234,7 @@
             <option value="candidat">Avec candidat (✓ même date)</option>
             <option value="ligue_ok">✓ même ligue</option>
             <option value="ligue_ko">⚠ ligue différente</option>
+            <option value="date_decalee">📅 Date décalée (match probablement reporté/avancé)</option>
             <option value="none">Aucun candidat (trou de couverture)</option>
           </select>
           <span class="muted" id="unmatchedFilterCount"></span>
@@ -458,35 +462,37 @@
             </div>
           </div>
         </div>
-        <div class="field field-wide">
-          <label for="btCoteMin">Plage de cotes</label>
-          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Cote décimale des paris pris en compte. Redevenu un réglage commun à toutes les catégories.</p>
-          <div class="mvt-slider">
-            <div class="mvt-slider-track">
-              <div class="mvt-slider-fill" id="btCoteFill"></div>
-              <input type="range" id="btCoteMin" class="mvt-range" min="1" max="100" step="0.5" value="1" aria-label="Plage de cotes — borne basse">
-              <input type="range" id="btCoteMax" class="mvt-range" min="1" max="100" step="0.5" value="100" aria-label="Plage de cotes — borne haute">
-            </div>
-            <div class="mvt-slider-readout">
-              <input type="number" id="btCoteMinNum" class="mvt-num" min="1" max="100" step="0.5" value="1" aria-label="Borne basse"><span>—</span>
-              <input type="number" id="btCoteMaxNum" class="mvt-num" min="1" max="100" step="0.5" value="100" aria-label="Borne haute"><span></span>
-              <button type="button" class="msel-action mvt-reset" id="btCoteReset">Tout inclure</button>
+        <div class="slider-pair-row">
+          <div class="field field-wide">
+            <label for="btCoteMin">Plage de cotes</label>
+            <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Cote décimale des paris pris en compte. Redevenu un réglage commun à toutes les catégories.</p>
+            <div class="mvt-slider">
+              <div class="mvt-slider-track">
+                <div class="mvt-slider-fill" id="btCoteFill"></div>
+                <input type="range" id="btCoteMin" class="mvt-range" min="1" max="100" step="0.5" value="1" aria-label="Plage de cotes — borne basse">
+                <input type="range" id="btCoteMax" class="mvt-range" min="1" max="100" step="0.5" value="100" aria-label="Plage de cotes — borne haute">
+              </div>
+              <div class="mvt-slider-readout">
+                <input type="number" id="btCoteMinNum" class="mvt-num" min="1" max="100" step="0.5" value="1" aria-label="Borne basse"><span>—</span>
+                <input type="number" id="btCoteMaxNum" class="mvt-num" min="1" max="100" step="0.5" value="100" aria-label="Borne haute"><span></span>
+                <button type="button" class="msel-action mvt-reset" id="btCoteReset">Tout inclure</button>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="field field-wide">
-          <label for="btMvtMin">Mouvement de la cote</label>
-          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
-          <div class="mvt-slider">
-            <div class="mvt-slider-track">
-              <div class="mvt-slider-fill" id="btMvtFill"></div>
-              <input type="range" id="btMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
-              <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
-            </div>
-            <div class="mvt-slider-readout">
-              <input type="number" id="btMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
-              <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
-              <button type="button" class="msel-action mvt-reset" id="btMvtReset">Tout inclure</button>
+          <div class="field field-wide">
+            <label for="btMvtMin">Mouvement de la cote</label>
+            <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
+            <div class="mvt-slider">
+              <div class="mvt-slider-track">
+                <div class="mvt-slider-fill" id="btMvtFill"></div>
+                <input type="range" id="btMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
+                <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
+              </div>
+              <div class="mvt-slider-readout">
+                <input type="number" id="btMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
+                <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
+                <button type="button" class="msel-action mvt-reset" id="btMvtReset">Tout inclure</button>
+              </div>
             </div>
           </div>
         </div>
@@ -902,35 +908,37 @@
             </div>
           </div>
         </div>
-        <div class="field field-wide">
-          <label for="uCoteMin">Plage de cotes</label>
-          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Cote décimale des paris pris en compte. Redevenu un réglage commun à toutes les catégories.</p>
-          <div class="mvt-slider">
-            <div class="mvt-slider-track">
-              <div class="mvt-slider-fill" id="uCoteFill"></div>
-              <input type="range" id="uCoteMin" class="mvt-range" min="1" max="100" step="0.5" value="1" aria-label="Plage de cotes — borne basse">
-              <input type="range" id="uCoteMax" class="mvt-range" min="1" max="100" step="0.5" value="100" aria-label="Plage de cotes — borne haute">
-            </div>
-            <div class="mvt-slider-readout">
-              <input type="number" id="uCoteMinNum" class="mvt-num" min="1" max="100" step="0.5" value="1" aria-label="Borne basse"><span>—</span>
-              <input type="number" id="uCoteMaxNum" class="mvt-num" min="1" max="100" step="0.5" value="100" aria-label="Borne haute"><span></span>
-              <button type="button" class="msel-action mvt-reset" id="uCoteReset">Tout inclure</button>
+        <div class="slider-pair-row">
+          <div class="field field-wide">
+            <label for="uCoteMin">Plage de cotes</label>
+            <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Cote décimale des paris pris en compte. Redevenu un réglage commun à toutes les catégories.</p>
+            <div class="mvt-slider">
+              <div class="mvt-slider-track">
+                <div class="mvt-slider-fill" id="uCoteFill"></div>
+                <input type="range" id="uCoteMin" class="mvt-range" min="1" max="100" step="0.5" value="1" aria-label="Plage de cotes — borne basse">
+                <input type="range" id="uCoteMax" class="mvt-range" min="1" max="100" step="0.5" value="100" aria-label="Plage de cotes — borne haute">
+              </div>
+              <div class="mvt-slider-readout">
+                <input type="number" id="uCoteMinNum" class="mvt-num" min="1" max="100" step="0.5" value="1" aria-label="Borne basse"><span>—</span>
+                <input type="number" id="uCoteMaxNum" class="mvt-num" min="1" max="100" step="0.5" value="100" aria-label="Borne haute"><span></span>
+                <button type="button" class="msel-action mvt-reset" id="uCoteReset">Tout inclure</button>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="field field-wide">
-          <label for="uMvtMin">Mouvement de la cote</label>
-          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
-          <div class="mvt-slider">
-            <div class="mvt-slider-track">
-              <div class="mvt-slider-fill" id="uMvtFill"></div>
-              <input type="range" id="uMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
-              <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
-            </div>
-            <div class="mvt-slider-readout">
-              <input type="number" id="uMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
-              <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
-              <button type="button" class="msel-action mvt-reset" id="uMvtReset">Tout inclure</button>
+          <div class="field field-wide">
+            <label for="uMvtMin">Mouvement de la cote</label>
+            <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
+            <div class="mvt-slider">
+              <div class="mvt-slider-track">
+                <div class="mvt-slider-fill" id="uMvtFill"></div>
+                <input type="range" id="uMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
+                <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
+              </div>
+              <div class="mvt-slider-readout">
+                <input type="number" id="uMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
+                <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
+                <button type="button" class="msel-action mvt-reset" id="uMvtReset">Tout inclure</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1379,7 +1387,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926153641"></script>
-<script src="app.js?v=20260926153641"></script>
+<script src="donnees.js?v=20260926163308"></script>
+<script src="app.js?v=20260926163308"></script>
 </body>
 </html>
