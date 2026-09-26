@@ -541,6 +541,38 @@ details.panel-group > summary:hover { border-color: var(--violet-lo); }
 details.panel-group > summary:active { transform: scale(.995); border-color: var(--violet); }
 details.panel-group > .panel-group-inner { padding-top: .2rem; }
 
+/* Blocs de filtres PAR CATÉGORIE de pari (Edge minimum, Plage de cotes,
+   Marchés de queue, Edge dévigué max, Garantie 2 buts) : un <details>
+   repliable par catégorie cochée, généré en JS (genererBlocsFiltreCategorie
+   dans app.js). Repris du look de details.panel-group mais en plus compact,
+   pour tenir plusieurs blocs côte à côte sans écraser le reste de la page. */
+.cat-filter-blocks { display: flex; flex-direction: column; gap: .6rem; margin: 0 0 .8rem; }
+details.cat-filter-block {
+  border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+  background: var(--bg-3);
+}
+details.cat-filter-block > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  padding: .6rem .9rem;
+  font-family: var(--font-display); font-weight: 700; font-size: .88rem;
+  letter-spacing: -.01em; color: var(--ink);
+  display: flex; align-items: center; gap: .5rem;
+}
+details.cat-filter-block > summary::-webkit-details-marker { display: none; }
+details.cat-filter-block > summary::before {
+  content: "▸"; display: inline-block; color: var(--ink-faint);
+  transition: transform .15s ease; font-size: .75rem;
+}
+details.cat-filter-block[open] > summary::before { transform: rotate(90deg); }
+details.cat-filter-block > summary:hover { color: var(--cyan); }
+.cat-filter-block .cat-filter-controls {
+  padding: 0 .9rem .8rem; margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
+}
+@media (max-width: 720px) {
+  .cat-filter-block .cat-filter-controls { grid-template-columns: 1fr; }
+}
+
 /* Cartes-tableau responsive */
 @media (max-width: 720px) {
   table.cardify thead { display: none; }
