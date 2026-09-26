@@ -269,6 +269,62 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 }
 .field .row2 { display: flex; gap: .4rem; }
 
+/* Curseur double "Mouvement de la cote" — occupe deux colonnes de .controls
+   pour laisser la place aux deux poignées + saisie numérique. */
+.field-wide { grid-column: span 2; min-width: 340px; }
+@media (max-width: 640px) { .field-wide { grid-column: span 1; } }
+
+.mvt-slider-track {
+  position: relative;
+  height: 28px;
+  margin: 0 2px;
+}
+.mvt-slider-fill {
+  position: absolute; top: 50%; left: 0; width: 0;
+  height: 4px; transform: translateY(-50%);
+  background: var(--violet); border-radius: 3px;
+  pointer-events: none;
+}
+/* Le rail natif de chaque <input type=range> est rendu invisible : seule la
+   barre .mvt-slider-fill au-dessus donne l'impression d'un rail unique. Les
+   deux <input> restent superposés, pleine largeur, l'un par-dessus l'autre —
+   pointer-events est coupé sur l'élément entier et réactivé seulement sur sa
+   poignée, sinon la poignée du dessous ne serait jamais atteignable. */
+.field .mvt-range {
+  position: absolute; top: 0; left: 0; width: 100%; height: 28px; margin: 0;
+  padding: 0; background: transparent; border: none; border-radius: 0;
+  -webkit-appearance: none; appearance: none;
+  pointer-events: none;
+}
+.field .mvt-range:hover, .field .mvt-range:focus {
+  border: none; outline: none; box-shadow: none; background: transparent;
+}
+.mvt-range::-webkit-slider-runnable-track { background: var(--line); height: 4px; border-radius: 3px; }
+.mvt-range::-moz-range-track { background: var(--line); height: 4px; border-radius: 3px; }
+.mvt-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ink); border: 3px solid var(--violet);
+  margin-top: -7px; cursor: pointer; pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  transition: transform .12s;
+}
+.mvt-range::-webkit-slider-thumb:hover { transform: scale(1.12); }
+.mvt-range::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ink); border: 3px solid var(--violet);
+  cursor: pointer; pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+.mvt-slider-readout {
+  display: flex; align-items: center; gap: .35rem; flex-wrap: wrap;
+  margin-top: .6rem; font-size: .8rem; color: var(--ink-dim);
+}
+.field .mvt-num {
+  width: 4.6em; text-align: center; padding: .4rem .3rem;
+}
+.mvt-reset { flex: none; margin-left: auto; }
+
 /* Icône calendrier des <input type="date"> : color-scheme:dark (ci-dessus)
    l'inverse déjà en clair pour rester visible sur fond sombre — on ajoute
    juste un survol discret pour qu'elle se signale comme cliquable, plutôt
