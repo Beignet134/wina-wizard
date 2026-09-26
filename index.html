@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926100331">
+<link rel="stylesheet" href="style.css?v=20260926102753">
 </head>
 <body>
 <div class="topbar">
@@ -627,6 +627,22 @@
           <tbody id="btCatBody"></tbody>
         </table>
       </div>
+    </div>
+
+<div class="panel" id="btScorePanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/></svg>Score exact — matrice de rentabilité</h2>
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Une case par score (buts domicile en ligne, buts extérieur en colonne), recalculée sur le
+        même ensemble filtré que le reste de la page. Le gain net et le nombre de réussites sont
+        affichés dans chaque case ; le fond est teinté du rouge au vert selon le ROI de cette case
+        précise, pour repérer d'un coup d'œil les scores les plus rentables. Une case en pointillés
+        compte moins de <span id="btScoreSeuilTxt">5</span> paris — sa couleur reste affichée mais
+        atténuée, l'échantillon est trop petit pour en tirer une conclusion.
+      </p>
+      <div class="tablewrap"><div id="btScoreMatrixWrap"></div></div>
+      <p class="muted" id="btScoreEmpty" style="display:none; font-size:.85rem">Aucun pari « Score exact » ne correspond à ces filtres.</p>
+      <div class="score-legend" id="btScoreLegend"></div>
+      <p class="muted" id="btScoreBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
     </div>
 
 <div class="panel">
@@ -1361,7 +1377,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926100331"></script>
-<script src="app.js?v=20260926100331"></script>
+<script src="donnees.js?v=20260926102753"></script>
+<script src="app.js?v=20260926102753"></script>
 </body>
 </html>
