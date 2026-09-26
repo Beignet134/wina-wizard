@@ -269,10 +269,25 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 }
 .field .row2 { display: flex; gap: .4rem; }
 
-/* Curseur double "Mouvement de la cote" — occupe deux colonnes de .controls
-   pour laisser la place aux deux poignées + saisie numérique. */
-.field-wide { grid-column: span 2; min-width: 340px; }
-@media (max-width: 640px) { .field-wide { grid-column: span 1; } }
+/* Sélection multiple "Issue pariée" : occupe la ligne entière de .controls
+   (grid-column: 1 / -1) — un champ isolé, jamais en paire avec un autre. */
+.field-wide { grid-column: 1 / -1; min-width: 340px; }
+
+/* Les deux curseurs (Plage de cotes, Mouvement de la cote) restent groupés
+   sur UNE MÊME ligne, côte à côte, séparée du reste des filtres — plutôt que
+   de laisser l'auto-fit de .controls les mélanger avec Ligue/Poids du modèle
+   etc. selon la largeur d'écran. La rangée entière prend toute la largeur de
+   .controls (grid-column: 1 / -1) et se subdivise elle-même en 2 colonnes ;
+   .field-wide garde son grid-column 1/-1 par défaut pour un usage isolé
+   (Issue pariée ci-dessus), donc on le réinitialise ici pour laisser les 2
+   colonnes internes de .slider-pair-row faire le travail. */
+.slider-pair-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: .8rem 1.4rem;
+}
+.slider-pair-row > .field-wide { grid-column: auto; min-width: 0; }
 
 .mvt-slider-track {
   position: relative;
@@ -290,16 +305,22 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
    deux <input> restent superposés, pleine largeur, l'un par-dessus l'autre —
    pointer-events est coupé sur l'élément entier et réactivé seulement sur sa
    poignée, sinon la poignée du dessous ne serait jamais atteignable.
-   La boîte de l'<input> fait exactement la hauteur du rail (4px), centrée
-   verticalement dans .mvt-slider-track via top:50%/translateY — plutôt que
-   de lui laisser toute la hauteur (28px) et compter sur le navigateur pour
-   centrer le pseudo-rail à l'intérieur, ce qui n'est pas fiable une fois
-   -webkit-appearance:none appliqué (poignée qui finit décalée sous la barre
-   visible). Ainsi la boîte de l'input coïncide exactement avec la barre
-   .mvt-slider-fill, et la poignée (positionnée par rapport au rail de son
-   propre input) tombe pile dessus. */
+   Poignée toujours décalée (au-dessus ou en dessous selon le navigateur) tant
+   que le rail (::-webkit-slider-runnable-track, 4px) et la poignée (18px)
+   ont des hauteurs différentes : centrer la poignée exige alors un
+   margin-top calculé "à la main" (-7px), et ce calcul se fait indépendamment
+   pour chaque <input> superposé — le moindre écart d'arrondi sous-pixel
+   entre les deux (fréquent quand la grille CSS résout la largeur en valeurs
+   fractionnaires) suffit à décaler une poignée d'un pixel visible sans
+   décaler l'autre, ce qui correspond exactement au symptôme observé (une
+   seule des deux poignées de travers). Le correctif : donner au rail ET à
+   la poignée la MÊME hauteur (18px, celle de la poignée), avec margin-top:0
+   — plus aucun calcul, donc plus aucun arrondi qui puisse diverger. Le trait
+   fin qu'on voit reste peint en 4px via un dégradé centré sur ce rail de
+   18px (background ... no-repeat center / 100% 4px), un pur effet visuel
+   qui ne participe plus au calcul de position de la poignée. */
 .field .mvt-range {
-  position: absolute; top: 50%; left: 0; width: 100%; height: 4px; margin: 0;
+  position: absolute; top: 50%; left: 0; width: 100%; height: 18px; margin: 0;
   transform: translateY(-50%);
   padding: 0; background: transparent; border: none; border-radius: 0;
   -webkit-appearance: none; appearance: none;
@@ -308,13 +329,21 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .field .mvt-range:hover, .field .mvt-range:focus {
   border: none; outline: none; box-shadow: none; background: transparent;
 }
-.mvt-range::-webkit-slider-runnable-track { background: var(--line); height: 4px; border-radius: 3px; }
-.mvt-range::-moz-range-track { background: var(--line); height: 4px; border-radius: 3px; }
+.mvt-range::-webkit-slider-runnable-track {
+  background: linear-gradient(var(--line), var(--line)) no-repeat center / 100% 4px;
+  width: 100%; height: 18px; border-radius: 3px;
+  border: none; margin: 0; padding: 0; box-sizing: border-box;
+}
+.mvt-range::-moz-range-track {
+  background: linear-gradient(var(--line), var(--line)) no-repeat center / 100% 4px;
+  width: 100%; height: 18px; border-radius: 3px;
+  border: none; margin: 0; padding: 0; box-sizing: border-box;
+}
 .mvt-range::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 18px; height: 18px; border-radius: 50%;
   background: var(--ink); border: 3px solid var(--violet);
-  margin-top: -7px; cursor: pointer; pointer-events: auto;
+  margin-top: 0; cursor: pointer; pointer-events: auto;
   box-shadow: 0 1px 4px rgba(0,0,0,.35);
   transition: transform .12s;
 }
