@@ -80,6 +80,46 @@ function valCat(base, cat, dflt) {
   return el ? el.value : dflt;
 }
 
+// --- Mouvement de la cote : bornes libres (curseur double) ----------------
+// Remplace l'ancien menu à préréglages (« a raccourci », « stable »...) par
+// un réglage continu : deux bornes, en points de pourcentage de variation de
+// la probabilité implicite entre l'ouverture et la dernière capture. Domaine
+// choisi à partir des données réelles (26/09/2026) : la quasi-totalité des
+// mouvements observés tient entre -18 et +19 points, -20/+20 laisse donc de
+// la marge sans être ridiculement large. Une borne laissée à l'extrémité du
+// domaine équivaut à « pas de limite » de ce côté (voir mvtBornesActives) :
+// les deux à l'extrémité reproduisent exactement l'ancien « Peu importe ».
+// variation_proba = proba finale − proba initiale : POSITIVE quand la cote
+// raccourcit (le marché la juge plus probable), NÉGATIVE quand elle
+// s'allonge. Mesuré sur les données réelles : les cotes qui s'allongent
+// affichent un ROI très dégradé (le marché s'éloigne de ce que croit le
+// modèle), tandis que celles qui raccourcissent ou restent stables s'en
+// sortent bien mieux — d'où le réglage par défaut [0, +20] (équivalent de
+// l'ancien "sauf_allonge" : on écarte tout allongement, sans plafond côté
+// raccourcissement).
+const MVT_SLIDER_MIN = -20;
+const MVT_SLIDER_MAX = 20;
+// Lit les bornes actives pour une page (bt/u) et dit si le filtre est
+// réellement actif (au moins une borne resserrée par rapport au domaine
+// complet) — sinon les paris sans mouvement mesuré ne doivent PAS être
+// écartés, exactement comme l'ancien "".
+function mvtBornesActives(prefixe) {
+  const elMin = $(prefixe + "MvtMin"), elMax = $(prefixe + "MvtMax");
+  const lo = elMin ? parseFloat(elMin.value) : MVT_SLIDER_MIN;
+  const hi = elMax ? parseFloat(elMax.value) : MVT_SLIDER_MAX;
+  return {lo, hi, actif: lo > MVT_SLIDER_MIN || hi < MVT_SLIDER_MAX};
+}
+// Applique les bornes à UNE ligne (v.variation_proba est une fraction,
+// converti en points de pourcentage pour comparer aux bornes affichées).
+function passeMvt(bornes, ligne) {
+  if (!bornes.actif) return true;
+  if (ligne.raccourcit === undefined) return false;
+  const v = (ligne.variation_proba || 0) * 100;
+  if (bornes.lo > MVT_SLIDER_MIN && v < bornes.lo) return false;
+  if (bornes.hi < MVT_SLIDER_MAX && v > bornes.hi) return false;
+  return true;
+}
+
 /* ============================================================
    MÉLANGE AVEC LE MARCHÉ
    ------------------------------------------------------------
@@ -1285,22 +1325,10 @@ function renderUpcoming() {
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
     // Même logique que la page DC rétrospectif (btFiltered) : les six
     // niveaux de mouvement de cote, pas seulement les deux premiers.
-    const mv = $("uMvt") ? $("uMvt").value : "";
-    if (mv) {
-      const variation = v.variation_proba || 0;   // > 0 = la cote a raccourci
-      if (mv === "racc" && !v.raccourcit) return false;
-      if (mv === "racc_fort" && variation < 0.02) return false;
-      // Corrigé comme btFiltered (voir son commentaire) : on teste la
-      // variation elle-même, pas le booléen "a raccourci", pour ne garder
-      // que des allongements réels et non les cotes restées stables.
-      if (mv === "allonge" && variation > -0.0001) return false;
-      if (mv === "allonge_fort" && variation > -0.02) return false;
-      if (mv === "stable" && Math.abs(variation) >= 0.01) return false;
-      // Écarte les paris dont la cote s'allonge : mesuré à -53 % de ROI sur
-      // les données réelles, contre -5 % pour celles qui raccourcissent.
-      if (mv === "sauf_allonge" && variation < -0.0001) return false;
-      if (mv === "sauf_allonge_fort" && variation <= -0.02) return false;
-    }
+    // Filtre sur le MOUVEMENT DE LA COTE (curseur double, voir
+    // mvtBornesActives/passeMvt) — synchronisé avec la page "DC rétrospectif".
+    const bornesMvtU = mvtBornesActives("u");
+    if (!passeMvt(bornesMvtU, v)) return false;
     return true;
   });
 
@@ -1662,7 +1690,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uCalib","uMise2"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uCalib","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1688,6 +1716,91 @@ function lierFiltres(idA, idB) {
     if (elA.value === elB.value) return;
     elA.value = elB.value;
     elA.dispatchEvent(new Event("change"));
+  });
+}
+// --- Curseur double "Mouvement de la cote" -------------------------------
+// Deux <input type="range"> superposés (bornes basse/haute) + deux <input
+// type="number"> pour la saisie précise + une barre de remplissage entre les
+// deux poignées. "prefixe" vaut "bt" (DC rétrospectif) ou "u" (Paris à venir).
+function initMvtSlider(prefixe) {
+  const minR = $(prefixe + "MvtMin"), maxR = $(prefixe + "MvtMax");
+  const minN = $(prefixe + "MvtMinNum"), maxN = $(prefixe + "MvtMaxNum");
+  const fill = $(prefixe + "MvtFill");
+  const resetBtn = $(prefixe + "MvtReset");
+  if (!minR || !maxR) return;
+  const redessiner = prefixe === "bt" ? renderBacktest : renderUpcoming;
+
+  // Empêche les deux poignées de se croiser : si on pousse la borne basse
+  // au-delà de la haute (ou l'inverse), l'autre poignée suit.
+  function clampCroisement(depuis) {
+    const lo = parseFloat(minR.value), hi = parseFloat(maxR.value);
+    if (lo > hi) {
+      if (depuis === "min") maxR.value = lo;
+      else minR.value = hi;
+    }
+  }
+  function rafraichirAffichage() {
+    const lo = parseFloat(minR.value), hi = parseFloat(maxR.value);
+    minN.value = lo;
+    maxN.value = hi;
+    const pct = val => (val - MVT_SLIDER_MIN) / (MVT_SLIDER_MAX - MVT_SLIDER_MIN) * 100;
+    if (fill) {
+      fill.style.left = pct(lo) + "%";
+      fill.style.width = Math.max(0, pct(hi) - pct(lo)) + "%";
+    }
+  }
+  minR.addEventListener("input", () => { clampCroisement("min"); rafraichirAffichage(); });
+  maxR.addEventListener("input", () => { clampCroisement("max"); rafraichirAffichage(); });
+  // Le rendu (potentiellement coûteux, il refait tableau + graphiques) n'a
+  // lieu qu'au relâchement de la poignée ("change"), pas à chaque pixel
+  // glissé ("input") : ces derniers ne servent qu'à l'affichage live.
+  minR.addEventListener("change", () => { rafraichirAffichage(); redessiner(); });
+  maxR.addEventListener("change", () => { rafraichirAffichage(); redessiner(); });
+
+  function depuisNombre(which) {
+    let lo = parseFloat(minN.value), hi = parseFloat(maxN.value);
+    if (isNaN(lo)) lo = MVT_SLIDER_MIN;
+    if (isNaN(hi)) hi = MVT_SLIDER_MAX;
+    lo = Math.min(Math.max(lo, MVT_SLIDER_MIN), MVT_SLIDER_MAX);
+    hi = Math.min(Math.max(hi, MVT_SLIDER_MIN), MVT_SLIDER_MAX);
+    if (lo > hi) { if (which === "min") hi = lo; else lo = hi; }
+    minR.value = lo;
+    maxR.value = hi;
+    // Redéclenche "change" sur les <input type=range> plutôt que d'appeler
+    // rafraichirAffichage()/redessiner() ici directement : ça garde une seule
+    // voie de mise à jour, ET c'est cet événement que lierMvtSlider() écoute
+    // pour propager le réglage vers l'autre page.
+    minR.dispatchEvent(new Event("change"));
+    maxR.dispatchEvent(new Event("change"));
+  }
+  minN.addEventListener("change", () => depuisNombre("min"));
+  maxN.addEventListener("change", () => depuisNombre("max"));
+
+  if (resetBtn) resetBtn.addEventListener("click", () => {
+    minR.value = MVT_SLIDER_MIN;
+    maxR.value = MVT_SLIDER_MAX;
+    minR.dispatchEvent(new Event("change"));
+    maxR.dispatchEvent(new Event("change"));
+  });
+
+  rafraichirAffichage();
+}
+// Synchronise les curseurs "bt" et "u" entre eux, comme lierFiltres() le
+// fait pour les <select> classiques (mêmes bornes des deux côtés).
+function lierMvtSlider() {
+  ["Min", "Max"].forEach(suffixe => {
+    const a = $("btMvt" + suffixe), b = $("uMvt" + suffixe);
+    if (!a || !b) return;
+    a.addEventListener("change", () => {
+      if (b.value === a.value) return;
+      b.value = a.value;
+      b.dispatchEvent(new Event("change"));
+    });
+    b.addEventListener("change", () => {
+      if (a.value === b.value) return;
+      a.value = b.value;
+      a.dispatchEvent(new Event("change"));
+    });
   });
 }
 // --- Génération des blocs de filtres PAR CATÉGORIE (voir CATEGORIES_DC) --
@@ -1972,10 +2085,16 @@ function cablerMenusDeroulants() {
 cablerMenusDeroulants();
 
 [["btDevig","uDevig"], ["btAlpha","uAlpha"],
- ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
+ ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btEvPos","uEvPos"], ["btEvMax","uEvMax"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
+
+// Mouvement de la cote : curseur double indépendant des <select> ci-dessus
+// (deux <input type=range> par borne), synchronisé manuellement.
+initMvtSlider("bt");
+initMvtSlider("u");
+lierMvtSlider();
 
 // Les 4 filtres devenus indépendants par catégorie (Edge minimum, Plage de
 // cotes, Filtre marchés de queue, Edge dévigué max) restent synchronisés
@@ -2462,9 +2581,11 @@ function btFiltered() {
   const alpha = blendAlpha("btAlpha");
   // Filtre sur le MOUVEMENT DE LA COTE entre la première et la dernière
   // capture. Une cote qui raccourcit signale que de l'argent est entré sur
-  // cette issue — souvent de l'argent informé. Ce filtre permet de simuler
-  // « et si je n'avais suivi que le marché ? » sans rien recalculer.
-  const mvt = $("btMvt") ? $("btMvt").value : "";
+  // cette issue — souvent de l'argent informé. Curseur double (voir
+  // mvtBornesActives/passeMvt) : bornes libres en points de pourcentage de
+  // variation de probabilité implicite, plutôt qu'une poignée de
+  // préréglages figés.
+  const bornesMvt = mvtBornesActives("bt");
   // Second avis (API) : ne concerne que les matchs dont la prévision avait
   // été collectée quand ils étaient encore à venir (cf. apply_predictions
   // côté Python) — la plupart des lignes n'en ont pas encore, ce qui est
@@ -2552,40 +2673,7 @@ function btFiltered() {
     if (pred === "desaccord" && r.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(r.prediction && !r.prediction_accord)) return false;
 
-    if (mvt) {
-      // Un pari sans mouvement mesuré (une seule capture) est écarté dès
-      // qu'un filtre de mouvement est actif : on ne peut rien en dire.
-      if (r.raccourcit === undefined) return false;
-      // variation_proba = proba finale − proba initiale. Une cote qui baisse
-      // fait monter la probabilité implicite : la valeur est donc POSITIVE
-      // quand la cote raccourcit. (J'avais inversé ce signe.)
-      const v = r.variation_proba || 0;      // > 0 = la cote a raccourci
-      if (mvt === "racc" && !r.raccourcit) return false;
-      if (mvt === "racc_fort" && v < 0.02) return false;
-      // « allonge » visait à isoler les cotes qui s'allongent, mais testait
-      // r.raccourcit (un simple booléen) au lieu de la variation elle-même :
-      // ça gardait aussi les cotes STABLES (ni raccourcies ni vraiment
-      // allongées), qui n'ont rien à voir avec un allongement. Corrigé pour
-      // ne garder que les variations réellement négatives, symétrique de
-      // « racc »/« racc_fort » côté raccourcissement.
-      if (mvt === "allonge" && v > -0.0001) return false;
-      // Pendant du "fortement raccourci" côté allongement : même seuil (au
-      // moins 2 points de probabilité implicite perdus) pour isoler les
-      // mouvements de marché les plus marqués dans ce sens.
-      if (mvt === "allonge_fort" && v > -0.02) return false;
-      if (mvt === "stable" && Math.abs(v) >= 0.01) return false;
-      // ÉVITER LES ALLONGEMENTS : le signal le plus solide mesuré sur les
-      // données réelles. Les cotes qui s'allongent affichent un ROI très
-      // dégradé (le marché s'éloigne de ce que croit le modèle), alors que
-      // celles qui raccourcissent ou restent figées s'en sortent bien mieux.
-      // Ce filtre est bien plus utile que « suivre les raccourcissements » :
-      // il porte sur beaucoup plus de paris.
-      if (mvt === "sauf_allonge" && v < -0.0001) return false;
-      // Version moins agressive : n'écarte que les FORTS allongements (même
-      // seuil que « allonge_fort »), en gardant les allongements légers, les
-      // cotes stables et celles qui raccourcissent.
-      if (mvt === "sauf_allonge_fort" && v <= -0.02) return false;
-    }
+    if (!passeMvt(bornesMvt, r)) return false;
     return true;
   });
 
@@ -4345,7 +4433,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btEvMax","btCalib","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btPred","btEvPos","btEvMax","btCalib","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
