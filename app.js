@@ -2461,6 +2461,12 @@ const SCORE_RE = /^\s*(\d+)\s*-\s*(\d+)\s*$/;
 // car un score exact précis reçoit mécaniquement beaucoup moins de paris
 // qu'une catégorie ou une ligue entière.
 const SCORE_CELL_SEUIL_FIABLE = 5;
+// Dernier rendu de la matrice, gardé pour l'infobulle au survol (voir
+// initScoreMatrixTooltip) : un objet {"h-a": {..agg, rows: [...]}}, rows
+// étant les paris individuels derrière cette case — ré-affecté à chaque
+// renderScoreMatrix, lu par délégation d'événement donc jamais périmé même
+// après un innerHTML qui a remplacé les <td>.
+let SCORE_MATRIX_DATA = {};
 
 // Recalcule les agrégats sur un sous-ensemble (le JSON ne contient que les
 // totaux bruts, or la déduplication change tout : n, ROI, réussite...).
@@ -2827,6 +2833,7 @@ function renderScoreMatrix(rowsFiltrees) {
     if (legend) legend.innerHTML = "";
     if (bestEl) bestEl.textContent = "";
     if (empty) empty.style.display = "";
+    SCORE_MATRIX_DATA = {};
     return;
   }
   if (empty) empty.style.display = "none";
@@ -2848,8 +2855,9 @@ function renderScoreMatrix(rowsFiltrees) {
     const cr = parCase[k];
     const s = btAgg(cr.rows);
     const net = cr.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
-    agg[k] = Object.assign({net, h: cr.h, a: cr.a, fiable: s.n >= SCORE_CELL_SEUIL_FIABLE}, s);
+    agg[k] = Object.assign({net, h: cr.h, a: cr.a, fiable: s.n >= SCORE_CELL_SEUIL_FIABLE, rows: cr.rows}, s);
   });
+  SCORE_MATRIX_DATA = agg;
 
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
@@ -2873,11 +2881,13 @@ function renderScoreMatrix(rowsFiltrees) {
       const bg = roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`;
       const cls = roi >= 0 ? "pos" : "neg";
       const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
-      tbody += `<td class="score-cell ${cls}${peuFiable}" style="background:${bg}"
-                   title="${c.h}-${c.a} : ${c.n} pari(s), ${c.wins} gagné(s) (${(c.taux*100).toFixed(0)} %), cote moy. ${c.cote_moy != null ? c.cote_moy.toFixed(2) : "—"}${!c.fiable ? " — échantillon trop petit pour conclure" : ""}">
-                  <div class="score-net ${cls}">${fmtEur(c.net)}</div>
+      // Pas de title= natif : l'infobulle riche (liste des matchs, voir
+      // initScoreMatrixTooltip) le remplace entièrement — les deux à la
+      // fois auraient affiché un double tooltip contradictoire.
+      tbody += `<td class="score-cell ${cls}${peuFiable}" style="background:${bg}" data-score="${c.h}-${c.a}">
+                  <div class="score-net">${fmtEur(c.net)}</div>
                   <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
-                  <div class="score-roi ${cls}">${fmtPct(roi)}</div>
+                  <div class="score-roi">${fmtPct(roi)}</div>
                 </td>`;
     }
     tbody += "</tr>";
@@ -2912,6 +2922,83 @@ function renderScoreMatrix(rowsFiltrees) {
     }
   }
 }
+
+// Infobulle détaillée au survol d'une case de la matrice "Score exact" :
+// liste les matchs individuels derrière la case (ligue, match, date, cote,
+// gain), même principe que les tooltips des graphiques SVG plus haut
+// (holder position:relative + tooltip absolute, position clampée dans le
+// cadre). Délégation d'événement sur le conteneur plutôt qu'un listener par
+// case : la matrice est entièrement regénérée par innerHTML à chaque
+// changement de filtre (renderScoreMatrix), un listener posé une seule fois
+// ici survit à ces remplacements sans jamais se dupliquer ni se perdre.
+(function initScoreMatrixTooltip() {
+  const holder = $("btScoreHolder");
+  const tip = $("btScoreTooltip");
+  if (!holder || !tip) return;
+
+  function hide() { tip.hidden = true; }
+
+  function show(cell, clientX, clientY) {
+    const key = cell.dataset.score;
+    const c = key ? SCORE_MATRIX_DATA[key] : null;
+    if (!c) { hide(); return; }
+
+    // Plus récents en premier, comme le tri par défaut du tableau de détail
+    // (btSortKey="date", btSortDir=-1) — même logique de lecture.
+    const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
+    const CAP = 8;
+    const visibles = tries.slice(0, CAP);
+    const reste = tries.length - visibles.length;
+
+    const lignes = visibles.map(r => {
+      const gain = r.profit * btStakeFor(r);
+      return `<div class="tt-score-row">
+          <div class="tt-score-info">
+            <div class="tt-score-match">${r.match || ""}</div>
+            <div class="tt-score-meta">${ligueLabel(r.pays, r.ligue)} · ${r.date}</div>
+          </div>
+          <div class="tt-score-result">
+            ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
+            cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
+            <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
+          </div>
+        </div>`;
+    }).join("");
+    const plus = reste > 0
+      ? `<div class="tt-score-more">+ ${reste} autre${reste > 1 ? "s" : ""} pari${reste > 1 ? "s" : ""}</div>` : "";
+
+    tip.innerHTML = `
+      <div class="tt-score-head"><span>Score ${c.h}-${c.a}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
+      <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux*100).toFixed(0)} %)</div>
+      <div class="tt-score-list">${lignes}${plus}</div>`;
+    tip.hidden = false;
+
+    const rect = holder.getBoundingClientRect();
+    const relX = clientX - rect.left, relY = clientY - rect.top;
+    const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 140;
+    let left = relX + 16;
+    if (left + tw > rect.width) left = relX - tw - 16;
+    let top = relY - th / 2;
+    top = Math.max(4, Math.min(top, rect.height - th - 4));
+    tip.style.left = Math.max(4, left) + "px";
+    tip.style.top = top + "px";
+  }
+
+  function onMove(ev) {
+    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    const target = document.elementFromPoint(clientX, clientY);
+    const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
+    if (!cell) { hide(); return; }
+    show(cell, clientX, clientY);
+  }
+
+  holder.addEventListener("mousemove", onMove);
+  holder.addEventListener("mouseleave", hide);
+  holder.addEventListener("touchstart", onMove, {passive: true});
+  holder.addEventListener("touchmove", onMove, {passive: true});
+  holder.addEventListener("touchend", hide);
+})();
 
 // Colonne et sens de tri du tableau de détail. Par défaut : les plus
 // récents en premier, ce qui est l'ordre le plus naturel à la lecture.
