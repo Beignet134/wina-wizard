@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926143722">
+<link rel="stylesheet" href="style.css?v=20260926145302">
 </head>
 <body>
 <div class="topbar">
@@ -630,7 +630,9 @@
         rouge au vert selon le ROI de la case, et la diagonale encadrée marque les paris gagnés
         (issue pariée = issue réelle). Une case en pointillés compte moins de
         <span id="btResultSeuilTxt">5</span> paris — sa couleur reste affichée mais atténuée,
-        l'échantillon est trop petit pour en tirer une conclusion.
+        l'échantillon est trop petit pour en tirer une conclusion. La colonne « Total » additionne
+        le gain net des 3 cases de la ligne : le résultat de tous les paris joués sur cette issue,
+        quel qu'ait été le résultat réel.
       </p>
       <div class="tablewrap">
         <div class="chart-holder" id="btResultHolder">
@@ -1369,7 +1371,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926143722"></script>
-<script src="app.js?v=20260926143722"></script>
+<script src="donnees.js?v=20260926145302"></script>
+<script src="app.js?v=20260926145302"></script>
 </body>
 </html>
