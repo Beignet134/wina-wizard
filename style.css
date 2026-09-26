@@ -289,6 +289,17 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 }
 .slider-pair-row > .field-wide { grid-column: auto; min-width: 0; }
 
+/* Les 2 textes d'aide (Plage de cotes / Mouvement de la cote) ne font pas la
+   même longueur : le premier tient sur 1 ligne, le second déborde sur 2 —
+   sans réservation de hauteur commune, ça pousse SON curseur plus bas que
+   l'autre et les deux poignées ne sont plus sur la même ligne (disharmonie
+   signalée le 26/09/2026). Hauteur réservée pour 2 lignes dans tous les cas
+   (2 × line-height global de 1.55, en em pour rester lié à la taille de
+   police du paragraphe lui-même — .75rem ici, cf. le style inline) : le
+   texte plus court obtient le même espace que le plus long, donc les deux
+   curseurs démarrent toujours à la même hauteur quel que soit le texte. */
+.slider-pair-row > .field-wide > p.muted { min-height: 3.1em; }
+
 .mvt-slider-track {
   position: relative;
   height: 28px;
