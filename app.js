@@ -2708,6 +2708,13 @@ const SCORE_RE = /^\s*(\d+)\s*-\s*(\d+)\s*$/;
 // car un score exact précis reçoit mécaniquement beaucoup moins de paris
 // qu'une catégorie ou une ligue entière.
 const SCORE_CELL_SEUIL_FIABLE = 5;
+// Même principe pour la matrice "Vainqueur du match" ci-dessous : ordre
+// d'affichage des 3 issues, et libellés FR des colonnes brutes homeWin/
+// draw/awayWin telles qu'elles sortent de la collecte (voir categorize_column
+// côté Python — ces 3 noms de colonnes sont utilisés tels quels).
+const RESULT_ORDER = ["homeWin", "draw", "awayWin"];
+const RESULT_LABEL = {homeWin: "Domicile", draw: "Nul", awayWin: "Extérieur"};
+const RESULT_CELL_SEUIL_FIABLE = 5;
 // Dernier rendu de la matrice, gardé pour l'infobulle au survol (voir
 // initScoreMatrixTooltip) : un objet {"h-a": {..agg, rows: [...]}}, rows
 // étant les paris individuels derrière cette case — ré-affecté à chaque
@@ -2983,6 +2990,7 @@ function renderBacktest() {
 
   renderLigueComparaison(rowsFiltrees);
   renderScoreMatrix(rowsFiltrees);
+  renderResultMatrix(rowsFiltrees);
   renderMvtFiltre(rowsFiltrees);
   renderBacktestRows();
   renderOosValidation();
@@ -3242,6 +3250,209 @@ function renderScoreMatrix(rowsFiltrees) {
     // pouvoir être scrollée, donc elementFromPoint la retourne elle plutôt
     // que la case en dessous dès qu'on la survole — sans ce garde-fou,
     // s'approcher de la liste pour la faire défiler la fermait aussitôt.
+    if (target && target.closest(".score-tooltip")) return;
+    const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
+    if (!cell) { hide(); return; }
+    show(cell, clientX, clientY);
+  }
+
+  holder.addEventListener("mousemove", onMove);
+  holder.addEventListener("mouseleave", hide);
+  holder.addEventListener("touchstart", onMove, {passive: true});
+  holder.addEventListener("touchmove", onMove, {passive: true});
+  holder.addEventListener("touchend", hide);
+})();
+
+// --- Matrice "Vainqueur du match" (même principe que la matrice "Score
+// exact" ci-dessus, adaptée à 3 issues au lieu d'une grille de scores) -----
+// Ligne = issue PARIÉE (colonne homeWin/draw/awayWin du pari), colonne =
+// issue RÉELLE du match, déduite de r.score_reel ("H - A", disponible sur le
+// backtest car le match est déjà joué — voir "score_reel" construit côté
+// Python dans build_dc_backtest). La diagonale regroupe donc tous les paris
+// gagnés (le pari visait ce qui s'est produit), le reste tous les paris
+// perdus, répartis selon ce qui s'est réellement passé — ce qui répond à la
+// question « quand je parie Domicile et que je perds, est-ce plutôt sur un
+// nul ou une victoire extérieure ? », invisible dans un simple ROI global.
+let RESULT_MATRIX_DATA = {};
+
+function issueReelle(hs, as_) {
+  if (hs > as_) return "homeWin";
+  if (hs < as_) return "awayWin";
+  return "draw";
+}
+
+function renderResultMatrix(rowsFiltrees) {
+  const wrap = $("btResultMatrixWrap");
+  const empty = $("btResultEmpty");
+  const legend = $("btResultLegend");
+  const bestEl = $("btResultBest");
+  const seuilTxt = $("btResultSeuilTxt");
+  if (!wrap) return;
+  if (seuilTxt) seuilTxt.textContent = RESULT_CELL_SEUIL_FIABLE;
+
+  const rows = rowsFiltrees.filter(r => r.categorie === CATEGORY_RESULT
+    && RESULT_ORDER.includes(r.colonne) && SCORE_RE.test(r.score_reel || ""));
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    if (legend) legend.innerHTML = "";
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    RESULT_MATRIX_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  // Regroupement par (issue pariée, issue réelle)
+  const parCase = {};
+  rows.forEach(r => {
+    const m = SCORE_RE.exec(r.score_reel);
+    const reel = issueReelle(parseInt(m[1], 10), parseInt(m[2], 10));
+    const k = r.colonne + "|" + reel;
+    (parCase[k] = parCase[k] || {pari: r.colonne, reel, rows: []}).rows.push(r);
+  });
+
+  // Total par LIGNE (issue pariée), pour le % de répartition affiché dans
+  // chaque case : "de tous les paris sur Domicile, X % ont fini sur tel
+  // résultat réel" — la lecture la plus utile pour juger la calibration.
+  const totalLigne = {};
+  RESULT_ORDER.forEach(p => {
+    totalLigne[p] = RESULT_ORDER.reduce((s, c) =>
+      s + ((parCase[p + "|" + c] || {rows: []}).rows.length), 0);
+  });
+
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const cr = parCase[k];
+    const s = btAgg(cr.rows);
+    const net = cr.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    const totLigne = totalLigne[cr.pari] || 0;
+    agg[k] = Object.assign({
+      net, pari: cr.pari, reel: cr.reel, rows: cr.rows,
+      fiable: s.n >= RESULT_CELL_SEUIL_FIABLE,
+      pctLigne: totLigne ? s.n / totLigne : 0,
+    }, s);
+  });
+  RESULT_MATRIX_DATA = agg;
+
+  const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+
+  let thead = '<tr><th class="score-corner">Pari ↓ · Résultat réel →</th>';
+  RESULT_ORDER.forEach(c => { thead += `<th class="num">${RESULT_LABEL[c]}</th>`; });
+  thead += "</tr>";
+
+  let tbody = "";
+  RESULT_ORDER.forEach(pari => {
+    tbody += `<tr><th class="num">${RESULT_LABEL[pari]}</th>`;
+    RESULT_ORDER.forEach(reel => {
+      const c = agg[pari + "|" + reel];
+      if (!c) {
+        tbody += `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+        return;
+      }
+      const roi = c.roi ?? 0;
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      const bg = roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`;
+      const cls = roi >= 0 ? "pos" : "neg";
+      const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
+      const diag = pari === reel ? " score-cell-diag" : "";
+      // Pas de title= natif : l'infobulle riche (voir initResultMatrixTooltip)
+      // le remplace entièrement, même logique que la matrice Score exact.
+      tbody += `<td class="score-cell ${cls}${peuFiable}${diag}" style="background:${bg}" data-result="${pari}|${reel}">
+                  <div class="score-net">${(c.pctLigne * 100).toFixed(0)} %</div>
+                  <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${fmtEur(c.net)}</div>
+                  <div class="score-roi">cote moy. ${c.cote_moy != null ? c.cote_moy.toFixed(2) : "—"}</div>
+                </td>`;
+    });
+    tbody += "</tr>";
+  });
+  wrap.innerHTML = `<table class="score-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  if (legend) {
+    const pireRoi = roiVals.length ? arrMin(roiVals) : 0;
+    const meilleurRoi = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pireRoi, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
+      <span class="muted score-legend-note">ROI par case (fond) · % en gras = part de la ligne
+      (parmi les paris sur cette issue) · cases en pointillés = moins de ${RESULT_CELL_SEUIL_FIABLE} paris
+      · diagonale encadrée = pari gagné</span>`;
+  }
+
+  // Résumé : calibration de chaque issue pariée — quand on parie sur X,
+  // à quelle fréquence X se réalise vraiment (la diagonale de sa ligne).
+  if (bestEl) {
+    const lignes = RESULT_ORDER.map(pari => {
+      const c = agg[pari + "|" + pari];
+      if (!c || !totalLigne[pari]) return null;
+      return `<strong>${RESULT_LABEL[pari]}</strong> confirmé ${(c.pctLigne * 100).toFixed(0)} % du temps (${totalLigne[pari]} pari${totalLigne[pari] > 1 ? "s" : ""})`;
+    }).filter(Boolean);
+    bestEl.innerHTML = lignes.length
+      ? "Taux de confirmation par issue pariée : " + lignes.join(" · ")
+      : "Pas encore assez de paris « Vainqueur du match » joués pour calculer un taux de confirmation.";
+  }
+}
+
+// Infobulle détaillée au survol d'une case de la matrice "Vainqueur du
+// match" : même mécanique que initScoreMatrixTooltip (délégation d'événement
+// sur le conteneur, une seule fois, survit aux remplacements par innerHTML).
+(function initResultMatrixTooltip() {
+  const holder = $("btResultHolder");
+  const tip = $("btResultTooltip");
+  if (!holder || !tip) return;
+
+  function hide() { tip.hidden = true; }
+
+  function show(cell, clientX, clientY) {
+    const key = cell.dataset.result;
+    const c = key ? RESULT_MATRIX_DATA[key] : null;
+    if (!c) { hide(); return; }
+
+    const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
+    const CAP = 8;
+    const visibles = tries.slice(0, CAP);
+    const reste = tries.length - visibles.length;
+
+    const lignes = visibles.map(r => {
+      const gain = r.profit * btStakeFor(r);
+      return `<div class="tt-score-row">
+          <div class="tt-score-info">
+            <div class="tt-score-match">${r.match || ""}</div>
+            <div class="tt-score-meta">${ligueLabel(r.pays, r.ligue)} · ${r.date} · score ${r.score_reel}</div>
+          </div>
+          <div class="tt-score-result">
+            ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
+            cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
+            <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
+          </div>
+        </div>`;
+    }).join("");
+    const plus = reste > 0
+      ? `<div class="tt-score-more">+ ${reste} autre${reste > 1 ? "s" : ""} pari${reste > 1 ? "s" : ""}</div>` : "";
+
+    tip.innerHTML = `
+      <div class="tt-score-head"><span>Pari ${RESULT_LABEL[c.pari]} → réel ${RESULT_LABEL[c.reel]}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
+      <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${(c.pctLigne * 100).toFixed(0)} % des paris sur ${RESULT_LABEL[c.pari]}</div>
+      <div class="tt-score-list">${lignes}${plus}</div>`;
+    tip.hidden = false;
+
+    const rect = holder.getBoundingClientRect();
+    const relX = clientX - rect.left, relY = clientY - rect.top;
+    const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 140;
+    let left = relX + 16;
+    if (left + tw > rect.width) left = relX - tw - 16;
+    let top = relY - th / 2;
+    top = Math.max(4, Math.min(top, rect.height - th - 4));
+    tip.style.left = Math.max(4, left) + "px";
+    tip.style.top = top + "px";
+  }
+
+  function onMove(ev) {
+    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    const target = document.elementFromPoint(clientX, clientY);
     if (target && target.closest(".score-tooltip")) return;
     const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
     if (!cell) { hide(); return; }
