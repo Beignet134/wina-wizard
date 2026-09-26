@@ -369,6 +369,57 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
   font-family: var(--font-mono);
 }
 .tag-cat { font-size: .72rem; color: var(--ink-faint); }
+
+/* Matrice "Score exact" (page Rétrospectif, sous "Par catégorie de pari").
+   PAS de .cardify ici : sur mobile, .cardify empile chaque <td> en bloc
+   pleine largeur (voir @media 720px plus bas) — parfait pour une liste de
+   lignes, catastrophique pour une grille 2D dont la valeur EST la position
+   ligne/colonne. On garde donc un <table> tout simple, scrollable
+   horizontalement via .tablewrap existant, avec juste une taille de police
+   réduite en dessous de 640px (voir media query dédiée). */
+.score-matrix { width: auto; min-width: 100%; }
+.score-matrix th, .score-matrix td { cursor: default; white-space: nowrap; }
+.score-matrix thead th { background: var(--bg-2); }
+.score-matrix .score-corner { font-size: .62rem; }
+.score-matrix tbody th {
+  background: var(--bg-2); color: var(--ink-faint); font-size: .78rem;
+  font-family: var(--font-mono); text-align: right; cursor: default;
+}
+.score-cell {
+  text-align: center; vertical-align: middle; min-width: 5.2rem;
+  border-left: 1px solid var(--line-soft);
+}
+.score-cell-empty { color: var(--ink-faint); background: transparent !important; }
+.score-net { font-family: var(--font-mono); font-weight: 700; font-size: .88rem; }
+.score-net.pos { color: var(--up); }
+.score-net.neg { color: var(--down); }
+.score-sub { font-size: .68rem; color: var(--ink-dim); margin-top: .1rem; }
+.score-roi { font-size: .72rem; font-family: var(--font-mono); margin-top: .1rem; opacity: .85; }
+.score-roi.pos { color: var(--up); }
+.score-roi.neg { color: var(--down); }
+/* Case peu fiable (< SCORE_CELL_SEUIL_FIABLE paris) : la couleur reste (on
+   ne veut pas cacher l'info) mais le contour en pointillés + l'opacité
+   réduite signalent que ce ROI peut basculer du tout au tout avec un seul
+   pari de plus — même esprit que le badge "peu de données" des ligues. */
+.score-cell-lowdata { outline: 1px dashed var(--ink-faint); outline-offset: -1px; opacity: .72; }
+.score-legend {
+  display: flex; align-items: center; gap: .5rem; margin-top: .9rem; flex-wrap: wrap;
+}
+.score-legend-bar {
+  display: inline-block; width: 7rem; height: .55rem; border-radius: 4px;
+  background: linear-gradient(90deg, var(--coral), var(--bg-3) 50%, var(--lime));
+}
+.score-legend-lbl { font-family: var(--font-mono); font-size: .72rem; font-weight: 700; }
+.score-legend-lbl.pos { color: var(--up); }
+.score-legend-lbl.neg { color: var(--down); }
+.score-legend-note { font-size: .74rem; }
+@media (max-width: 640px) {
+  .score-matrix th, .score-matrix td { padding: .35rem .45rem; }
+  .score-cell { min-width: 4.2rem; }
+  .score-net { font-size: .78rem; }
+  .score-sub, .score-roi { font-size: .64rem; }
+}
+
 /* Badge de fiabilité historique par catégorie (voir dcCategoryVerdicts en
    JS) : réutilisé sur les cartes "Paris à venir", le filtre "Type de pari"
    et la colonne "Verdict" de DC rétrospectif — une seule taille compacte
