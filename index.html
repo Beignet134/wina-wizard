@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926141506">
+<link rel="stylesheet" href="style.css?v=20260926143722">
 </head>
 <body>
 <div class="topbar">
@@ -619,6 +619,28 @@
       <p class="muted" id="btScoreEmpty" style="display:none; font-size:.85rem">Aucun pari « Score exact » ne correspond à ces filtres.</p>
       <div class="score-legend" id="btScoreLegend"></div>
       <p class="muted" id="btScoreBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
+    </div>
+
+<div class="panel" id="btResultPanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/></svg>Vainqueur du match — matrice de répartition</h2>
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Une ligne par issue PARIÉE (Domicile / Nul / Extérieur), une colonne par issue RÉELLEMENT
+        survenue, recalculée sur le même ensemble filtré que le reste de la page. Le pourcentage en
+        gras est la part de la ligne (parmi les paris joués sur cette issue) ; le fond est teinté du
+        rouge au vert selon le ROI de la case, et la diagonale encadrée marque les paris gagnés
+        (issue pariée = issue réelle). Une case en pointillés compte moins de
+        <span id="btResultSeuilTxt">5</span> paris — sa couleur reste affichée mais atténuée,
+        l'échantillon est trop petit pour en tirer une conclusion.
+      </p>
+      <div class="tablewrap">
+        <div class="chart-holder" id="btResultHolder">
+          <div id="btResultMatrixWrap"></div>
+          <div class="chart-tooltip score-tooltip" id="btResultTooltip" hidden></div>
+        </div>
+      </div>
+      <p class="muted" id="btResultEmpty" style="display:none; font-size:.85rem">Aucun pari « Vainqueur du match » ne correspond à ces filtres.</p>
+      <div class="score-legend" id="btResultLegend"></div>
+      <p class="muted" id="btResultBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
     </div>
 
 <div class="panel" id="btMvtFiltrePanel">
@@ -1347,7 +1369,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926141506"></script>
-<script src="app.js?v=20260926141506"></script>
+<script src="donnees.js?v=20260926143722"></script>
+<script src="app.js?v=20260926143722"></script>
 </body>
 </html>
