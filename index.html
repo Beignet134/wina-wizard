@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926115815">
+<link rel="stylesheet" href="style.css?v=20260926122634">
 </head>
 <body>
 <div class="topbar">
@@ -648,6 +648,22 @@
       <p class="muted" id="btScoreEmpty" style="display:none; font-size:.85rem">Aucun pari « Score exact » ne correspond à ces filtres.</p>
       <div class="score-legend" id="btScoreLegend"></div>
       <p class="muted" id="btScoreBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
+    </div>
+
+<div class="panel" id="btMvtFiltrePanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14l4-5 3.5 3L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Mouvement de cote — sur vos paris filtrés</h2>
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Répartit les paris qui passent vos filtres ci-dessus selon que la cote a raccourci ou
+        s'est allongée entre la première et la dernière capture avant le coup d'envoi. À la
+        différence du tableau « Suivre le marché plutôt que le modèle ? » plus bas dans les
+        diagnostics avancés — qui regarde <em>toutes</em> les cotes suivies, retenues comme pari
+        ou non — celui-ci ne porte que sur les paris qui correspondent à vos réglages actuels :
+        pratique pour voir en direct l'effet d'exclure les cotes qui ont déjà bougé.
+      </p>
+      <div id="btMvtFiltreWrap"></div>
+      <p class="muted" id="btMvtFiltreEmpty" style="display:none; font-size:.85rem">Aucun pari filtré ne dispose d'un mouvement de cote mesuré (il faut au moins deux captures avant le coup d'envoi).</p>
+      <p class="muted" id="btMvtFiltreNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
+      <p class="muted" id="btMvtFiltreBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
     </div>
 
 <div class="panel">
@@ -1382,7 +1398,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926115815"></script>
-<script src="app.js?v=20260926115815"></script>
+<script src="donnees.js?v=20260926122634"></script>
+<script src="app.js?v=20260926122634"></script>
 </body>
 </html>
