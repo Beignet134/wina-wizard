@@ -2736,6 +2736,7 @@ function renderBacktest() {
 
   renderLigueComparaison(rowsFiltrees);
   renderScoreMatrix(rowsFiltrees);
+  renderMvtFiltre(rowsFiltrees);
   renderBacktestRows();
   renderOosValidation();
   renderNbValidation();
@@ -3006,6 +3007,112 @@ function renderScoreMatrix(rowsFiltrees) {
   holder.addEventListener("touchmove", onMove, {passive: true});
   holder.addEventListener("touchend", hide);
 })();
+
+// --- Mouvement de cote, recalculé sur l'ensemble filtré --------------------
+// Même découpage en 5 tranches que mouvement_stats côté Python (voir
+// renderMouvement plus bas, qui affiche ces mêmes tranches mais sur TOUTES
+// les cotes suivies, y compris celles jamais retenues comme pari — d'où le
+// nom distinct ici). Ce panneau-ci ne porte que sur rowsFiltrees, donc il
+// bouge avec catégorie/ligue/edge/dates comme le reste de la page.
+// variation_proba > 0 = la cote a raccourci (voir le commentaire au-dessus
+// de btFiltered) ; les bornes (0.05 / 0.01 / -0.01 / -0.05) reprennent
+// exactement celles de la fonction Python qui construit mouvement_stats,
+// pour que les deux tableaux restent directement comparables.
+const MVT_TRANCHES = [
+  {lo: 0.05, hi: Infinity, label: "Forte baisse de cote"},
+  {lo: 0.01, hi: 0.05, label: "Baisse légère"},
+  {lo: -0.01, hi: 0.01, label: "Stable"},
+  {lo: -0.05, hi: -0.01, label: "Hausse légère"},
+  {lo: -Infinity, hi: -0.05, label: "Forte hausse de cote"},
+];
+// Sous ce nombre de paris dans une tranche, le ROI est affiché mais marqué
+// d'un ⚠ (même logique que LIGUE_COMP_SEUIL_FIABLE / SCORE_CELL_SEUIL_FIABLE) :
+// avec 3 paris dans une tranche, un seul résultat fait basculer le ROI de
+// -100 % à +200 %.
+const MVT_TRANCHE_SEUIL_FIABLE = 10;
+
+function renderMvtFiltre(rowsFiltrees) {
+  const wrap = $("btMvtFiltreWrap");
+  const empty = $("btMvtFiltreEmpty");
+  const note = $("btMvtFiltreNote");
+  const bestEl = $("btMvtFiltreBest");
+  if (!wrap) return;
+
+  // Un pari qui n'a qu'une seule capture n'a pas de mouvement mesurable —
+  // on l'écarte ici plutôt que de le compter arbitrairement comme "stable".
+  const avecMvt = rowsFiltrees.filter(r => r.raccourcit !== undefined);
+  const sansMvt = rowsFiltrees.length - avecMvt.length;
+
+  if (note) {
+    note.textContent = rowsFiltrees.length
+      ? `${avecMvt.length} pari(s) avec mouvement mesuré sur ${rowsFiltrees.length} filtré(s)`
+        + (sansMvt > 0 ? ` · ${sansMvt} exclu(s) faute d'une deuxième capture` : "")
+      : "";
+  }
+
+  if (!avecMvt.length) {
+    wrap.innerHTML = "";
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  const tranches = MVT_TRANCHES.map(t => {
+    const rows = avecMvt.filter(r => {
+      const v = r.variation_proba || 0;
+      return v >= t.lo && v < t.hi;
+    });
+    if (!rows.length) return null;
+    const s = btAgg(rows);
+    // Net recalculé pari par pari : même correctif Kelly que le tableau par
+    // catégorie / la comparaison des ligues (btStakeFor a besoin des champs
+    // du pari, absents de l'objet agrégé s).
+    const net = rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    return Object.assign({label: t.label, net, fiable: s.n >= MVT_TRANCHE_SEUIL_FIABLE}, s);
+  }).filter(Boolean);
+
+  // Échelle des barres calée sur l'écart réellement observé (mini 20 points
+  // pour qu'une tranche isolée à +2 % ne remplisse pas toute la barre).
+  const maxAbsRoi = Math.max(0.2, arrMax(tranches.map(t => Math.abs(t.roi || 0))));
+
+  wrap.innerHTML = `<div class="cote-rows">` + tranches.map(t => {
+    const pos = (t.roi || 0) >= 0;
+    const largeur = Math.min(50, Math.abs(t.roi || 0) / maxAbsRoi * 50);
+    return `
+      <div class="cote-row">
+        <div class="cote-label">${t.label}</div>
+        <div class="cote-track">
+          <div class="cote-axis"></div>
+          <div class="cote-fill ${pos ? 'pos' : 'neg'}"
+               style="${pos ? 'left:50%' : 'right:50%'}; width:${largeur.toFixed(1)}%"></div>
+        </div>
+        <div class="cote-val ${pos ? 'pos' : 'neg'}">${fmtPct(t.roi)}</div>
+        <div class="cote-meta">${t.n} pari${t.n > 1 ? "s" : ""}${t.fiable ? "" : " ⚠"} ·
+          ${(t.taux*100).toFixed(0)} % de réussite<br>
+          <span class="${t.net>=0?'pos':'neg'}">${fmtEur(t.net)}</span> ·
+          <span class="muted">cote moy. ${t.cote_moy != null ? t.cote_moy.toFixed(2) : "—"}</span></div>
+      </div>`;
+  }).join("") + `</div>`;
+
+  // Résumé dynamique : meilleure et pire tranche parmi celles jugées
+  // fiables, pour ne pas mettre en avant une tranche à 2 paris comme si
+  // c'était un signal établi (même logique que btScoreBest).
+  if (bestEl) {
+    const fiables = tranches.filter(t => t.fiable);
+    if (fiables.length < 2) {
+      bestEl.textContent = fiables.length
+        ? "Pas encore assez de tranches avec un échantillon fiable pour comparer."
+        : "Aucune tranche n'a encore assez de paris fiables pour ressortir.";
+    } else {
+      const parRoi = fiables.slice().sort((a, b) => b.roi - a.roi);
+      const top = parRoi[0], pire = parRoi[parRoi.length - 1];
+      bestEl.innerHTML = `Sur ces filtres : <strong>${top.label}</strong> s'en sort le mieux `
+        + `(${fmtPct(top.roi)}, ${top.n} paris) · <strong>${pire.label}</strong> le moins bien `
+        + `(${fmtPct(pire.roi)}, ${pire.n} paris).`;
+    }
+  }
+}
 
 // Colonne et sens de tri du tableau de détail. Par défaut : les plus
 // récents en premier, ce qui est l'ordre le plus naturel à la lecture.
