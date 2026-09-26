@@ -390,18 +390,29 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
   border-left: 1px solid var(--line-soft);
 }
 .score-cell-empty { color: var(--ink-faint); background: transparent !important; }
-.score-net { font-family: var(--font-mono); font-weight: 700; font-size: .88rem; }
-.score-net.pos { color: var(--up); }
-.score-net.neg { color: var(--down); }
-.score-sub { font-size: .68rem; color: var(--ink-dim); margin-top: .1rem; }
-.score-roi { font-size: .72rem; font-family: var(--font-mono); margin-top: .1rem; opacity: .85; }
-.score-roi.pos { color: var(--up); }
-.score-roi.neg { color: var(--down); }
+/* Texte TOUJOURS clair et neutre, jamais teinté rouge/vert comme le fond de
+   la case : un texte vert sur un fond vert (ou rouge sur rouge) perd tout
+   son contraste dès que l'intensité de la case grimpe — c'est le fond seul
+   qui porte le signal "rentable ou non", le texte doit rester lisible sur
+   toute la plage d'intensité. Le text-shadow ajoute une marge de sécurité
+   supplémentaire, y compris sur les teintes les plus soutenues. */
+.score-net {
+  font-family: var(--font-mono); font-weight: 700; font-size: .88rem;
+  color: var(--ink); text-shadow: 0 1px 3px rgba(6,4,20,.7);
+}
+.score-sub {
+  font-size: .68rem; color: rgba(238,234,255,.82); margin-top: .1rem;
+  text-shadow: 0 1px 2px rgba(6,4,20,.6);
+}
+.score-roi {
+  font-size: .72rem; font-family: var(--font-mono); margin-top: .1rem;
+  color: rgba(238,234,255,.82); text-shadow: 0 1px 2px rgba(6,4,20,.6);
+}
 /* Case peu fiable (< SCORE_CELL_SEUIL_FIABLE paris) : la couleur reste (on
    ne veut pas cacher l'info) mais le contour en pointillés + l'opacité
    réduite signalent que ce ROI peut basculer du tout au tout avec un seul
    pari de plus — même esprit que le badge "peu de données" des ligues. */
-.score-cell-lowdata { outline: 1px dashed var(--ink-faint); outline-offset: -1px; opacity: .72; }
+.score-cell-lowdata { outline: 1px dashed var(--ink-faint); outline-offset: -1px; opacity: .82; }
 .score-legend {
   display: flex; align-items: center; gap: .5rem; margin-top: .9rem; flex-wrap: wrap;
 }
@@ -413,11 +424,33 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
 .score-legend-lbl.pos { color: var(--up); }
 .score-legend-lbl.neg { color: var(--down); }
 .score-legend-note { font-size: .74rem; }
+/* Infobulle détaillée au survol d'une case (voir initScoreMatrixTooltip en
+   JS) : variante plus large du .chart-tooltip générique, pour accueillir la
+   liste des matchs derrière la case plutôt qu'un seul point de courbe. */
+.score-tooltip { min-width: 250px; max-width: 320px; }
+.score-tooltip .tt-score-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .6rem;
+  font-weight: 700; color: var(--ink);
+}
+.score-tooltip .tt-score-agg { font-size: .72rem; color: var(--ink-dim); margin-top: .1rem; }
+.score-tooltip .tt-score-list {
+  margin-top: .45rem; padding-top: .4rem; border-top: 1px solid var(--line-soft);
+  display: flex; flex-direction: column; gap: .4rem; max-height: 260px; overflow-y: auto;
+}
+.score-tooltip .tt-score-row { display: flex; justify-content: space-between; gap: .5rem; }
+.score-tooltip .tt-score-info { min-width: 0; }
+.score-tooltip .tt-score-match { font-weight: 600; font-size: .77rem; color: var(--ink); overflow-wrap: anywhere; }
+.score-tooltip .tt-score-meta { font-size: .68rem; color: var(--ink-faint); margin-top: .05rem; }
+.score-tooltip .tt-score-result { text-align: right; flex: none; font-size: .74rem; }
+.score-tooltip .tt-score-result .tt-win { color: var(--up); font-weight: 600; display: block; font-size: .68rem; }
+.score-tooltip .tt-score-result .tt-lose { color: var(--down); font-weight: 600; display: block; font-size: .68rem; }
+.score-tooltip .tt-score-more { font-size: .7rem; color: var(--ink-faint); text-align: center; padding-top: .25rem; }
 @media (max-width: 640px) {
   .score-matrix th, .score-matrix td { padding: .35rem .45rem; }
   .score-cell { min-width: 4.2rem; }
   .score-net { font-size: .78rem; }
   .score-sub, .score-roi { font-size: .64rem; }
+  .score-tooltip { max-width: 240px; }
 }
 
 /* Badge de fiabilité historique par catégorie (voir dcCategoryVerdicts en
