@@ -289,9 +289,18 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
    barre .mvt-slider-fill au-dessus donne l'impression d'un rail unique. Les
    deux <input> restent superposés, pleine largeur, l'un par-dessus l'autre —
    pointer-events est coupé sur l'élément entier et réactivé seulement sur sa
-   poignée, sinon la poignée du dessous ne serait jamais atteignable. */
+   poignée, sinon la poignée du dessous ne serait jamais atteignable.
+   La boîte de l'<input> fait exactement la hauteur du rail (4px), centrée
+   verticalement dans .mvt-slider-track via top:50%/translateY — plutôt que
+   de lui laisser toute la hauteur (28px) et compter sur le navigateur pour
+   centrer le pseudo-rail à l'intérieur, ce qui n'est pas fiable une fois
+   -webkit-appearance:none appliqué (poignée qui finit décalée sous la barre
+   visible). Ainsi la boîte de l'input coïncide exactement avec la barre
+   .mvt-slider-fill, et la poignée (positionnée par rapport au rail de son
+   propre input) tombe pile dessus. */
 .field .mvt-range {
-  position: absolute; top: 0; left: 0; width: 100%; height: 28px; margin: 0;
+  position: absolute; top: 50%; left: 0; width: 100%; height: 4px; margin: 0;
+  transform: translateY(-50%);
   padding: 0; background: transparent; border: none; border-radius: 0;
   -webkit-appearance: none; appearance: none;
   pointer-events: none;
