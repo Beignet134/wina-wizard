@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926145302">
+<link rel="stylesheet" href="style.css?v=20260926153641">
 </head>
 <body>
 <div class="topbar">
@@ -459,29 +459,36 @@
           </div>
         </div>
         <div class="field field-wide">
+          <label for="btCoteMin">Plage de cotes</label>
+          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Cote décimale des paris pris en compte. Redevenu un réglage commun à toutes les catégories.</p>
+          <div class="mvt-slider">
+            <div class="mvt-slider-track">
+              <div class="mvt-slider-fill" id="btCoteFill"></div>
+              <input type="range" id="btCoteMin" class="mvt-range" min="1" max="100" step="0.5" value="1" aria-label="Plage de cotes — borne basse">
+              <input type="range" id="btCoteMax" class="mvt-range" min="1" max="100" step="0.5" value="100" aria-label="Plage de cotes — borne haute">
+            </div>
+            <div class="mvt-slider-readout">
+              <input type="number" id="btCoteMinNum" class="mvt-num" min="1" max="100" step="0.5" value="1" aria-label="Borne basse"><span>—</span>
+              <input type="number" id="btCoteMaxNum" class="mvt-num" min="1" max="100" step="0.5" value="100" aria-label="Borne haute"><span></span>
+              <button type="button" class="msel-action mvt-reset" id="btCoteReset">Tout inclure</button>
+            </div>
+          </div>
+        </div>
+        <div class="field field-wide">
           <label for="btMvtMin">Mouvement de la cote</label>
           <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
           <div class="mvt-slider">
             <div class="mvt-slider-track">
               <div class="mvt-slider-fill" id="btMvtFill"></div>
               <input type="range" id="btMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
-              <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="20" aria-label="Mouvement de la cote — borne haute (%)">
+              <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
             </div>
             <div class="mvt-slider-readout">
               <input type="number" id="btMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
-              <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="20" aria-label="Borne haute, en %"><span>%</span>
+              <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
               <button type="button" class="msel-action mvt-reset" id="btMvtReset">Tout inclure</button>
             </div>
           </div>
-        </div>
-        <div class="field">
-          <label for="btPred">Second avis (API)</label>
-          <select id="btPred">
-            <option value="">Tous</option>
-            <option value="accord">Confirme le pari</option>
-            <option value="desaccord">Avis divergent</option>
-            <option value="neutre">Second avis (neutre)</option>
-          </select>
         </div>
         <div class="field">
           <label for="btAlpha">Poids du modèle</label>
@@ -490,43 +497,6 @@
             <option value="0.5">50 % — moitié marché</option>
             <option value="0.25">25 % — recommandé</option>
             <option value="0.1">10 % — le marché domine</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btDevig">Marge bookmaker</label>
-          <select id="btDevig">
-            <option value="0">Comparaison brute (1/cote)</option>
-            <option value="1" selected>Marge retirée (de-vig)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btEnrichi">Enrichissement xG</label>
-          <select id="btEnrichi">
-            <option value="sans" selected>Sans — modèle en buts seul</option>
-            <option value="auto">xG si disponible, sinon buts</option>
-            <option value="avec">Avec — uniquement les matchs à xG</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btLoi">Loi statistique (buts)</label>
-          <select id="btLoi">
-            <option value="poisson" selected>Poisson (défaut)</option>
-            <option value="nbinom">Binomiale négative</option>
-          </select>
-          <p id="btLoiNote" class="muted" style="margin:.35rem 0 0; font-size:.8rem"></p>
-        </div>
-        <div class="field">
-          <label for="btDedup">Paris liés</label>
-          <select id="btDedup">
-            <option value="0">Tous les compter</option>
-            <option value="1" selected>Un seul par match et par catégorie</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btCalib">Calibration</label>
-          <select id="btCalib">
-            <option value="0">Brute — probabilités du modèle</option>
-            <option value="1">Corrigée — surconfiance retirée</option>
           </select>
         </div>
         <div class="field">
@@ -539,46 +509,87 @@
             <option value="1">Kelly entier (deconseille)</option>
           </select>
         </div>
-        <div class="field">
-          <label for="btEvPos">Espérance</label>
-          <select id="btEvPos">
-            <option value="-999">Peu importe</option>
-            <option value="0" selected>Positive (&gt; 0 %)</option>
-            <option value="0.02">Au moins +2 %</option>
-            <option value="0.04">Au moins +4 %</option>
-            <option value="0.06">Au moins +6 %</option>
-            <option value="0.08">Au moins +8 %</option>
-            <option value="0.10">Au moins +10 %</option>
-            <option value="0.20">Au moins +20 %</option>
+        <!-- Filtres retirés de l'affichage le 27/09/2026 (sur demande) :
+             logique, valeurs par défaut et synchro bt<->u restent actives
+             dans le code, seul l'affichage est masqué — remettre display:none
+             à "" (ou enlever l'attribut style) pour les faire réapparaître.
+             Second avis (API) : trop peu de matchs avec une prévision API
+             collectée à l'avance pour que ce filtre soit exploitable. Marge
+             bookmaker : gardé figé sur "Marge retirée (de-vig)", la lecture
+             qui marche le mieux. Enrichissement xG : gardé figé sur "Sans" —
+             l'xG n'est disponible que pour les matchs où les DEUX équipes ont
+             déjà un historique de tirs cadrés suffisant en base, ce qui
+             réduit beaucoup l'échantillon tant que cette collecte est
+             récente. Loi statistique : gardée sur Poisson, la binomiale
+             négative n'a pas montré de gain concluant. Paris liés : gardé
+             figé sur "Un seul par match et par catégorie" — laisser
+             "Tous les compter" accessible risquait de fausser les totaux en
+             comptant plusieurs fois des paris mécaniquement liés (ex. Moins
+             de 2.5 ET Moins de 3.5 sur le même match). Calibration : gardée
+             désactivée, pas concluante non plus. -->
+        <div class="field" style="display:none">
+          <label for="btPred">Second avis (API)</label>
+          <select id="btPred">
+            <option value="">Tous</option>
+            <option value="accord">Confirme le pari</option>
+            <option value="desaccord">Avis divergent</option>
+            <option value="neutre">Second avis (neutre)</option>
           </select>
         </div>
-        <div class="field">
-          <label for="btEvMax" title="Une espérance très élevée est presque toujours un signal d'erreur du modèle, pas une vraie opportunité — voir le bandeau d'avertissement de la page « Paris à venir ». Mesuré le 20/09/2026 : les paris à plus de +50 % d'espérance étaient à 0 % de réussite (0/14) sur un échantillon réel.">Espérance maximum</label>
-          <select id="btEvMax">
-            <option value="999">Illimitée</option>
-            <option value="0.3">Max +30 %</option>
-            <option value="0.5" selected>Max +50 % (recommandé)</option>
-            <option value="1">Max +100 %</option>
+        <div class="field" style="display:none">
+          <label for="btDevig">Marge bookmaker</label>
+          <select id="btDevig">
+            <option value="0">Comparaison brute (1/cote)</option>
+            <option value="1" selected>Marge retirée (de-vig)</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="btEnrichi">Enrichissement xG</label>
+          <select id="btEnrichi">
+            <option value="sans" selected>Sans — modèle en buts seul</option>
+            <option value="auto">xG si disponible, sinon buts</option>
+            <option value="avec">Avec — uniquement les matchs à xG</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="btLoi">Loi statistique (buts)</label>
+          <select id="btLoi">
+            <option value="poisson" selected>Poisson (défaut)</option>
+            <option value="nbinom">Binomiale négative</option>
+          </select>
+          <p id="btLoiNote" class="muted" style="margin:.35rem 0 0; font-size:.8rem"></p>
+        </div>
+        <div class="field" style="display:none">
+          <label for="btDedup">Paris liés</label>
+          <select id="btDedup">
+            <option value="0">Tous les compter</option>
+            <option value="1" selected>Un seul par match et par catégorie</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="btCalib">Calibration</label>
+          <select id="btCalib">
+            <option value="0">Brute — probabilités du modèle</option>
+            <option value="1">Corrigée — surconfiance retirée</option>
           </select>
         </div>
       </div>
 
       <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .6rem">Filtres par catégorie de pari</h3>
-      <p class="muted" style="margin:-.3rem 0 .8rem; font-size:.82rem">Edge minimum, plage de cotes,
-        marchés de queue, edge dévigué maximum et garantie 2 buts se règlent <strong>indépendamment
-        pour chaque catégorie cochée ci-dessus</strong> — le modèle n'a pas la même fiabilité sur un
-        score exact que sur un résultat ou un total de buts. Un bloc par catégorie, replié ou déplié
-        à volonté ; les KPI et tableaux plus bas agrègent toutes les catégories cochées, chacune
-        filtrée selon ses propres réglages.</p>
+      <p class="muted" style="margin:-.3rem 0 .8rem; font-size:.82rem">Edge minimum, espérance,
+        espérance maximum, marchés de queue, edge dévigué maximum et garantie 2 buts se règlent
+        <strong>indépendamment pour chaque catégorie cochée ci-dessus</strong> — le modèle n'a pas la
+        même fiabilité sur un score exact que sur un résultat ou un total de buts. Un bloc par
+        catégorie, replié ou déplié à volonté ; les KPI et tableaux plus bas agrègent toutes les
+        catégories cochées, chacune filtrée selon ses propres réglages.</p>
       <div id="btCatFilterBlocks" class="cat-filter-blocks"></div>
 
       <p class="muted" style="font-size:.78rem; margin:.9rem 0 0">Ces filtres pilotent toute la page :
-        KPI, graphiques et tableaux. Catégorie, ligue, marge bookmaker, poids du modèle, mouvement de
-        cote, second avis, enrichissement xG, paris liés, espérance et calibration sont globaux et
-        synchronisés avec l'onglet « Paris à venir ». Edge minimum, plage de cotes, marchés de queue
-        et edge dévigué maximum sont aussi synchronisés avec « Paris à venir », mais catégorie par
-        catégorie ; garantie 2 buts n'existe que sur cette page (les matchs à venir n'ont pas encore
-        de résultat).</p>
+        KPI, graphiques et tableaux. Catégorie, ligue, plage de cotes, poids du modèle, mouvement de
+        cote et stratégie de mise sont globaux et synchronisés avec l'onglet « Paris à venir ». Edge
+        minimum, espérance, espérance maximum, marchés de queue et edge dévigué maximum sont aussi
+        synchronisés avec « Paris à venir », mais catégorie par catégorie ; garantie 2 buts n'existe
+        que sur cette page (les matchs à venir n'ont pas encore de résultat).</p>
       <p class="muted" id="btEnrichiNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -892,17 +903,33 @@
           </div>
         </div>
         <div class="field field-wide">
+          <label for="uCoteMin">Plage de cotes</label>
+          <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Cote décimale des paris pris en compte. Redevenu un réglage commun à toutes les catégories.</p>
+          <div class="mvt-slider">
+            <div class="mvt-slider-track">
+              <div class="mvt-slider-fill" id="uCoteFill"></div>
+              <input type="range" id="uCoteMin" class="mvt-range" min="1" max="100" step="0.5" value="1" aria-label="Plage de cotes — borne basse">
+              <input type="range" id="uCoteMax" class="mvt-range" min="1" max="100" step="0.5" value="100" aria-label="Plage de cotes — borne haute">
+            </div>
+            <div class="mvt-slider-readout">
+              <input type="number" id="uCoteMinNum" class="mvt-num" min="1" max="100" step="0.5" value="1" aria-label="Borne basse"><span>—</span>
+              <input type="number" id="uCoteMaxNum" class="mvt-num" min="1" max="100" step="0.5" value="100" aria-label="Borne haute"><span></span>
+              <button type="button" class="msel-action mvt-reset" id="uCoteReset">Tout inclure</button>
+            </div>
+          </div>
+        </div>
+        <div class="field field-wide">
           <label for="uMvtMin">Mouvement de la cote</label>
           <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">Variation de la probabilité implicite entre l'ouverture et la dernière capture. Négatif = la cote s'est allongée, positif = elle a raccourci.</p>
           <div class="mvt-slider">
             <div class="mvt-slider-track">
               <div class="mvt-slider-fill" id="uMvtFill"></div>
               <input type="range" id="uMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
-              <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="20" aria-label="Mouvement de la cote — borne haute (%)">
+              <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
             </div>
             <div class="mvt-slider-readout">
               <input type="number" id="uMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
-              <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="20" aria-label="Borne haute, en %"><span>%</span>
+              <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
               <button type="button" class="msel-action mvt-reset" id="uMvtReset">Tout inclure</button>
             </div>
           </div>
@@ -917,52 +944,6 @@
           </select>
         </div>
         <div class="field">
-          <label for="uDevig">Marge bookmaker</label>
-          <select id="uDevig">
-            <option value="0">Comparaison brute (1/cote)</option>
-            <option value="1" selected>Marge retirée (de-vig)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uPred">Second avis (API)</label>
-          <select id="uPred">
-            <option value="">Tous</option>
-            <option value="accord">Confirme le pari</option>
-            <option value="desaccord">Avis divergent</option>
-            <option value="neutre">Second avis (neutre)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uEnrichi">Enrichissement xG</label>
-          <select id="uEnrichi">
-            <option value="sans" selected>Sans — modèle en buts seul</option>
-            <option value="auto">xG si disponible, sinon buts</option>
-            <option value="avec">Avec — uniquement les matchs à xG</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uLoi">Loi statistique (buts)</label>
-          <select id="uLoi">
-            <option value="poisson" selected>Poisson (défaut)</option>
-            <option value="nbinom">Binomiale négative</option>
-          </select>
-          <p id="uLoiNote" class="muted" style="margin:.35rem 0 0; font-size:.8rem"></p>
-        </div>
-        <div class="field">
-          <label for="uDedup">Paris liés</label>
-          <select id="uDedup">
-            <option value="0">Tous les compter</option>
-            <option value="1" selected>Un seul par match et par catégorie</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uCalib">Calibration</label>
-          <select id="uCalib">
-            <option value="0">Brute — probabilités du modèle</option>
-            <option value="1">Corrigée — surconfiance retirée</option>
-          </select>
-        </div>
-        <div class="field">
           <label for="uMise2">Strategie de mise</label>
           <select id="uMise2">
             <option value="fixe" selected>Montant fixe</option>
@@ -970,28 +951,6 @@
             <option value="0.25">Kelly 1/4 (recommande)</option>
             <option value="0.5">Kelly 1/2 (agressif)</option>
             <option value="1">Kelly entier (deconseille)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uEvPos">Espérance</label>
-          <select id="uEvPos">
-            <option value="-999">Peu importe</option>
-            <option value="0" selected>Positive (&gt; 0 %)</option>
-            <option value="0.02">Au moins +2 %</option>
-            <option value="0.04">Au moins +4 %</option>
-            <option value="0.06">Au moins +6 %</option>
-            <option value="0.08">Au moins +8 %</option>
-            <option value="0.10">Au moins +10 %</option>
-            <option value="0.20">Au moins +20 %</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uEvMax" title="Une espérance très élevée est presque toujours un signal d'erreur du modèle, pas une vraie opportunité. Mesuré le 20/09/2026 : les paris à plus de +50 % d'espérance étaient à 0 % de réussite (0/14) sur un échantillon réel.">Espérance maximum</label>
-          <select id="uEvMax">
-            <option value="999">Illimitée</option>
-            <option value="0.3">Max +30 %</option>
-            <option value="0.5" selected>Max +50 % (recommandé)</option>
-            <option value="1">Max +100 %</option>
           </select>
         </div>
         <div class="field">
@@ -1003,20 +962,69 @@
             <option value="cote">Cote (décroissant)</option>
           </select>
         </div>
+        <!-- Filtres retirés de l'affichage le 27/09/2026 (sur demande) : voir la
+             même note sur l'onglet « DC rétrospectif » pour le détail — logique,
+             valeurs par défaut et synchro bt<->u restent actives dans le code. -->
+        <div class="field" style="display:none">
+          <label for="uDevig">Marge bookmaker</label>
+          <select id="uDevig">
+            <option value="0">Comparaison brute (1/cote)</option>
+            <option value="1" selected>Marge retirée (de-vig)</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="uPred">Second avis (API)</label>
+          <select id="uPred">
+            <option value="">Tous</option>
+            <option value="accord">Confirme le pari</option>
+            <option value="desaccord">Avis divergent</option>
+            <option value="neutre">Second avis (neutre)</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="uEnrichi">Enrichissement xG</label>
+          <select id="uEnrichi">
+            <option value="sans" selected>Sans — modèle en buts seul</option>
+            <option value="auto">xG si disponible, sinon buts</option>
+            <option value="avec">Avec — uniquement les matchs à xG</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="uLoi">Loi statistique (buts)</label>
+          <select id="uLoi">
+            <option value="poisson" selected>Poisson (défaut)</option>
+            <option value="nbinom">Binomiale négative</option>
+          </select>
+          <p id="uLoiNote" class="muted" style="margin:.35rem 0 0; font-size:.8rem"></p>
+        </div>
+        <div class="field" style="display:none">
+          <label for="uDedup">Paris liés</label>
+          <select id="uDedup">
+            <option value="0">Tous les compter</option>
+            <option value="1" selected>Un seul par match et par catégorie</option>
+          </select>
+        </div>
+        <div class="field" style="display:none">
+          <label for="uCalib">Calibration</label>
+          <select id="uCalib">
+            <option value="0">Brute — probabilités du modèle</option>
+            <option value="1">Corrigée — surconfiance retirée</option>
+          </select>
+        </div>
       </div>
 
       <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .6rem">Filtres par catégorie de pari</h3>
-      <p class="muted" style="margin:-.3rem 0 .8rem; font-size:.82rem">Edge minimum, plage de cotes,
-        marchés de queue et edge dévigué maximum se règlent <strong>indépendamment pour chaque
-        catégorie cochée ci-dessus</strong> — mêmes réglages, synchronisés catégorie par catégorie
-        avec l'onglet « DC rétrospectif ». Les recommandations affichées plus bas agrègent toutes
-        les catégories cochées, chacune filtrée selon ses propres réglages.</p>
+      <p class="muted" style="margin:-.3rem 0 .8rem; font-size:.82rem">Edge minimum, espérance,
+        espérance maximum, marchés de queue et edge dévigué maximum se règlent <strong>indépendamment
+        pour chaque catégorie cochée ci-dessus</strong> — mêmes réglages, synchronisés catégorie par
+        catégorie avec l'onglet « DC rétrospectif ». Les recommandations affichées plus bas agrègent
+        toutes les catégories cochées, chacune filtrée selon ses propres réglages.</p>
       <div id="uCatFilterBlocks" class="cat-filter-blocks"></div>
 
-      <p class="muted" style="font-size:.78rem; margin:.9rem 0 0">Catégorie, ligue, marge bookmaker,
-        poids du modèle, mouvement de cote et second avis sont globaux et synchronisés avec l'onglet
-        « DC rétrospectif ». Edge minimum, plage de cotes, marchés de queue et edge dévigué maximum
-        le sont aussi, mais catégorie par catégorie.</p>
+      <p class="muted" style="font-size:.78rem; margin:.9rem 0 0">Catégorie, ligue, plage de cotes,
+        poids du modèle, mouvement de cote et stratégie de mise sont globaux et synchronisés avec
+        l'onglet « DC rétrospectif ». Edge minimum, espérance, espérance maximum, marchés de queue et
+        edge dévigué maximum le sont aussi, mais catégorie par catégorie.</p>
       <p class="muted" id="uEnrichiNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
 
@@ -1371,7 +1379,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926145302"></script>
-<script src="app.js?v=20260926145302"></script>
+<script src="donnees.js?v=20260926153641"></script>
+<script src="app.js?v=20260926153641"></script>
 </body>
 </html>
