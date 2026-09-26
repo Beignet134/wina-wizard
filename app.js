@@ -1038,7 +1038,14 @@ function suggestionAliasLigue(cle, candidat) {
 // quel que soit le panneau : évite d'en attacher un par ligne générée.
 document.addEventListener("click", e => {
   const btn = e.target.closest(".btn-copy-alias");
-  if (!btn) return;
+  // Ne concerne que les boutons "une ligne" qui portent leur alias tout prêt
+  // dans data-alias : les boutons de copie groupée (.btn-copy-alias-batch,
+  // "Copier les entrées sélectionnées") réutilisent le même style visuel
+  // mais ont leur propre écouteur dédié (voir initUnmatched/
+  // initLiguesNonAlignees) — sans ce garde-fou, ce délégué générique
+  // rattrapait AUSSI leur clic (bulle jusqu'à document) et écrasait le
+  // presse-papiers juste après avec une chaîne vide (data-alias absent).
+  if (!btn || btn.dataset.alias === undefined) return;
   copierTexte(decodeURIComponent(btn.dataset.alias || ""), btn);
 });
 
@@ -1062,14 +1069,43 @@ document.addEventListener("click", e => {
 // le cas d'un match reporté/avancé. Si un candidat y est trouvé, ces deux
 // champs sont renseignés ; sinon (toujours pas de candidat, même dans la
 // fenêtre élargie) l'exemple reste un vrai trou de couverture (candidat null).
+//
+// "futur" (ajout du 26/09/2026) : un candidat === null pour un match dont la
+// date n'est pas encore arrivée n'est PAS un trou de couverture — c'est
+// normal, le résultat n'existe simplement pas encore. Comparaison de chaînes
+// AAAA-MM-JJ contre la date du jour CÔTÉ NAVIGATEUR (comme relativeTime()
+// plus haut) : c'est la date à laquelle la page est REGARDÉE qui compte pour
+// juger si un match est passé ou non, pas la date à laquelle le site a été
+// généré.
+function dateEstFuture(dateStr) {
+  return !!dateStr && dateStr > new Date().toISOString().slice(0, 10);
+}
 function classifierUnmatched(t) {
   if (typeof t === "string") return "string";     // anciennes données (donnees.js pas régénéré)
   if (t.candidat_date) return "date_decalee";      // candidat trouvé à une date proche, pas le jour même
-  if (t.candidat === null) return "none";          // aucun candidat, trou de couverture pur
+  if (t.candidat === null) return dateEstFuture(t.date) ? "futur" : "none";
   return t.ligue_ok ? "ligue_ok" : "ligue_ko";
 }
 
-function renderUnmatchedItem(t) {
+// Sélection courante pour la copie groupée (panneau "matchs non
+// rapprochés") : un Set d'INDEX dans UNMATCHED (stable d'un filtre à
+// l'autre, contrairement à une position dans la liste affichée) — cocher
+// quelques lignes sous un filtre puis en cocher d'autres sous un filtre
+// différent doit accumuler la sélection, pas la remplacer.
+const ALIAS_SEL_UNMATCHED = new Set();
+
+// Point UNIQUE de calcul de la suggestion d'un exemple non rapproché — le
+// garde-fou "ligue_ok" (ne jamais suggérer d'alias à partir d'un candidat
+// pris dans une autre compétition, cf. le cas Karlsruhe/Sankt Pauli II plus
+// haut) doit s'appliquer PARTOUT où une suggestion est utilisée (l'affichage
+// du bouton individuel, "Tout cocher", et la copie groupée) : le calculer à
+// un seul endroit évite qu'un de ces trois appelants l'oublie et laisse
+// filtrer une suggestion dangereuse dans la sélection ou la copie groupée.
+function suggestionPourExemple(t) {
+  return t.ligue_ok ? suggestionAliasEquipes(t) : null;
+}
+
+function renderUnmatchedItem(t, idx) {
   if (typeof t === "string") return `<li>${t}</li>`;
   let suffix = "";
   let suggestion = null;
@@ -1086,7 +1122,7 @@ function renderUnmatchedItem(t) {
         ? `<span class="match-check ok" title="Pays/ligue alignés entre cotes et résultats.">✓ même ligue</span>`
         : `<span class="match-check warn" title="Côté résultats : ${t.candidat_pays} · ${t.candidat_ligue} — différent de ${t.pays} · ${t.ligue}. À vérifier avant de faire confiance au nom suggéré ci-dessous.">⚠ ligue différente</span>`);
     suffix = ` <br>${checks}<br><span class="muted">↳ aucun résultat le ${t.date}, mais candidat trouvé le ${t.candidat_date} (score ${t.score}) : ${t.candidat} — probablement reporté/avancé</span>`;
-    suggestion = t.ligue_ok ? suggestionAliasEquipes(t) : null;
+    suggestion = suggestionPourExemple(t);
   } else if (t.candidat) {
     const checks =
       `<span class="match-check ok" title="Le candidat vient du même jour (toujours vrai : la recherche ne regarde jamais un autre jour).">✓ même date</span>` +
@@ -1098,19 +1134,29 @@ function renderUnmatchedItem(t) {
     // d'une autre compétition n'est presque jamais le bon match (voir
     // l'exemple Karlsruhe/Sankt Pauli II ci-dessus) — générer un alias
     // dans ce cas casserait plus qu'il ne corrigerait.
-    suggestion = t.ligue_ok ? suggestionAliasEquipes(t) : null;
+    suggestion = suggestionPourExemple(t);
   } else if (t.candidat === null) {
-    suffix = ` <br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
+    // Distingue clairement un match PAS ENCORE JOUÉ (absence de résultat
+    // normale, rien à corriger) d'un vrai trou de couverture (match déjà
+    // passé, toujours aucun résultat trouvé même dans les dates voisines —
+    // là, un alias manquant reste possible mais rien à suggérer ici).
+    if (dateEstFuture(t.date)) {
+      suffix = ` <br><span class="match-check ok" title="La date de ce match (${t.date}) n'est pas encore arrivée : il n'a pas encore été joué, donc pas encore de résultat à trouver. Rien à corriger — repassera tout seul une fois le match joué et les résultats collectés.">🗓 pas encore joué</span><br><span class="muted">↳ match à venir le ${t.date}</span>`;
+    } else {
+      suffix = ` <br><span class="match-check warn" title="Match déjà passé (${t.date}) et toujours aucun résultat, même dans les jours voisins : soit un vrai trou de couverture (résultat jamais collecté), soit un alias manquant trop éloigné pour être détecté automatiquement.">⚠ trou de couverture</span><br><span class="muted">↳ aucun résultat ce jour-là (trou de couverture, pas un nom mal rapproché)</span>`;
+    }
   }
   // Bouton de génération : n'apparaît que si au moins une ligne d'alias a
   // vraiment quelque chose à proposer (deux noms déjà identiques une fois
   // normalisés n'ont rien à corriger, même avec un candidat affiché).
-  let copyBtn = "";
+  let copyBtn = "", checkbox = "";
   if (suggestion) {
+    checkbox = `<label class="chk-alias-wrap" title="Sélectionner pour copier plusieurs entrées d'un coup">` +
+      `<input type="checkbox" class="chk-alias" data-idx="${idx}" ${ALIAS_SEL_UNMATCHED.has(idx) ? "checked" : ""}></label>`;
     copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
       data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
   }
-  return `<li><strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}${copyBtn}</li>`;
+  return `<li>${checkbox}<strong>${t.match}</strong> <span class="muted">— ${t.pays} · ${t.ligue} · ${t.date}</span>${suffix}${copyBtn}</li>`;
 }
 
 (function initUnmatched() {
@@ -1121,20 +1167,61 @@ function renderUnmatchedItem(t) {
   // UNMATCHED.length coïncident toujours, mais le test reste en place par
   // sécurité si un plafond était un jour réintroduit.
   const totalReel = (WIZARD_DATA.meta || {}).unmatched;
+  const nFutur = UNMATCHED.reduce((s, t) => s + (classifierUnmatched(t) === "futur" ? 1 : 0), 0);
   box.querySelector("summary").textContent =
     (totalReel != null && totalReel > UNMATCHED.length
       ? `${totalReel} match(s) non rapproché(s) (${UNMATCHED.length} affiché(s) ci-dessous)`
       : `${UNMATCHED.length} match(s) non rapproché(s)`)
+    + (nFutur ? ` — dont ${nFutur} pas encore joué(s)` : "")
     + " — cliquer pour voir";
 
   const select = $("unmatchedFilter"), countEl = $("unmatchedFilterCount");
+  const selCountEl = $("unmatchedSelCount"), copyBtn = $("unmatchedCopySelection");
+  let indicesVisibles = [];
+
+  function suggestionsSelectionnees() {
+    const lignes = [], vues = new Set();
+    [...ALIAS_SEL_UNMATCHED].sort((a, b) => a - b).forEach(i => {
+      const s = suggestionPourExemple(UNMATCHED[i]);
+      if (!s) return;
+      s.split("\n").forEach(ligne => { if (!vues.has(ligne)) { vues.add(ligne); lignes.push(ligne); } });
+    });
+    return lignes.join("\n");
+  }
+  function majSelection() {
+    selCountEl.textContent = `${ALIAS_SEL_UNMATCHED.size} sélectionné(s)`;
+    copyBtn.disabled = ALIAS_SEL_UNMATCHED.size === 0;
+  }
   function rerender() {
     const filtre = select.value;
-    const visibles = filtre === "all" ? UNMATCHED : UNMATCHED.filter(t => classifierUnmatched(t) === filtre);
-    list.innerHTML = visibles.map(renderUnmatchedItem).join("");
-    countEl.textContent = filtre === "all" ? "" : `${visibles.length} / ${UNMATCHED.length} affiché(s)`;
+    indicesVisibles = [];
+    UNMATCHED.forEach((t, i) => { if (filtre === "all" || classifierUnmatched(t) === filtre) indicesVisibles.push(i); });
+    list.innerHTML = indicesVisibles.map(i => renderUnmatchedItem(UNMATCHED[i], i)).join("");
+    countEl.textContent = filtre === "all" ? "" : `${indicesVisibles.length} / ${UNMATCHED.length} affiché(s)`;
+    majSelection();
   }
   select.addEventListener("change", rerender);
+  // Délégué sur la liste entière plutôt qu'un écouteur par case : la liste
+  // est réécrite en entier à chaque changement de filtre.
+  list.addEventListener("change", e => {
+    const chk = e.target.closest(".chk-alias");
+    if (!chk) return;
+    const idx = parseInt(chk.dataset.idx, 10);
+    if (chk.checked) ALIAS_SEL_UNMATCHED.add(idx); else ALIAS_SEL_UNMATCHED.delete(idx);
+    majSelection();
+  });
+  // "Tout cocher/décocher" n'agit que sur les lignes actuellement VISIBLES
+  // (même convention que les menus Ligue) — la sélection déjà faite sous un
+  // autre filtre n'est pas touchée.
+  $("unmatchedCheckAll").addEventListener("click", () => {
+    indicesVisibles.forEach(i => { if (suggestionPourExemple(UNMATCHED[i])) ALIAS_SEL_UNMATCHED.add(i); });
+    rerender();
+  });
+  $("unmatchedUncheckAll").addEventListener("click", () => {
+    indicesVisibles.forEach(i => ALIAS_SEL_UNMATCHED.delete(i));
+    rerender();
+  });
+  copyBtn.addEventListener("click", () => copierTexte(suggestionsSelectionnees(), copyBtn));
   rerender();
 })();
 
@@ -1163,19 +1250,63 @@ function renderUnmatchedItem(t) {
   const ajouterDetail = src => (src || []).forEach(d => { if (d.candidat && !detail.has(d.cle)) detail.set(d.cle, d.candidat); });
   ajouterDetail((WIZARD_DATA.dc_stats || {}).ligues_non_alignees_detail);
   ajouterDetail((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees_detail);
-  list.innerHTML = lignes.map(([cle, n]) => {
+
+  // Sélection pour la copie groupée : Set de CLÉS (chaînes "Pays — Ligue"),
+  // stables et déjà uniques — pas besoin d'index ici, la liste ne se
+  // refiltre jamais (pas de <select> sur ce panneau).
+  const ALIAS_SEL_LIGUES = new Set();
+  const selCountEl = $("unalignedSelCount"), copyBtn = $("unalignedCopySelection");
+
+  function renderLigueItem([cle, n]) {
     const candidat = detail.get(cle);
-    let suffix = "", copyBtn = "";
+    let suffix = "", btn = "", checkbox = "";
     if (candidat) {
       suffix = ` <br><span class="muted">↳ côté résultats, cette compétition s'appelle : ${candidat}</span>`;
       const suggestion = suggestionAliasLigue(cle, candidat);
       if (suggestion) {
-        copyBtn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
+        checkbox = `<label class="chk-alias-wrap" title="Sélectionner pour copier plusieurs entrées d'un coup">` +
+          `<input type="checkbox" class="chk-alias" data-cle="${encodeURIComponent(cle)}" ${ALIAS_SEL_LIGUES.has(cle) ? "checked" : ""}></label>`;
+        btn = ` <button type="button" class="btn-copy-alias" title="${suggestion.replace(/"/g,'&quot;')}"
           data-alias="${encodeURIComponent(suggestion)}">Copier l'entrée Python</button>`;
       }
     }
-    return `<li><strong>${cle}</strong> <span class="muted">— ${n} match(s)</span>${suffix}${copyBtn}</li>`;
-  }).join("");
+    return `<li>${checkbox}<strong>${cle}</strong> <span class="muted">— ${n} match(s)</span>${suffix}${btn}</li>`;
+  }
+  function suggestionsSelectionneesLigues() {
+    const res = [], vues = new Set();
+    [...ALIAS_SEL_LIGUES].forEach(cle => {
+      const candidat = detail.get(cle);
+      const s = candidat ? suggestionAliasLigue(cle, candidat) : null;
+      if (!s) return;
+      s.split("\n").forEach(ligne => { if (!vues.has(ligne)) { vues.add(ligne); res.push(ligne); } });
+    });
+    return res.join("\n");
+  }
+  function majSelectionLigues() {
+    selCountEl.textContent = `${ALIAS_SEL_LIGUES.size} sélectionné(s)`;
+    copyBtn.disabled = ALIAS_SEL_LIGUES.size === 0;
+  }
+  function rerender() {
+    list.innerHTML = lignes.map(renderLigueItem).join("");
+    majSelectionLigues();
+  }
+  list.addEventListener("change", e => {
+    const chk = e.target.closest(".chk-alias");
+    if (!chk) return;
+    const cle = decodeURIComponent(chk.dataset.cle || "");
+    if (chk.checked) ALIAS_SEL_LIGUES.add(cle); else ALIAS_SEL_LIGUES.delete(cle);
+    majSelectionLigues();
+  });
+  $("unalignedCheckAll").addEventListener("click", () => {
+    lignes.forEach(([cle]) => { const c = detail.get(cle); if (c && suggestionAliasLigue(cle, c)) ALIAS_SEL_LIGUES.add(cle); });
+    rerender();
+  });
+  $("unalignedUncheckAll").addEventListener("click", () => {
+    lignes.forEach(([cle]) => ALIAS_SEL_LIGUES.delete(cle));
+    rerender();
+  });
+  copyBtn.addEventListener("click", () => copierTexte(suggestionsSelectionneesLigues(), copyBtn));
+  rerender();
 })();
 
 /* ================= PAGE 2 — DIXON-COLES ================= */
