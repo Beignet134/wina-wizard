@@ -3240,11 +3240,12 @@ function renderBacktest() {
 
   if (!g.n) {
     // Pas encore de quoi tester : on le dit clairement plutôt que d'afficher des zéros.
-    ["btNet","btRoi","btWin","btCote","btNb"].forEach(id => { $(id).textContent = "—"; });
+    ["btNet","btRoi","btWin","btCote","btNb","btClv"].forEach(id => { $(id).textContent = "—"; });
     $("btNetSub").textContent = "aucun pari testé";
     $("btWinSub").textContent = "—";
     $("btMatches").textContent = "—";
     $("btNbSub").textContent = "—";
+    $("btClvSub").textContent = "—";
     $("btCatBody").innerHTML = '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>';
     $("btBody").innerHTML = '<tr><td colspan="9" class="muted">Pas encore de données.</td></tr>';
     empty.style.display = "block";
@@ -3358,6 +3359,31 @@ function renderBacktest() {
   $("btNb").textContent = g.n;
   $("btNbSub").textContent = g.n !== BT_ROWS.length ? `sur ${BT_ROWS.length} au total` : "tous comptés";
 
+  // CLV (Closing Line Value) moyen : écart, en points de probabilité
+  // implicite, entre la toute première cote observée et celle retenue pour
+  // le pari (voir passeMvt/variation_proba). Positif = la cote a raccourci
+  // depuis la 1ère capture -> le marché a fini par confirmer le pari, ce
+  // qu'on aurait capté en pariant plus tôt. Repris tel quel de
+  // renderMvtFiltre (même champ, même définition) pour que le KPI et le
+  // détail par tranche plus bas racontent toujours la même histoire.
+  const avecClv = rowsFiltrees.filter(r => r.raccourcit !== undefined);
+  const clvEl = $("btClv"), clvSubEl = $("btClvSub");
+  if (clvEl) {
+    if (!avecClv.length) {
+      clvEl.textContent = "—";
+      clvEl.className = "st-value";
+      if (clvSubEl) clvSubEl.textContent = "aucun mouvement mesuré";
+    } else {
+      const clvMoyen = avecClv.reduce((s, r) => s + (r.variation_proba || 0), 0) / avecClv.length * 100;
+      const pctPositif = avecClv.filter(r => r.variation_proba > 0).length / avecClv.length * 100;
+      clvEl.textContent = (clvMoyen >= 0 ? "+" : "") + clvMoyen.toFixed(2) + " pt";
+      clvEl.className = "st-value " + (clvMoyen >= 0 ? "pos" : "neg");
+      if (clvSubEl) {
+        clvSubEl.textContent = `${avecClv.length}/${g.n} mesuré(s) · ${pctPositif.toFixed(0)} % raccourcis`;
+      }
+    }
+  }
+
   // Tableau par catégorie, recalculé sur l'ensemble filtré
   const cats = {};
   rowsFiltrees.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
@@ -3384,6 +3410,7 @@ function renderBacktest() {
   }).join("") || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
 
   renderLigueComparaison(rowsFiltrees);
+  renderTypeMatchComparaison(rowsFiltrees);
   renderScoreMatrix(rowsFiltrees);
   renderResultMatrix(rowsFiltrees);
   renderMvtFiltre(rowsFiltrees);
@@ -3403,6 +3430,121 @@ function renderBacktest() {
 // trompeuse qu'il n'y a rien à voir — mais avec un badge "peu de données"
 // plutôt qu'en le laissant se confondre avec des lignes solides.
 const LIGUE_COMP_SEUIL_FIABLE = 10;
+
+// --- Club vs sélections nationales -----------------------------------------
+// Détecte un match de sélection nationale (Coupe du monde, Euro, Ligue des
+// Nations, CAN, Copa America, Gold Cup, amical international...) à partir du
+// texte libre pays + ligue Winamax — même principe que is_feminine_competition
+// côté Python (aucune liste officielle de compétitions n'est disponible ici,
+// seulement le libellé tel qu'affiché). Volontairement une LISTE DE MOTS-CLÉS
+// plutôt qu'une liste de ligues exactes : une compétition jamais vue dans le
+// backtest actuel (un nouveau tournoi, une nouvelle zone de qualification)
+// reste détectée du premier coup si son nom contient un des motifs ci-dessous,
+// sans qu'il faille l'ajouter à la main comme pour TEAM_ALIASES.
+//
+// Chaque motif est entouré d'espaces dans le texte scanné (voir plus bas) :
+// "euro " ne matche donc jamais "Ligue Europa" (qui donne "ligue europa",
+// sans "euro" suivi d'un espace), et "can " ne matche jamais un nom de club
+// contenant ces lettres par hasard.
+const MOTS_CLES_SELECTION = [
+  "coupe du monde", "qualif coupe du monde", "qualifications coupe du monde",
+  "mondial 20", "world cup",
+  "ligue des nations", "nations league",
+  "championnat d europe", "euro 20", "euro19", "euro20", "qualif euro",
+  "qualifications euro",
+  "can 20", "coupe d afrique", "afcon",
+  "copa america",
+  "gold cup", "concacaf",
+  "coupe d asie", "asian cup",
+  "amical international", "match amical", "friendlies", "friendly",
+  "jeux olympiques", " jo 20",
+  "coupe arabe", "finalissima",
+];
+function estMatchSelection(pays, ligue) {
+  // Simple recherche de sous-chaîne : chaque motif ci-dessus porte déjà ses
+  // propres espaces de bordure ("euro 20", "can 20"...) pour éviter les faux
+  // positifs (ex. "euro " ne matche jamais "Ligue Europa", qui normalisé
+  // donne "ligue europa" sans espace après "euro"). Le texte scanné est
+  // lui-même entouré d'espaces pour que les motifs commençant/finissant par
+  // un espace matchent aussi en tout début ou toute fin de chaîne.
+  const texte = " " + normalizeNameJs(`${pays || ""} ${ligue || ""}`) + " ";
+  return MOTS_CLES_SELECTION.some(m => texte.includes(m));
+}
+
+// Tableau "Club vs sélections nationales" : deux lignes FIXES (contrairement
+// à Comparaison des ligues, dont la liste est dynamique) pour que les deux
+// soient toujours visibles côte à côte, même quand l'une est encore vide —
+// c'est justement l'absence de données sur les sélections qui est
+// intéressante à voir tant que la trêve internationale n'a pas encore
+// alimenté le backtest.
+function renderTypeMatchComparaison(rowsFiltrees) {
+  const body = $("btTypeMatchBody");
+  const empty = $("btTypeMatchEmpty");
+  const table = $("btTypeMatchTable");
+  const verdictEl = $("btTypeMatchVerdict");
+  if (!body) return;
+
+  if (!rowsFiltrees.length) {
+    body.innerHTML = "";
+    if (table) table.style.display = "none";
+    if (empty) empty.style.display = "";
+    if (verdictEl) verdictEl.textContent = "";
+    return;
+  }
+  if (table) table.style.display = "";
+  if (empty) empty.style.display = "none";
+
+  const groupes = {
+    club: {label: "Club", rows: []},
+    selection: {label: "Sélection nationale", rows: []},
+  };
+  rowsFiltrees.forEach(r => {
+    const k = estMatchSelection(r.pays, r.ligue) ? "selection" : "club";
+    groupes[k].rows.push(r);
+  });
+
+  const agg = {};
+  Object.keys(groupes).forEach(k => { agg[k] = btAgg(groupes[k].rows); });
+
+  body.innerHTML = ["club", "selection"].map(k => {
+    const s = agg[k];
+    const rows = groupes[k].rows;
+    // Même correctif Kelly que les autres tableaux : net recalculé pari par
+    // pari (btStakeFor a besoin des champs du pari, absents de l'agrégat s).
+    const net = rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    const peuFiable = s.n > 0 && s.n < LIGUE_COMP_SEUIL_FIABLE;
+    return `<tr>
+      <td data-label=""><strong>${groupes[k].label}</strong>${peuFiable
+        ? ' <span class="tag-cat" title="Moins de ' + LIGUE_COMP_SEUIL_FIABLE + ' paris : le ROI peut varier fortement d’un pari à l’autre.">peu de données</span>' : ""}</td>
+      <td data-label="Paris" class="num">${s.n}</td>
+      <td data-label="Réussite" class="num">${s.n ? (s.taux*100).toFixed(1) + " %" : "—"}</td>
+      <td data-label="Cote moy." class="num">${s.cote_moy != null ? s.cote_moy.toFixed(2) : "—"}</td>
+      <td data-label="ROI" class="num ${s.roi != null ? (s.roi>=0?'pos':'neg') : ''}"><strong>${s.roi != null ? fmtPct(s.roi) : "—"}</strong></td>
+      <td data-label="Net" class="num ${s.n ? (net>=0?'pos':'neg') : ''}">${s.n ? fmtEur(net) : "—"}</td>
+    </tr>`;
+  }).join("");
+
+  // Verdict : compare les deux UNIQUEMENT si les deux échantillons sont
+  // jugés fiables — sinon on le dit plutôt que de comparer un ROI solide à
+  // un ROI qui ne veut encore rien dire (même logique que renderMvtFiltre).
+  if (verdictEl) {
+    const club = agg.club, sel = agg.selection;
+    if (club.n < LIGUE_COMP_SEUIL_FIABLE || sel.n < LIGUE_COMP_SEUIL_FIABLE) {
+      verdictEl.textContent = sel.n === 0
+        ? "Aucun pari sur un match de sélection dans cet ensemble filtré — normal en dehors d'une trêve internationale."
+        : `Pas encore assez de paris sur les sélections (${sel.n}) pour comparer sérieusement au club (${club.n}).`;
+    } else {
+      const ecart = sel.roi - club.roi;
+      const seuilNote = Math.abs(ecart) < 0.05
+        ? "Les deux restent proches — pas de signal fort d'une différence de fiabilité."
+        : (ecart < 0
+            ? "Le modèle performe nettement moins bien sur les sélections : à traiter avec plus de prudence, voire à exclure, en période de trêve."
+            : "Le modèle performe même mieux sur les sélections que sur le club ici — à confirmer sur un plus grand échantillon avant d'en tirer une règle.");
+      verdictEl.innerHTML = `<strong>Club</strong> : ${fmtPct(club.roi)} (${club.n} paris) · `
+        + `<strong>Sélection nationale</strong> : ${fmtPct(sel.roi)} (${sel.n} paris). ${seuilNote}`;
+    }
+  }
+}
 
 // Tableau "Comparaison des ligues", juste sous le graphique d'évolution du
 // gain cumulé : recalculé sur le MÊME ensemble filtré que tout le reste de
