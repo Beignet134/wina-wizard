@@ -286,6 +286,19 @@ function liguesCochees(prefixe) {
   return choisies.length ? new Set(choisies) : null;
 }
 
+// --- "Vainqueur du match" : quelles issues pariées inclure -----------------
+// Même principe que liguesCochees ci-dessus (case vide = pas de filtre,
+// jamais d'impasse à zéro résultat), mais sur les 3 valeurs fixes homeWin/
+// draw/awayWin plutôt qu'une liste peuplée dynamiquement. Propre à cette
+// catégorie : n'a aucun effet sur les autres (voir l'usage dans btFiltered/
+// renderUpcoming, gardé par r.categorie === CATEGORY_RESULT).
+function issuesVmCochees(prefixe) {
+  const boites = document.querySelectorAll("." + prefixe + "IssueVmChk");
+  if (!boites.length) return null;
+  const choisies = [...boites].filter(b => b.checked).map(b => b.value);
+  return choisies.length ? new Set(choisies) : null;
+}
+
 function blendAlpha(selectId) {
   const el = $(selectId);
   const v = el ? parseFloat(el.value) : 1;
@@ -1243,6 +1256,9 @@ function renderUpcoming() {
   const cats = categoriesCochees("u");
   const sortBy = $("uSort").value;
   const ligues = liguesCochees("u");
+  // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
+  // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
+  const issuesVm = issuesVmCochees("u");
   const pred = $("uPred") ? $("uPred").value : "";
   const devig = $("uDevig") ? $("uDevig").value === "1" : false;
   const alpha = blendAlpha("uAlpha");
@@ -1320,6 +1336,9 @@ function renderUpcoming() {
       if (filtreQueue && MARCHES_QUEUE.has(v.colonne)) return false;
       if (seuilEdgeDevigMax < 900 && v.edge_aff != null && v.edge_aff > seuilEdgeDevigMax) return false;
     }
+    // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
+    // awayWin) ; les autres catégories ne sont jamais filtrées ici.
+    if (v.categorie === CATEGORY_RESULT && issuesVm && !issuesVm.has(v.colonne)) return false;
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
@@ -1862,6 +1881,35 @@ function blocFiltreCategorie(prefixe, cat) {
       <select id="${idCat(prefixe + "EdgeDevigMax", cat)}">${optionsEdgeDevigMaxCat()}</select>
     </div>`;
   }
+  if (cat === CATEGORY_RESULT) {
+    // Sélection multiple des issues pariées à inclure, même principe (menu
+    // à cases à cocher repliable) que le filtre Ligue plus haut sur la
+    // page — utile des deux côtés (bt ET u) : exclure le Nul, par exemple,
+    // a du sens aussi bien en rétrospectif qu'en prospectif. Ordre Domicile/
+    // Nul/Extérieur repris tel quel pour rester identique à celui de la
+    // matrice de répartition (voir RESULT_ORDER, renderResultMatrix).
+    champs += `
+    <div class="field field-wide">
+      <label id="${prefixe}IssueVmLabel">Issue pariée</label>
+      <div class="msel" id="${prefixe}IssueVmMsel">
+        <button type="button" class="msel-btn" id="${prefixe}IssueVmBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="${prefixe}IssueVmLabel">
+          <span class="msel-btn-text" id="${prefixe}IssueVmBtnText">Toutes</span>
+          <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="msel-panel">
+          <div class="msel-actions">
+            <button type="button" class="msel-action" id="${prefixe}IssueVmCheckAll">Tout cocher</button>
+            <button type="button" class="msel-action" id="${prefixe}IssueVmUncheckAll">Tout décocher</button>
+          </div>
+          <div class="msel-options">
+            <label class="chk-cat"><input type="checkbox" class="${prefixe}IssueVmChk" value="homeWin" checked><span>Domicile</span></label>
+            <label class="chk-cat"><input type="checkbox" class="${prefixe}IssueVmChk" value="draw" checked><span>Nul</span></label>
+            <label class="chk-cat"><input type="checkbox" class="${prefixe}IssueVmChk" value="awayWin" checked><span>Extérieur</span></label>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
   if (prefixe === "bt" && cat === CATEGORY_RESULT) {
     champs += `
     <div class="field">
@@ -1927,6 +1975,61 @@ genererBlocsFiltreCategorie("u");
 cablerCasesCategorie();
 majVisibiliteBlocsCategorie("bt");
 majVisibiliteBlocsCategorie("u");
+
+// --- "Issue pariée" (Vainqueur du match) : 3 cases fixes, même mécanique de
+// câblage que cablerCasesLigue (synchro bt<->u + redessin), mais sans la
+// recherche texte (inutile pour seulement 3 options). Les éléments sont
+// injectés par blocFiltreCategorie ci-dessus, donc déjà présents ici.
+function libelleMselIssueVm(prefixe) {
+  const boites = [...document.querySelectorAll("." + prefixe + "IssueVmChk")];
+  const texte = $(prefixe + "IssueVmBtnText");
+  if (!texte || !boites.length) return;
+  const coche = boites.filter(b => b.checked);
+  if (!coche.length) texte.textContent = "Aucune (= toutes)";
+  else if (coche.length === boites.length) texte.textContent = "Toutes";
+  else texte.textContent = coche.map(b => b.nextElementSibling.textContent).join(", ");
+}
+function cablerCasesIssueVm() {
+  ["bt", "u"].forEach(pref => {
+    document.querySelectorAll("." + pref + "IssueVmChk").forEach(boite => {
+      boite.addEventListener("change", () => {
+        const autre = pref === "bt" ? "u" : "bt";
+        document.querySelectorAll("." + autre + "IssueVmChk").forEach(jumelle => {
+          if (jumelle.value === boite.value) jumelle.checked = boite.checked;
+        });
+        libelleMselIssueVm(pref);
+        libelleMselIssueVm(autre);
+        if (typeof renderBacktest === "function") renderBacktest();
+        if (typeof renderUpcoming === "function") renderUpcoming();
+      });
+    });
+  });
+}
+cablerCasesIssueVm();
+// Tout cocher / Tout décocher : mêmes 3 cases sur les deux pages, pas de
+// filtrage par recherche à respecter (voir cablerActionsLigue, plus bas,
+// pour la version avec recherche).
+function cablerActionsIssueVm(prefixe) {
+  const boutonCocher = $(prefixe + "IssueVmCheckAll");
+  const boutonDecocher = $(prefixe + "IssueVmUncheckAll");
+  if (!boutonCocher && !boutonDecocher) return;
+  const autre = prefixe === "bt" ? "u" : "bt";
+  const appliquer = (valeur) => {
+    document.querySelectorAll("." + prefixe + "IssueVmChk").forEach(boite => {
+      boite.checked = valeur;
+      document.querySelectorAll("." + autre + "IssueVmChk").forEach(jumelle => {
+        if (jumelle.value === boite.value) jumelle.checked = valeur;
+      });
+    });
+    libelleMselIssueVm(prefixe);
+    libelleMselIssueVm(autre);
+    if (typeof renderBacktest === "function") renderBacktest();
+    if (typeof renderUpcoming === "function") renderUpcoming();
+  };
+  if (boutonCocher) boutonCocher.addEventListener("click", () => appliquer(true));
+  if (boutonDecocher) boutonDecocher.addEventListener("click", () => appliquer(false));
+}
+["bt", "u"].forEach(cablerActionsIssueVm);
 
 // --- Type de pari : le groupe de cases est replie dans un menu deroulant --
 // (voir le commentaire CSS .msel dans style.css). Le texte du bouton resume
@@ -2063,6 +2166,11 @@ function cablerMenusDeroulants() {
       rech.focus();
     });
     libelleMselLigue(pref);
+    // "Issue pariée" (Vainqueur du match) : injecté par blocFiltreCategorie,
+    // donc les éléments n'existent qu'à partir d'ici — cablerMenuDeroulant
+    // gère déjà l'absence sans erreur si jamais le bloc n'est pas généré.
+    cablerMenuDeroulant(pref + "IssueVmMsel", pref + "IssueVmBtn");
+    libelleMselIssueVm(pref);
   });
   document.addEventListener("click", (e) => {
     document.querySelectorAll(".msel.open").forEach(msel => {
@@ -2527,6 +2635,9 @@ function btFiltered() {
   const f = $("btFilter") ? $("btFilter").value : "";
   const cats = categoriesCochees("bt");
   const ligues = liguesCochees("bt");
+  // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
+  // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
+  const issuesVm = issuesVmCochees("bt");
   const dedup = $("btDedup") ? $("btDedup").value === "1" : false;
   const devig = $("btDevig") ? $("btDevig").value === "1" : false;
   const modeXg = $("btEnrichi") ? $("btEnrichi").value : "sans";
@@ -2663,6 +2774,9 @@ function btFiltered() {
       if (filtreQueue && MARCHES_QUEUE.has(r.colonne)) return false;
       if (seuilEdgeDevigMax < 900 && e != null && e > seuilEdgeDevigMax) return false;
     }
+    // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
+    // awayWin) ; les autres catégories ne sont jamais filtrées ici.
+    if (r.categorie === CATEGORY_RESULT && issuesVm && !issuesVm.has(r.colonne)) return false;
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
     if (cats && !cats.includes(r.categorie)) return false;
@@ -3319,6 +3433,16 @@ function renderResultMatrix(rowsFiltrees) {
     totalLigne[p] = RESULT_ORDER.reduce((s, c) =>
       s + ((parCase[p + "|" + c] || {rows: []}).rows.length), 0);
   });
+  // Gain net TOTAL par ligne (colonne "Total" de la matrice, voir plus bas) :
+  // somme des 3 cases de la ligne, donc le résultat net de tous les paris
+  // joués sur cette issue, tous résultats réels confondus.
+  const netLigne = {};
+  RESULT_ORDER.forEach(p => {
+    netLigne[p] = RESULT_ORDER.reduce((s, c) => {
+      const rows = (parCase[p + "|" + c] || {rows: []}).rows;
+      return s + rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    }, 0);
+  });
 
   const agg = {};
   Object.keys(parCase).forEach(k => {
@@ -3337,9 +3461,12 @@ function renderResultMatrix(rowsFiltrees) {
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
 
+  // Ordre RESULT_ORDER repris à l'identique en ligne ET en colonne — le
+  // même que la matrice "Score exact" (Domicile ↓, croissant à droite) pour
+  // que les deux matrices se lisent de la même façon.
   let thead = '<tr><th class="score-corner">Pari ↓ · Résultat réel →</th>';
   RESULT_ORDER.forEach(c => { thead += `<th class="num">${RESULT_LABEL[c]}</th>`; });
-  thead += "</tr>";
+  thead += '<th class="num score-total-head">Total</th></tr>';
 
   let tbody = "";
   RESULT_ORDER.forEach(pari => {
@@ -3365,6 +3492,16 @@ function renderResultMatrix(rowsFiltrees) {
                   <div class="score-roi">cote moy. ${c.cote_moy != null ? c.cote_moy.toFixed(2) : "—"}</div>
                 </td>`;
     });
+    // Colonne "Total" : gain net de TOUS les paris joués sur cette issue,
+    // tous résultats réels confondus — pas une case de la grille (pas
+    // d'issue réelle unique associée), donc pas de heatmap par ROI ici,
+    // juste le texte coloré selon le signe.
+    const netTot = netLigne[pari];
+    const nTot = totalLigne[pari];
+    tbody += `<td class="score-cell score-cell-total">
+                <div class="score-net ${netTot >= 0 ? 'pos' : 'neg'}">${fmtEur(netTot)}</div>
+                <div class="score-sub">${nTot} pari${nTot > 1 ? "s" : ""}</div>
+              </td>`;
     tbody += "</tr>";
   });
   wrap.innerHTML = `<table class="score-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
@@ -3378,7 +3515,8 @@ function renderResultMatrix(rowsFiltrees) {
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
       <span class="muted score-legend-note">ROI par case (fond) · % en gras = part de la ligne
       (parmi les paris sur cette issue) · cases en pointillés = moins de ${RESULT_CELL_SEUIL_FIABLE} paris
-      · diagonale encadrée = pari gagné</span>`;
+      · diagonale encadrée = pari gagné · colonne Total = gain net de tous les paris joués sur cette
+      issue, quel qu'ait été le résultat réel</span>`;
   }
 
   // Résumé : calibration de chaque issue pariée — quand on parie sur X,
