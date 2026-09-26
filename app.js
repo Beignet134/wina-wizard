@@ -120,6 +120,31 @@ function passeMvt(bornes, ligne) {
   return true;
 }
 
+// --- Plage de cotes : bornes libres (curseur double), réglage GLOBAL -------
+// Redevenue un filtre partagé (27/09/2026, sur demande) après avoir été
+// indépendante par catégorie de pari — même principe de curseur double que
+// Mouvement de la cote juste au-dessus, même sémantique "borne à l'extrémité
+// = pas de limite". Domaine calé sur les données réelles du backtest
+// (26/09/2026) : p99 ≈ 30, max observé 65 ; 1 à 100 laisse de la marge sans
+// écraser la résolution utile (1 à ~15, où se concentre l'essentiel des
+// paris) — les champs nombre permettent un réglage plus fin que le glisser
+// à la souris pour les valeurs proches de 1.
+const COTE_SLIDER_MIN = 1;
+const COTE_SLIDER_MAX = 100;
+function coteBornesActives(prefixe) {
+  const elMin = $(prefixe + "CoteMin"), elMax = $(prefixe + "CoteMax");
+  const lo = elMin ? parseFloat(elMin.value) : COTE_SLIDER_MIN;
+  const hi = elMax ? parseFloat(elMax.value) : COTE_SLIDER_MAX;
+  return {lo, hi, actif: lo > COTE_SLIDER_MIN || hi < COTE_SLIDER_MAX};
+}
+function passeCote(bornes, cote) {
+  if (!bornes.actif) return true;
+  if (cote == null) return true;
+  if (bornes.lo > COTE_SLIDER_MIN && cote < bornes.lo) return false;
+  if (bornes.hi < COTE_SLIDER_MAX && cote > bornes.hi) return false;
+  return true;
+}
+
 /* ============================================================
    MÉLANGE AVEC LE MARCHÉ
    ------------------------------------------------------------
@@ -1259,6 +1284,9 @@ function renderUpcoming() {
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
   const issuesVm = issuesVmCochees("u");
+  // Plage de cotes : réglage global (curseur double), voir le commentaire
+  // détaillé dans btFiltered (page DC rétrospectif).
+  const bornesCoteU = coteBornesActives("u");
   const pred = $("uPred") ? $("uPred").value : "";
   const devig = $("uDevig") ? $("uDevig").value === "1" : false;
   const alpha = blendAlpha("uAlpha");
@@ -1296,34 +1324,31 @@ function renderUpcoming() {
     // son équivalent de la page DC rétrospectif (lierFiltres).
     const edge = parseFloat(valCat("uEdge", v.categorie, String(MIN_EDGE)));
     if (v.edge_aff < edge) return false;
-    if (!dansPlageCote(v.cote, valCat("uCote", v.categorie, ""))) return false;
+    if (!passeCote(bornesCoteU, v.cote)) return false;
     // Espérance : un edge dévigué positif ne garantit PAS une espérance
     // positive — sur une cote très basse, la marge du bookmaker peut
     // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
     // mais espérance -6,3 %). ev_aff porte déjà la valeur du mode actif
-    // (mélangée si α < 1), donc le filtre suit ce qui est affiché.
-    // Seuil d'esperance : -999 = pas de filtre, 0 = strictement positive,
-    // puis des paliers (0.02 = au moins +2 % de la mise).
-    if ($("uEvPos")) {
-      const seuilEv = parseFloat($("uEvPos").value);
-      if (seuilEv > -900) {
-        const ev = v.ev_aff ?? v.ev;
-        if (ev == null) return false;
-        // "Positive" exclut le zero ; les paliers sont inclusifs.
-        if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
-      }
+    // (mélangée si α < 1), donc le filtre suit ce qui est affiché. Réglé
+    // PAR CATÉGORIE depuis le 27/09/2026 (voir optionsEvPosCat côté bt) —
+    // seuil : -999 = pas de filtre, 0 = strictement positive, puis des
+    // paliers (0.02 = au moins +2 % de la mise).
+    const seuilEv = parseFloat(valCat("uEvPos", v.categorie, "-999"));
+    if (seuilEv > -900) {
+      const ev = v.ev_aff ?? v.ev;
+      if (ev == null) return false;
+      // "Positive" exclut le zero ; les paliers sont inclusifs.
+      if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
     }
     // Plafond d'espérance : au-delà, l'espérance affichée n'est presque
     // jamais une vraie opportunité mais une erreur du modèle (voir le
     // commentaire détaillé sur seuilEvMax dans btFiltered, page DC
     // rétrospectif — même mesure empirique, même seuil par défaut).
     // 999 = pas de plafond ; une espérance manquante n'est jamais exclue.
-    if ($("uEvMax")) {
-      const seuilEvMax = parseFloat($("uEvMax").value);
-      if (seuilEvMax < 900) {
-        const ev = v.ev_aff ?? v.ev;
-        if (ev != null && ev > seuilEvMax) return false;
-      }
+    const seuilEvMax = parseFloat(valCat("uEvMax", v.categorie, "999"));
+    if (seuilEvMax < 900) {
+      const ev = v.ev_aff ?? v.ev;
+      if (ev != null && ev > seuilEvMax) return false;
     }
     // Marchés de queue / plafond d'edge dévigué — même logique et même
     // portée (Intervalle de buts / Plus-Moins de buts uniquement) que sur
@@ -1709,7 +1734,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uCalib","uMise2"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1737,15 +1762,18 @@ function lierFiltres(idA, idB) {
     elA.dispatchEvent(new Event("change"));
   });
 }
-// --- Curseur double "Mouvement de la cote" -------------------------------
+// --- Curseur double générique (Mouvement de la cote, Plage de cotes) ------
 // Deux <input type="range"> superposés (bornes basse/haute) + deux <input
 // type="number"> pour la saisie précise + une barre de remplissage entre les
-// deux poignées. "prefixe" vaut "bt" (DC rétrospectif) ou "u" (Paris à venir).
-function initMvtSlider(prefixe) {
-  const minR = $(prefixe + "MvtMin"), maxR = $(prefixe + "MvtMax");
-  const minN = $(prefixe + "MvtMinNum"), maxN = $(prefixe + "MvtMaxNum");
-  const fill = $(prefixe + "MvtFill");
-  const resetBtn = $(prefixe + "MvtReset");
+// deux poignées. "champ" est le préfixe d'id du widget ("Mvt" ou "Cote"),
+// "prefixe" vaut "bt" (DC rétrospectif) ou "u" (Paris à venir), domMin/domMax
+// les bornes absolues du domaine (une poignée à l'extrémité = pas de limite
+// de ce côté, voir mvtBornesActives/coteBornesActives).
+function initDoubleSlider(champ, prefixe, domMin, domMax) {
+  const minR = $(prefixe + champ + "Min"), maxR = $(prefixe + champ + "Max");
+  const minN = $(prefixe + champ + "MinNum"), maxN = $(prefixe + champ + "MaxNum");
+  const fill = $(prefixe + champ + "Fill");
+  const resetBtn = $(prefixe + champ + "Reset");
   if (!minR || !maxR) return;
   const redessiner = prefixe === "bt" ? renderBacktest : renderUpcoming;
 
@@ -1762,7 +1790,7 @@ function initMvtSlider(prefixe) {
     const lo = parseFloat(minR.value), hi = parseFloat(maxR.value);
     minN.value = lo;
     maxN.value = hi;
-    const pct = val => (val - MVT_SLIDER_MIN) / (MVT_SLIDER_MAX - MVT_SLIDER_MIN) * 100;
+    const pct = val => (val - domMin) / (domMax - domMin) * 100;
     if (fill) {
       fill.style.left = pct(lo) + "%";
       fill.style.width = Math.max(0, pct(hi) - pct(lo)) + "%";
@@ -1778,17 +1806,17 @@ function initMvtSlider(prefixe) {
 
   function depuisNombre(which) {
     let lo = parseFloat(minN.value), hi = parseFloat(maxN.value);
-    if (isNaN(lo)) lo = MVT_SLIDER_MIN;
-    if (isNaN(hi)) hi = MVT_SLIDER_MAX;
-    lo = Math.min(Math.max(lo, MVT_SLIDER_MIN), MVT_SLIDER_MAX);
-    hi = Math.min(Math.max(hi, MVT_SLIDER_MIN), MVT_SLIDER_MAX);
+    if (isNaN(lo)) lo = domMin;
+    if (isNaN(hi)) hi = domMax;
+    lo = Math.min(Math.max(lo, domMin), domMax);
+    hi = Math.min(Math.max(hi, domMin), domMax);
     if (lo > hi) { if (which === "min") hi = lo; else lo = hi; }
     minR.value = lo;
     maxR.value = hi;
     // Redéclenche "change" sur les <input type=range> plutôt que d'appeler
     // rafraichirAffichage()/redessiner() ici directement : ça garde une seule
-    // voie de mise à jour, ET c'est cet événement que lierMvtSlider() écoute
-    // pour propager le réglage vers l'autre page.
+    // voie de mise à jour, ET c'est cet événement que lierDoubleSlider()
+    // écoute pour propager le réglage vers l'autre page.
     minR.dispatchEvent(new Event("change"));
     maxR.dispatchEvent(new Event("change"));
   }
@@ -1796,8 +1824,8 @@ function initMvtSlider(prefixe) {
   maxN.addEventListener("change", () => depuisNombre("max"));
 
   if (resetBtn) resetBtn.addEventListener("click", () => {
-    minR.value = MVT_SLIDER_MIN;
-    maxR.value = MVT_SLIDER_MAX;
+    minR.value = domMin;
+    maxR.value = domMax;
     minR.dispatchEvent(new Event("change"));
     maxR.dispatchEvent(new Event("change"));
   });
@@ -1806,9 +1834,9 @@ function initMvtSlider(prefixe) {
 }
 // Synchronise les curseurs "bt" et "u" entre eux, comme lierFiltres() le
 // fait pour les <select> classiques (mêmes bornes des deux côtés).
-function lierMvtSlider() {
+function lierDoubleSlider(champ) {
   ["Min", "Max"].forEach(suffixe => {
-    const a = $("btMvt" + suffixe), b = $("uMvt" + suffixe);
+    const a = $("bt" + champ + suffixe), b = $("u" + champ + suffixe);
     if (!a || !b) return;
     a.addEventListener("change", () => {
       if (b.value === a.value) return;
@@ -1822,6 +1850,10 @@ function lierMvtSlider() {
     });
   });
 }
+function initMvtSlider(prefixe) { initDoubleSlider("Mvt", prefixe, MVT_SLIDER_MIN, MVT_SLIDER_MAX); }
+function lierMvtSlider() { lierDoubleSlider("Mvt"); }
+function initCoteSlider(prefixe) { initDoubleSlider("Cote", prefixe, COTE_SLIDER_MIN, COTE_SLIDER_MAX); }
+function lierCoteSlider() { lierDoubleSlider("Cote"); }
 // --- Génération des blocs de filtres PAR CATÉGORIE (voir CATEGORIES_DC) --
 // Chaque bloc reprend le même gabarit .field/.controls que les filtres
 // globaux, dans un <details> repliable. "Filtre marchés de queue" et "Edge
@@ -1857,8 +1889,28 @@ function optionsEdgeDevigMaxCat() {
 }
 function optionsGarantieCat() {
   return `<option value="0">Ne pas en tenir compte</option>
-    <option value="1">Appliquer (ligues éligibles)</option>
+    <option value="1" selected>Appliquer (ligues éligibles)</option>
     <option value="2">Seulement les paris sauvés</option>`;
+}
+// Espérance / espérance maximum : anciennement des filtres globaux uniques,
+// déplacés dans CHAQUE bloc de catégorie (27/09/2026) — le seuil auquel une
+// espérance devient suspecte n'a pas de raison d'être le même sur un score
+// exact (beaucoup de marchés, edge bruyant) que sur un résultat 1X2.
+function optionsEvPosCat() {
+  return `<option value="-999">Peu importe</option>
+    <option value="0" selected>Positive (&gt; 0 %)</option>
+    <option value="0.02">Au moins +2 %</option>
+    <option value="0.04">Au moins +4 %</option>
+    <option value="0.06">Au moins +6 %</option>
+    <option value="0.08">Au moins +8 %</option>
+    <option value="0.10">Au moins +10 %</option>
+    <option value="0.20">Au moins +20 %</option>`;
+}
+function optionsEvMaxCat() {
+  return `<option value="999">Illimitée</option>
+    <option value="0.3">Max +30 %</option>
+    <option value="0.5" selected>Max +50 % (recommandé)</option>
+    <option value="1">Max +100 %</option>`;
 }
 function blocFiltreCategorie(prefixe, cat) {
   let champs = `
@@ -1867,8 +1919,12 @@ function blocFiltreCategorie(prefixe, cat) {
       <select id="${idCat(prefixe + "Edge", cat)}">${optionsEdgeCat()}</select>
     </div>
     <div class="field">
-      <label for="${idCat(prefixe + "Cote", cat)}">Plage de cotes</label>
-      <select id="${idCat(prefixe + "Cote", cat)}">${optionsCoteCat()}</select>
+      <label for="${idCat(prefixe + "EvPos", cat)}">Espérance</label>
+      <select id="${idCat(prefixe + "EvPos", cat)}">${optionsEvPosCat()}</select>
+    </div>
+    <div class="field">
+      <label for="${idCat(prefixe + "EvMax", cat)}" title="Une espérance très élevée est presque toujours un signal d'erreur du modèle, pas une vraie opportunité. Mesuré le 20/09/2026 : les paris à plus de +50 % d'espérance étaient à 0 % de réussite (0/14) sur un échantillon réel.">Espérance maximum</label>
+      <select id="${idCat(prefixe + "EvMax", cat)}">${optionsEvMaxCat()}</select>
     </div>`;
   if (CATEGORIES_FILTRE_QUEUE.has(cat)) {
     champs += `
@@ -2195,25 +2251,30 @@ cablerMenusDeroulants();
 [["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
- ["btEvPos","uEvPos"], ["btEvMax","uEvMax"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
 
-// Mouvement de la cote : curseur double indépendant des <select> ci-dessus
-// (deux <input type=range> par borne), synchronisé manuellement.
+// Mouvement de la cote / Plage de cotes : curseurs doubles indépendants des
+// <select> ci-dessus (deux <input type=range> par borne), synchronisés
+// manuellement plutôt que par lierFiltres.
 initMvtSlider("bt");
 initMvtSlider("u");
 lierMvtSlider();
+initCoteSlider("bt");
+initCoteSlider("u");
+lierCoteSlider();
 
-// Les 4 filtres devenus indépendants par catégorie (Edge minimum, Plage de
-// cotes, Filtre marchés de queue, Edge dévigué max) restent synchronisés
-// ENTRE LES DEUX PAGES pour une MÊME catégorie — mais plus entre catégories
-// différentes (changer l'edge minimum de "Score exact" ne touche plus celui
-// de "Vainqueur du match"). "Garantie 2 buts" n'existe que sur la page
-// "DC rétrospectif" (aucun résultat sur "Paris à venir"), donc pas de paire
-// à lier pour elle.
+// Les filtres devenus indépendants par catégorie (Edge minimum, Espérance,
+// Espérance maximum, Filtre marchés de queue, Edge dévigué max) restent
+// synchronisés ENTRE LES DEUX PAGES pour une MÊME catégorie — mais plus
+// entre catégories différentes (changer l'edge minimum de "Score exact" ne
+// touche plus celui de "Vainqueur du match"). "Garantie 2 buts" n'existe que
+// sur la page "DC rétrospectif" (aucun résultat sur "Paris à venir"), donc
+// pas de paire à lier pour elle. "Plage de cotes" est redevenue globale
+// (voir lierCoteSlider ci-dessus), donc plus de paire ici non plus.
 CATEGORIES_DC.forEach(cat => {
   lierFiltres(idCat("btEdge", cat), idCat("uEdge", cat));
-  lierFiltres(idCat("btCote", cat), idCat("uCote", cat));
+  lierFiltres(idCat("btEvPos", cat), idCat("uEvPos", cat));
+  lierFiltres(idCat("btEvMax", cat), idCat("uEvMax", cat));
   if (CATEGORIES_FILTRE_QUEUE.has(cat)) {
     lierFiltres(idCat("btFiltreQueue", cat), idCat("uFiltreQueue", cat));
     lierFiltres(idCat("btEdgeDevigMax", cat), idCat("uEdgeDevigMax", cat));
@@ -2709,17 +2770,21 @@ function btFiltered() {
   // dévigué +2,5 % mais espérance -6,3 %, car il faudrait gagner 97,1 % du
   // temps pour rentrer dans ses frais. L'espérance est la seule mesure de
   // ce qu'un pari rapporte vraiment.
-  // -999 = pas de filtre ; 0 = strictement positive ; 0.02 = au moins +2 %.
-  const seuilEv = $("btEvPos") ? parseFloat($("btEvPos").value) : -999;
-  // Plafond d'espérance : 999 = pas de plafond. Mesure empirique du
+  // Espérance / espérance maximum sont réglées PAR CATÉGORIE depuis le
+  // 27/09/2026 (voir optionsEvPosCat/optionsEvMaxCat, blocFiltreCategorie) —
+  // lues plus bas via valCat, comme Edge minimum. -999 = pas de filtre plancher ;
+  // 0 = strictement positive ; 999 = pas de plafond. Mesure empirique du
   // 20/09/2026 (export réel, catégories Plus/Moins de buts + Intervalle de
-  // buts) — les paris affichant plus de +50 % d'espérance étaient à 0 %
-  // de réussite (0 sur 14), contre un taux normal ailleurs dans le même
-  // échantillon : une espérance aussi extrême signale presque toujours une
-  // erreur du modèle (queue de distribution des buts totaux surestimée),
-  // pas une vraie opportunité — voir aussi le bandeau d'avertissement de
-  // la page "Paris à venir", qui dit la même chose en mots.
-  const seuilEvMax = $("btEvMax") ? parseFloat($("btEvMax").value) : 999;
+  // buts) qui justifie le plafond par défaut : les paris affichant plus de
+  // +50 % d'espérance étaient à 0 % de réussite (0 sur 14), contre un taux
+  // normal ailleurs dans le même échantillon — une espérance aussi extrême
+  // signale presque toujours une erreur du modèle (queue de distribution des
+  // buts totaux surestimée), pas une vraie opportunité.
+  // Plage de cotes : redevenue un réglage GLOBAL (27/09/2026, sur demande —
+  // elle était par catégorie), sous forme de curseur double comme Mouvement
+  // de la cote. Domaine calé sur les données réelles (p99 ≈ 30, max = 65 sur
+  // le backtest) — voir COTE_SLIDER_MIN/MAX.
+  const bornesCote = coteBornesActives("bt");
   // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
   // être vu comme gagnant par TOUS les filtres qui suivent (y compris
   // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
@@ -2739,22 +2804,24 @@ function btFiltered() {
     // PARI (voir le commentaire plus haut) — deux catégories cochées en même
     // temps peuvent donc appliquer des seuils différents dans la même passe.
     const seuil = parseFloat(valCat("btEdge", r.categorie, String(MIN_EDGE))) || MIN_EDGE;
-    const plageCote = valCat("btCote", r.categorie, "");
     // α < 1 : l'edge est celui du mélange avec le marché, forcément plus
     // sévère puisqu'il vaut α fois l'edge dévigé.
     const e = alpha < 1 ? blended(r, alpha).edge
                         : (devig ? (r.edge_devig ?? r.edge) : r.edge);
     if (e < seuil) return false;
-    if (!dansPlageCote(r.cote, plageCote)) return false;
+    if (!passeCote(bornesCote, r.cote)) return false;
     // "Seulement les paris sauvés" : ne garde que ceux que la garantie
     // transforme en gagnants — utile pour voir exactement ce qu'elle
     // change, mais ce n'est PAS une stratégie jouable (on ne sait pas à
     // l'avance quels paris elle sauvera). Ne concerne que "Vainqueur du
     // match", seule catégorie où le réglage "Garantie 2 buts" existe.
     if (r.categorie === CATEGORY_RESULT && garantie === "2" && !r.garantie_sauve) return false;
-    // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
-    // pas celle du modèle seul — sinon le filtre contredirait les chiffres
-    // affichés dans les colonnes.
+    // Espérance / espérance maximum, propres à LA CATÉGORIE DE CE PARI (voir
+    // le commentaire plus haut). Comparée au mode actif : avec α < 1
+    // l'espérance est celle du mélange, pas celle du modèle seul — sinon le
+    // filtre contredirait les chiffres affichés dans les colonnes.
+    const seuilEv = parseFloat(valCat("btEvPos", r.categorie, "-999"));
+    const seuilEvMax = parseFloat(valCat("btEvMax", r.categorie, "999"));
     if (seuilEv > -900 || seuilEvMax < 900) {
       const ev = alpha < 1 ? blended(r, alpha).ev : r.ev;
       if (seuilEv > -900) {
@@ -4782,7 +4849,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btPred","btEvPos","btEvMax","btCalib","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btPred","btCalib","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
