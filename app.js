@@ -40,6 +40,46 @@ const MARCHES_QUEUE = new Set([
   "Moins de 0.5", "Moins de 1",
 ]);
 
+// --- Filtres indépendants par catégorie de pari ---------------------------
+// Décision du 26/09/2026 : le modèle n'a pas la même fiabilité selon le
+// marché (score exact, résultat, buts...), donc un seuil d'edge ou une
+// plage de cotes qui a du sens sur l'un peut être trop laxiste ou trop
+// strict sur un autre. Plutôt qu'UN réglage unique appliqué à toutes les
+// catégories cochées, les 5 filtres les plus sensibles au marché (edge
+// minimum, plage de cotes, marchés de queue, edge dévigué max, garantie 2
+// buts) ont désormais un réglage PAR CATÉGORIE, généré dynamiquement (voir
+// genererBlocsFiltreCategorie plus bas). Les autres filtres (dates, ligue,
+// mouvement de cote, second avis, mélange marché, marge bookmaker,
+// enrichissement xG, loi statistique, paris liés, calibration, mise...)
+// restent globaux : ils ne dépendent pas du marché mais du match ou de la
+// stratégie, donc les dupliquer par catégorie n'aurait ajouté que de la
+// confusion pour aucun bénéfice statistique — voir aussi le bandeau
+// d'avertissement sur le surapprentissage (page OOS).
+const CATEGORIES_DC = ["Score exact", "Vainqueur du match", "Intervalle de buts",
+                        "Plus/Moins de buts", "Les 2 équipes marquent"];
+const CATEGORY_RESULT = "Vainqueur du match";
+const CATEGORY_SLUG = {
+  "Score exact": "se",
+  "Vainqueur du match": "vm",
+  "Intervalle de buts": "ib",
+  "Plus/Moins de buts": "pm",
+  "Les 2 équipes marquent": "btts",
+};
+// Identifiant DOM d'un filtre par catégorie, ex. idCat("btEdge", "Score exact") -> "btEdge_se".
+// Catégorie non reconnue -> id de base inchangé (permet un repli propre).
+function idCat(base, cat) {
+  const s = CATEGORY_SLUG[cat];
+  return s ? `${base}_${s}` : base;
+}
+// Valeur d'un filtre par catégorie, ou la valeur par défaut si l'élément
+// n'existe pas (filtre non pertinent pour cette catégorie — ex. "Filtre
+// marchés de queue" n'existe que pour Intervalle de buts / Plus-Moins de
+// buts — ou catégorie inconnue).
+function valCat(base, cat, dflt) {
+  const el = $(idCat(base, cat));
+  return el ? el.value : dflt;
+}
+
 /* ============================================================
    MÉLANGE AVEC LE MARCHÉ
    ------------------------------------------------------------
@@ -1161,7 +1201,7 @@ function renderUpcoming() {
   const strategieMise = $("uMise2") ? $("uMise2").value : "fixe";
   const bankrollRef = parseFloat(($("bkDepart") || {}).value) || 100;
   const cats = categoriesCochees("u");
-  const edge = parseFloat($("uEdge").value), sortBy = $("uSort").value;
+  const sortBy = $("uSort").value;
   const ligues = liguesCochees("u");
   const pred = $("uPred") ? $("uPred").value : "";
   const devig = $("uDevig") ? $("uDevig").value === "1" : false;
@@ -1195,8 +1235,12 @@ function renderUpcoming() {
   }).filter(v => {
     if (cats && !cats.includes(v.categorie)) return false;
     if (ligues && !ligues.has(ligueKey(v.pays, v.ligue))) return false;
+    // Edge minimum et plage de cotes : réglage propre à la catégorie DE CE
+    // PARI (voir CATEGORIES_DC / idCat / valCat en tête de fichier), lié à
+    // son équivalent de la page DC rétrospectif (lierFiltres).
+    const edge = parseFloat(valCat("uEdge", v.categorie, String(MIN_EDGE)));
     if (v.edge_aff < edge) return false;
-    if (!dansPlageCote(v.cote, $("uCote") ? $("uCote").value : "")) return false;
+    if (!dansPlageCote(v.cote, valCat("uCote", v.categorie, ""))) return false;
     // Espérance : un edge dévigué positif ne garantit PAS une espérance
     // positive — sur une cote très basse, la marge du bookmaker peut
     // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
@@ -1227,14 +1271,14 @@ function renderUpcoming() {
     }
     // Marchés de queue / plafond d'edge dévigué — même logique et même
     // portée (Intervalle de buts / Plus-Moins de buts uniquement) que sur
-    // la page DC rétrospectif (btFiltered) ; voir le commentaire détaillé
-    // sur MARCHES_QUEUE en tête de fichier.
+    // la page DC rétrospectif (btFiltered), lus depuis le bloc de CETTE
+    // catégorie ; voir le commentaire détaillé sur MARCHES_QUEUE en tête de
+    // fichier.
     if (CATEGORIES_FILTRE_QUEUE.has(v.categorie)) {
-      if ($("uFiltreQueue") && $("uFiltreQueue").value === "1" && MARCHES_QUEUE.has(v.colonne)) return false;
-      if ($("uEdgeDevigMax")) {
-        const seuilEdgeDevigMax = parseFloat($("uEdgeDevigMax").value);
-        if (seuilEdgeDevigMax < 900 && v.edge_aff != null && v.edge_aff > seuilEdgeDevigMax) return false;
-      }
+      const filtreQueue = valCat("uFiltreQueue", v.categorie, "0") === "1";
+      const seuilEdgeDevigMax = parseFloat(valCat("uEdgeDevigMax", v.categorie, "999"));
+      if (filtreQueue && MARCHES_QUEUE.has(v.colonne)) return false;
+      if (seuilEdgeDevigMax < 900 && v.edge_aff != null && v.edge_aff > seuilEdgeDevigMax) return false;
     }
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
@@ -1618,7 +1662,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uEdge","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uFiltreQueue","uEdgeDevigMax","uCalib","uCote","uMise2"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uMvt","uPred","uEnrichi","uLoi","uDedup","uEvPos","uEvMax","uCalib","uMise2"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -1646,6 +1690,102 @@ function lierFiltres(idA, idB) {
     elA.dispatchEvent(new Event("change"));
   });
 }
+// --- Génération des blocs de filtres PAR CATÉGORIE (voir CATEGORIES_DC) --
+// Chaque bloc reprend le même gabarit .field/.controls que les filtres
+// globaux, dans un <details> repliable. "Filtre marchés de queue" et "Edge
+// dévigué max" ne sont générés que pour les catégories concernées
+// (CATEGORIES_FILTRE_QUEUE) ; "Garantie 2 buts" seulement pour "Vainqueur
+// du match" sur la page DC rétrospectif ("bt") — la page "Paris à venir"
+// porte sur des matchs pas encore joués, donc sans résultat ni garantie
+// possible (voir profit_garantie côté Python).
+function optionsEdgeCat() {
+  return `<option value="0.02">2 % (tous)</option>
+    <option value="0.05">5 %</option>
+    <option value="0.10">10 %</option>
+    <option value="0.15">15 %</option>`;
+}
+function optionsCoteCat() {
+  return `<option value="">Toutes</option>
+    <option value="1-2">1,01 à 2,00</option>
+    <option value="2-4">2,01 à 4,00</option>
+    <option value="4-8">4,01 à 8,00</option>
+    <option value="8-15">8,01 à 15,00</option>
+    <option value="15-999">Au-delà de 15,00</option>
+    <option value="2-15">2,01 à 15,00 (hors extrêmes)</option>`;
+}
+function optionsFiltreQueueCat() {
+  return `<option value="0">Les inclure</option>
+    <option value="1" selected>Les exclure (recommandé)</option>`;
+}
+function optionsEdgeDevigMaxCat() {
+  return `<option value="999">Illimité</option>
+    <option value="0.10">Max 10 %</option>
+    <option value="0.15" selected>Max 15 % (recommandé)</option>
+    <option value="0.20">Max 20 %</option>`;
+}
+function optionsGarantieCat() {
+  return `<option value="0">Ne pas en tenir compte</option>
+    <option value="1">Appliquer (ligues éligibles)</option>
+    <option value="2">Seulement les paris sauvés</option>`;
+}
+function blocFiltreCategorie(prefixe, cat) {
+  let champs = `
+    <div class="field">
+      <label for="${idCat(prefixe + "Edge", cat)}">Edge minimum</label>
+      <select id="${idCat(prefixe + "Edge", cat)}">${optionsEdgeCat()}</select>
+    </div>
+    <div class="field">
+      <label for="${idCat(prefixe + "Cote", cat)}">Plage de cotes</label>
+      <select id="${idCat(prefixe + "Cote", cat)}">${optionsCoteCat()}</select>
+    </div>`;
+  if (CATEGORIES_FILTRE_QUEUE.has(cat)) {
+    champs += `
+    <div class="field">
+      <label for="${idCat(prefixe + "FiltreQueue", cat)}" title="Mesuré le 20/09/2026 (3084 paris réels) : sur cette catégorie, les marchés extrêmes (Buts 7 et plus, Plus de 4/4.5/5, Moins de 0.5/1) affichent une probabilité modèle 2 à 3 fois supérieure au taux de réussite réel.">Marchés de queue</label>
+      <select id="${idCat(prefixe + "FiltreQueue", cat)}">${optionsFiltreQueueCat()}</select>
+    </div>
+    <div class="field">
+      <label for="${idCat(prefixe + "EdgeDevigMax", cat)}" title="Mesuré le 20/09/2026 : l'écart entre probabilité modèle et réussite réelle croît avec l'edge affiché sur cette catégorie — signe d'un « winner's curse » plutôt que d'un vrai signal.">Edge dévigué maximum</label>
+      <select id="${idCat(prefixe + "EdgeDevigMax", cat)}">${optionsEdgeDevigMaxCat()}</select>
+    </div>`;
+  }
+  if (prefixe === "bt" && cat === CATEGORY_RESULT) {
+    champs += `
+    <div class="field">
+      <label for="${idCat(prefixe + "Garantie", cat)}">Garantie 2 buts</label>
+      <select id="${idCat(prefixe + "Garantie", cat)}">${optionsGarantieCat()}</select>
+    </div>`;
+  }
+  return `<details class="cat-filter-block" open data-cat="${cat}">
+    <summary>${cat}</summary>
+    <div class="controls cat-filter-controls">${champs}</div>
+  </details>`;
+}
+// Génère les blocs des 5 catégories dans le conteneur de la page ("bt" ou
+// "u"), puis câble chaque nouveau select : rendu immédiat au changement,
+// exactement comme les filtres globaux existants.
+function genererBlocsFiltreCategorie(prefixe) {
+  const conteneur = $(prefixe + "CatFilterBlocks");
+  if (!conteneur) return;
+  conteneur.innerHTML = CATEGORIES_DC.map(cat => blocFiltreCategorie(prefixe, cat)).join("");
+  const redessiner = prefixe === "bt" ? renderBacktest : renderUpcoming;
+  conteneur.querySelectorAll("select").forEach(sel => {
+    sel.addEventListener("change", () => redessiner());
+  });
+}
+// N'affiche que les blocs des catégories cochées (vue combinée) : si
+// aucune catégorie n'est cochée, categoriesCochees() renvoie null (= toutes
+// affichées), exactement le même comportement que le filtre "Type de pari"
+// lui-même — jamais d'impasse à zéro bloc visible.
+function majVisibiliteBlocsCategorie(prefixe) {
+  const conteneur = $(prefixe + "CatFilterBlocks");
+  if (!conteneur) return;
+  const cochees = categoriesCochees(prefixe);
+  conteneur.querySelectorAll(".cat-filter-block").forEach(bloc => {
+    bloc.style.display = (!cochees || cochees.includes(bloc.dataset.cat)) ? "" : "none";
+  });
+}
+
 // Cases a cocher "Type de pari" : elles ne sont pas des <select>, donc ni
 // les ecouteurs ni lierFiltres() ne les prennent en charge. On les cable a
 // la main, en gardant les deux pages synchronisees comme les autres filtres.
@@ -1661,13 +1801,19 @@ function cablerCasesCategorie() {
         });
         libelleMsel(pref);
         libelleMsel(autre);
+        majVisibiliteBlocsCategorie(pref);
+        majVisibiliteBlocsCategorie(autre);
         if (typeof renderBacktest === "function") renderBacktest();
         if (typeof renderUpcoming === "function") renderUpcoming();
       });
     });
   });
 }
+genererBlocsFiltreCategorie("bt");
+genererBlocsFiltreCategorie("u");
 cablerCasesCategorie();
+majVisibiliteBlocsCategorie("bt");
+majVisibiliteBlocsCategorie("u");
 
 // --- Type de pari : le groupe de cases est replie dans un menu deroulant --
 // (voir le commentaire CSS .msel dans style.css). Le texte du bouton resume
@@ -1828,9 +1974,24 @@ cablerMenusDeroulants();
 [["btDevig","uDevig"], ["btAlpha","uAlpha"],
  ["btMvt","uMvt"], ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
- ["btEvPos","uEvPos"], ["btEvMax","uEvMax"], ["btFiltreQueue","uFiltreQueue"], ["btEdgeDevigMax","uEdgeDevigMax"],
- ["btCalib","uCalib"], ["btEdge","uEdge"], ["btMise","uMise2"],
- ["btCoteRange","uCote"]].forEach(([a,b]) => lierFiltres(a,b));
+ ["btEvPos","uEvPos"], ["btEvMax","uEvMax"],
+ ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
+
+// Les 4 filtres devenus indépendants par catégorie (Edge minimum, Plage de
+// cotes, Filtre marchés de queue, Edge dévigué max) restent synchronisés
+// ENTRE LES DEUX PAGES pour une MÊME catégorie — mais plus entre catégories
+// différentes (changer l'edge minimum de "Score exact" ne touche plus celui
+// de "Vainqueur du match"). "Garantie 2 buts" n'existe que sur la page
+// "DC rétrospectif" (aucun résultat sur "Paris à venir"), donc pas de paire
+// à lier pour elle.
+CATEGORIES_DC.forEach(cat => {
+  lierFiltres(idCat("btEdge", cat), idCat("uEdge", cat));
+  lierFiltres(idCat("btCote", cat), idCat("uCote", cat));
+  if (CATEGORIES_FILTRE_QUEUE.has(cat)) {
+    lierFiltres(idCat("btFiltreQueue", cat), idCat("uFiltreQueue", cat));
+    lierFiltres(idCat("btEdgeDevigMax", cat), idCat("uEdgeDevigMax", cat));
+  }
+});
 
 // Sans ratio mesurable (backtest de moins de 100 paris, ou ratio aberrant
 // — voir build_dc_backtest côté Python), le filtre n'a rien à appliquer :
@@ -2135,7 +2296,7 @@ const BT_ROWS = WIZARD_DATA.dc_backtest || [];
 // — le filtre n'aurait rien à appliquer. On le grise en disant pourquoi
 // plutôt que de le laisser sans effet visible.
 {
-  const el = $("btGarantie");
+  const el = $(idCat("btGarantie", CATEGORY_RESULT));
   if (el) {
     const n = BT_ROWS.filter(r => r.garantie_eligible).length;
     if (!n) {
@@ -2282,14 +2443,11 @@ function btFiltered() {
   const nbActif = $("btLoi") && $("btLoi").value === "nbinom" && modeXg === "sans";
   let source = appliquerXg(appliquerNb(calibrer(BT_ROWS, calibActif), nbActif), modeXg);
 
-  // Les paris sont stockés avec leurs DEUX edges (brut et marge retirée).
-  // Selon le mode, on ne garde que ceux qui passaient le seuil dans cette
-  // lecture-là — sinon on comparerait des ensembles différents.
-  // Pilotable depuis la page (auparavant figé à MIN_EDGE, alors que la page
-  // « Paris à venir » proposait déjà ce réglage : les deux vues ne
-  // montraient donc pas le même ensemble à réglages identiques).
-  const seuil = $("btEdge") ? (parseFloat($("btEdge").value) || MIN_EDGE) : MIN_EDGE;
-  const plageCote = $("btCoteRange") ? $("btCoteRange").value : "";
+  // Edge minimum, plage de cotes, filtre marchés de queue, edge dévigué max
+  // et garantie 2 buts sont désormais PROPRES À CHAQUE CATÉGORIE de pari
+  // (voir CATEGORIES_DC / blocFiltreCategorie / idCat / valCat en tête de
+  // fichier) : ils sont donc lus PAR LIGNE, selon r.categorie, à l'intérieur
+  // du filtre plus bas — plus une seule fois ici pour toute la page.
   // Garantie 2 Buts d'Écart (Winamax) : sur un pari Résultat d'une ligue
   // éligible, si l'équipe a mené de 2 buts à un moment du match, le pari
   // est payé gagnant même si elle finit par ne pas gagner.
@@ -2297,8 +2455,10 @@ function btFiltered() {
   //   "2" = isoler     -> ne montrer QUE les paris que la garantie sauve,
   //                       pour voir concrètement ce qu'elle apporte
   // Le profit corrigé (profit_garantie) est calculé côté Python ; ici on
-  // ne fait que choisir quelle lecture utiliser.
-  const garantie = $("btGarantie") ? $("btGarantie").value : "0";
+  // ne fait que choisir quelle lecture utiliser. Réglage propre à
+  // "Vainqueur du match" : c'est la seule catégorie où garantie_sauve est
+  // calculé côté Python (voir LIGUES_GARANTIE_2_BUTS).
+  const garantie = valCat("btGarantie", CATEGORY_RESULT, "0");
   const alpha = blendAlpha("btAlpha");
   // Filtre sur le MOUVEMENT DE LA COTE entre la première et la dernière
   // capture. Une cote qui raccourcit signale que de l'argent est entré sur
@@ -2328,31 +2488,26 @@ function btFiltered() {
   // pas une vraie opportunité — voir aussi le bandeau d'avertissement de
   // la page "Paris à venir", qui dit la même chose en mots.
   const seuilEvMax = $("btEvMax") ? parseFloat($("btEvMax").value) : 999;
-  // Filtre "marchés de queue" — voir le commentaire sur MARCHES_QUEUE en
-  // tête de fichier. Ne s'applique qu'aux deux catégories concernées.
-  const filtreQueue = $("btFiltreQueue") ? $("btFiltreQueue").value === "1" : false;
-  // Plafond d'edge dévigué, réservé aux deux mêmes catégories : mesure
-  // empirique du 20/09/2026 — l'écart entre proba modèle et réussite réelle
-  // CROÎT avec l'edge affiché (edge 2-5 % -> ~4 pt d'écart de calibration,
-  // 15-25 % -> ~15 pt). Plus notre modèle s'écarte du marché sur CES
-  // marchés-là, plus l'écart tient au bruit de notre propre estimation qu'à
-  // un vrai désaccord informé — un "winner's curse" classique : sélectionner
-  // les plus gros désaccords avec un marché globalement efficient revient à
-  // sélectionner le bruit qui va dans notre sens. 999 = pas de plafond.
-  const seuilEdgeDevigMax = $("btEdgeDevigMax") ? parseFloat($("btEdgeDevigMax").value) : 999;
   // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
   // être vu comme gagnant par TOUS les filtres qui suivent (y compris
   // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
   // dans le total de profit. Les champs d'origine sont conservés à part
-  // pour pouvoir afficher les deux lectures.
+  // pour pouvoir afficher les deux lectures. garantie_sauve n'est de toute
+  // façon calculé côté Python que pour "Vainqueur du match" — le test sur
+  // r.categorie est une garde supplémentaire, pas la seule protection.
   if (garantie === "1" || garantie === "2") {
-    source = source.map(r => r.garantie_sauve
+    source = source.map(r => (r.categorie === CATEGORY_RESULT && r.garantie_sauve)
       ? {...r, gagne: true, profit: r.profit_garantie,
          gagne_sans_garantie: r.gagne, profit_sans_garantie: r.profit}
       : r);
   }
 
   let rows = source.filter(r => {
+    // Edge minimum et plage de cotes : réglage propre à la catégorie DE CE
+    // PARI (voir le commentaire plus haut) — deux catégories cochées en même
+    // temps peuvent donc appliquer des seuils différents dans la même passe.
+    const seuil = parseFloat(valCat("btEdge", r.categorie, String(MIN_EDGE))) || MIN_EDGE;
+    const plageCote = valCat("btCote", r.categorie, "");
     // α < 1 : l'edge est celui du mélange avec le marché, forcément plus
     // sévère puisqu'il vaut α fois l'edge dévigé.
     const e = alpha < 1 ? blended(r, alpha).edge
@@ -2362,8 +2517,9 @@ function btFiltered() {
     // "Seulement les paris sauvés" : ne garde que ceux que la garantie
     // transforme en gagnants — utile pour voir exactement ce qu'elle
     // change, mais ce n'est PAS une stratégie jouable (on ne sait pas à
-    // l'avance quels paris elle sauvera).
-    if (garantie === "2" && !r.garantie_sauve) return false;
+    // l'avance quels paris elle sauvera). Ne concerne que "Vainqueur du
+    // match", seule catégorie où le réglage "Garantie 2 buts" existe.
+    if (r.categorie === CATEGORY_RESULT && garantie === "2" && !r.garantie_sauve) return false;
     // Comparée au mode actif : avec α < 1 l'espérance est celle du mélange,
     // pas celle du modèle seul — sinon le filtre contredirait les chiffres
     // affichés dans les colonnes.
@@ -2378,8 +2534,11 @@ function btFiltered() {
       if (seuilEvMax < 900 && ev != null && ev > seuilEvMax) return false;
     }
     // Marchés de queue / plafond d'edge dévigué : réservé aux deux
-    // catégories identifiées (voir MARCHES_QUEUE, CATEGORIES_FILTRE_QUEUE).
+    // catégories identifiées (voir MARCHES_QUEUE, CATEGORIES_FILTRE_QUEUE),
+    // et lus depuis LE BLOC DE CETTE CATÉGORIE (idCat/valCat).
     if (CATEGORIES_FILTRE_QUEUE.has(r.categorie)) {
+      const filtreQueue = valCat("btFiltreQueue", r.categorie, "0") === "1";
+      const seuilEdgeDevigMax = parseFloat(valCat("btEdgeDevigMax", r.categorie, "999"));
       if (filtreQueue && MARCHES_QUEUE.has(r.colonne)) return false;
       if (seuilEdgeDevigMax < 900 && e != null && e > seuilEdgeDevigMax) return false;
     }
@@ -4186,7 +4345,7 @@ function drawEvolution() {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btEvMax","btFiltreQueue","btEdgeDevigMax","btCalib","btEdge","btCoteRange","btGarantie","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btMvt","btPred","btEvPos","btEvMax","btCalib","btMise","btDateDebut","btDateFin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
