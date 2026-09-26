@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926163308">
+<link rel="stylesheet" href="style.css?v=20260926165129">
 </head>
 <body>
 <div class="topbar">
@@ -383,7 +383,9 @@
     <!-- ---------- Graphique principal + filtres qui pilotent toute la page ---------- -->
     <div class="panel">
       <h2>Évolution du gain cumulé <span class="hint">— un edge réel se maintient dans la durée</span></h2>
-      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+      <details class="chart-help" style="margin:-.3rem 0 .9rem">
+        <summary class="muted" style="cursor:pointer; font-size:.85rem">Comment lire ce graphique ?</summary>
+        <p class="muted" style="margin:.5rem 0 0; font-size:.85rem">
         Une courbe qui monte régulièrement suggère un avantage réel. Une courbe plate ponctuée d'un
         seul grand saut ressemble davantage à un coup de chance isolé.
         <strong>Survole la courbe</strong> pour voir le détail de chaque pari.<br>
@@ -407,7 +409,8 @@
         nettement le modèle en buts seul. Disponible <strong>uniquement pour les matchs où l'historique
         xG est suffisant</strong> des deux côtés (le nombre de paris affichés baisse en conséquence en
         mode « Avec ») : jamais comblé par une estimation approximative.</span></span>
-      </p>
+        </p>
+      </details>
       <div class="controls" style="margin-bottom:1.1rem">
         <div class="field">
           <label id="btCatLabel">Type de pari</label>
@@ -1387,7 +1390,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926163308"></script>
-<script src="app.js?v=20260926163308"></script>
+<script src="donnees.js?v=20260926165129"></script>
+<script src="app.js?v=20260926165129"></script>
 </body>
 </html>
