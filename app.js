@@ -2988,6 +2988,13 @@ function renderScoreMatrix(rowsFiltrees) {
     const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
     const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
     const target = document.elementFromPoint(clientX, clientY);
+    // Le curseur qui entre DANS l'infobulle (pour atteindre la liste
+    // scrollable, par ex.) ne doit surtout pas la fermer : elle a
+    // maintenant pointer-events:auto (voir .score-tooltip en CSS) pour
+    // pouvoir être scrollée, donc elementFromPoint la retourne elle plutôt
+    // que la case en dessous dès qu'on la survole — sans ce garde-fou,
+    // s'approcher de la liste pour la faire défiler la fermait aussitôt.
+    if (target && target.closest(".score-tooltip")) return;
     const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
     if (!cell) { hide(); return; }
     show(cell, clientX, clientY);
