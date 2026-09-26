@@ -58,6 +58,12 @@ const MARCHES_QUEUE = new Set([
 const CATEGORIES_DC = ["Score exact", "Vainqueur du match", "Intervalle de buts",
                         "Plus/Moins de buts", "Les 2 équipes marquent"];
 const CATEGORY_RESULT = "Vainqueur du match";
+const CATEGORY_SCORE = "Score exact";
+// Reprend très exactement la regex Python de categorize_column (colonnes
+// "H - A"), pour que "quel pari est un score exact" soit tranché de façon
+// identique des deux côtés. Utilisée à la fois par la matrice "Score exact"
+// plus bas et par le filtre "Score(s) pariés" (voir initMeta/remplirScoreExMsel).
+const SCORE_RE = /^\s*(\d+)\s*-\s*(\d+)\s*$/;
 const CATEGORY_SLUG = {
   "Score exact": "se",
   "Vainqueur du match": "vm",
@@ -324,6 +330,62 @@ function issuesVmCochees(prefixe) {
   return choisies.length ? new Set(choisies) : null;
 }
 
+// --- "Score exact" : quels scores pariés inclure ---------------------------
+// Même principe que liguesCochees (case vide = pas de filtre) : liste peuplée
+// dynamiquement (voir remplirScoreExMsel dans initMeta, comme pour Ligue —
+// contrairement à "Vainqueur du match", le nombre de scores possibles dépend
+// des données et peut changer d'une collecte à l'autre). Propre à cette
+// catégorie : n'a aucun effet sur les autres (gardé par r.categorie ===
+// CATEGORY_SCORE dans btFiltered/renderUpcoming).
+function scoreExCochees(prefixe) {
+  const boites = document.querySelectorAll("." + prefixe + "ScoreExChk");
+  if (!boites.length) return null;
+  const choisies = [...boites].filter(b => b.checked).map(b => b.value);
+  return choisies.length ? new Set(choisies) : null;
+}
+
+// Scores exacts distincts réellement pariés (union backtest + value bets),
+// triés numériquement buts domicile puis buts extérieur — même tri que le
+// filtre "Pari précis" de la page Vue d'ensemble (voir initPariFilter).
+// Fonctions de niveau module (pas nichées dans initMeta comme pour Ligue) :
+// #btScoreExOptions/#uScoreExOptions sont injectés par blocFiltreCategorie,
+// donc peuplés une seconde fois après coup — voir remplirScoreExOptionsPartout.
+function scoreExOptions(rows) {
+  const vues = new Set();
+  rows.forEach(r => { if (r.categorie === CATEGORY_SCORE && r.colonne) vues.add(r.colonne); });
+  return [...vues].sort((a, b) => {
+    const pa = SCORE_RE.exec(a), pb = SCORE_RE.exec(b);
+    if (pa && pb) return (+pa[1] - +pb[1]) || (+pa[2] - +pb[2]);
+    if (pa) return -1;
+    if (pb) return 1;
+    return a.localeCompare(b);
+  });
+}
+function remplirScoreExMsel(prefixe, rows) {
+  const conteneur = $(prefixe + "ScoreExOptions");
+  if (!conteneur) return;
+  conteneur.innerHTML = "";
+  scoreExOptions(rows).forEach(score => {
+    const label = document.createElement("label");
+    label.className = "chk-cat";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = prefixe + "ScoreExChk";
+    input.value = score;
+    const span = document.createElement("span");
+    span.textContent = score;
+    label.appendChild(input);
+    label.appendChild(span);
+    conteneur.appendChild(label);
+  });
+}
+function remplirScoreExOptionsPartout() {
+  if (!$("btScoreExOptions") && !$("uScoreExOptions")) return;
+  const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])];
+  remplirScoreExMsel("bt", toutes);
+  remplirScoreExMsel("u", toutes);
+}
+
 function blendAlpha(selectId) {
   const el = $(selectId);
   const v = el ? parseFloat(el.value) : 1;
@@ -491,6 +553,13 @@ function initMeta() {
     remplirLiguesMsel("bt", toutes);
     remplirLiguesMsel("u", toutes);
   }
+  // Le filtre "Score(s) pariés" (bloc "Score exact") est peuplé plus bas,
+  // APRÈS genererBlocsFiltreCategorie() : à ce stade de initMeta(), ses
+  // conteneurs (#btScoreExOptions / #uScoreExOptions) n'existent pas encore
+  // — ils sont injectés dynamiquement par blocFiltreCategorie(), contrairement
+  // à #btLigueOptions qui est écrit en dur dans le HTML dès le chargement.
+  // Voir remplirScoreExOptionsPartout() et son appel après
+  // genererBlocsFiltreCategorie("bt"/"u").
 }
 
 BETS.forEach((b,i) => b.id = i);
@@ -980,8 +1049,16 @@ document.addEventListener("click", e => {
 // similarité, pas le même match). Vérifier date puis ligue AVANT les noms
 // évite justement de suivre une suggestion d'alias qui casserait plus
 // qu'elle ne corrigerait.
+//
+// candidat_date / decalage_jours (ajout du 26/09/2026) : quand AUCUN
+// candidat n'existe le jour même, le script élargit désormais la recherche
+// à une fenêtre de dates voisines (find_nearby_candidate côté Python) —
+// le cas d'un match reporté/avancé. Si un candidat y est trouvé, ces deux
+// champs sont renseignés ; sinon (toujours pas de candidat, même dans la
+// fenêtre élargie) l'exemple reste un vrai trou de couverture (candidat null).
 function classifierUnmatched(t) {
   if (typeof t === "string") return "string";     // anciennes données (donnees.js pas régénéré)
+  if (t.candidat_date) return "date_decalee";      // candidat trouvé à une date proche, pas le jour même
   if (t.candidat === null) return "none";          // aucun candidat, trou de couverture pur
   return t.ligue_ok ? "ligue_ok" : "ligue_ko";
 }
@@ -990,7 +1067,21 @@ function renderUnmatchedItem(t) {
   if (typeof t === "string") return `<li>${t}</li>`;
   let suffix = "";
   let suggestion = null;
-  if (t.candidat) {
+  if (t.candidat_date) {
+    // Rien le jour attendu, mais un candidat aux noms très proches existe
+    // à quelques jours d'écart : probablement le même match reporté/avancé
+    // plutôt qu'un vrai trou de couverture. decalage_jours > 0 = résultat
+    // trouvé APRÈS la date attendue (report), < 0 = AVANT (avancement).
+    const decal = t.decalage_jours;
+    const decalTxt = decal > 0 ? `+${decal} j` : `${decal} j`;
+    const checks =
+      `<span class="match-check warn" title="Aucun résultat à la date attendue (${t.date}). Ce candidat vient d'une date différente (${t.candidat_date}, ${decalTxt}) — probablement un match reporté ou avancé plutôt qu'un nom mal rapproché.">≠ date (${decalTxt})</span>` +
+      (t.ligue_ok
+        ? `<span class="match-check ok" title="Pays/ligue alignés entre cotes et résultats.">✓ même ligue</span>`
+        : `<span class="match-check warn" title="Côté résultats : ${t.candidat_pays} · ${t.candidat_ligue} — différent de ${t.pays} · ${t.ligue}. À vérifier avant de faire confiance au nom suggéré ci-dessous.">⚠ ligue différente</span>`);
+    suffix = ` <br>${checks}<br><span class="muted">↳ aucun résultat le ${t.date}, mais candidat trouvé le ${t.candidat_date} (score ${t.score}) : ${t.candidat} — probablement reporté/avancé</span>`;
+    suggestion = t.ligue_ok ? suggestionAliasEquipes(t) : null;
+  } else if (t.candidat) {
     const checks =
       `<span class="match-check ok" title="Le candidat vient du même jour (toujours vrai : la recherche ne regarde jamais un autre jour).">✓ même date</span>` +
       (t.ligue_ok
@@ -1284,6 +1375,9 @@ function renderUpcoming() {
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
   const issuesVm = issuesVmCochees("u");
+  // Scores exacts inclus pour "Score exact" — voir scoreExCochees, même
+  // principe, propre à cette catégorie.
+  const scoresEx = scoreExCochees("u");
   // Plage de cotes : réglage global (curseur double), voir le commentaire
   // détaillé dans btFiltered (page DC rétrospectif).
   const bornesCoteU = coteBornesActives("u");
@@ -1364,6 +1458,9 @@ function renderUpcoming() {
     // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
     // awayWin) ; les autres catégories ne sont jamais filtrées ici.
     if (v.categorie === CATEGORY_RESULT && issuesVm && !issuesVm.has(v.colonne)) return false;
+    // "Score(s) pariés" — ne concerne que "Score exact" (colonne "H - A") ;
+    // les autres catégories ne sont jamais filtrées ici.
+    if (v.categorie === CATEGORY_SCORE && scoresEx && !scoresEx.has(v.colonne)) return false;
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
@@ -1973,6 +2070,32 @@ function blocFiltreCategorie(prefixe, cat) {
       <select id="${idCat(prefixe + "Garantie", cat)}">${optionsGarantieCat()}</select>
     </div>`;
   }
+  if (cat === CATEGORY_SCORE) {
+    // Sélection multiple des scores exacts pariés à inclure — même widget
+    // (menu à cases à cocher repliable, recherche texte, Tout cocher/
+    // décocher) que le filtre Ligue plus haut sur la page, la liste étant
+    // elle aussi peuplée dynamiquement (voir remplirScoreExMsel dans
+    // initMeta) plutôt qu'écrite en dur : les scores réellement pariés
+    // dépendent des données du jour, comme les ligues.
+    champs += `
+    <div class="field field-wide">
+      <label id="${prefixe}ScoreExLabel">Score(s) pariés</label>
+      <div class="msel" id="${prefixe}ScoreExMsel">
+        <button type="button" class="msel-btn" id="${prefixe}ScoreExBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="${prefixe}ScoreExLabel">
+          <span class="msel-btn-text" id="${prefixe}ScoreExBtnText">Tous</span>
+          <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="msel-panel msel-panel-ligues">
+          <input type="text" class="msel-search" id="${prefixe}ScoreExSearch" placeholder="Rechercher un score…" autocomplete="off">
+          <div class="msel-actions">
+            <button type="button" class="msel-action" id="${prefixe}ScoreExCheckAll">Tout cocher</button>
+            <button type="button" class="msel-action" id="${prefixe}ScoreExUncheckAll">Tout décocher</button>
+          </div>
+          <div class="msel-options" id="${prefixe}ScoreExOptions"><!-- peuplé en JS, voir initMeta() --></div>
+        </div>
+      </div>
+    </div>`;
+  }
   return `<details class="cat-filter-block" open data-cat="${cat}">
     <summary>${cat}</summary>
     <div class="controls cat-filter-controls">${champs}</div>
@@ -2028,6 +2151,12 @@ function cablerCasesCategorie() {
 }
 genererBlocsFiltreCategorie("bt");
 genererBlocsFiltreCategorie("u");
+// Peuple le menu "Score(s) pariés" maintenant que les blocs de catégorie
+// (et donc #btScoreExOptions/#uScoreExOptions) existent dans le DOM — voir
+// le commentaire dans initMeta() pour pourquoi ce n'est pas fait là-bas.
+// Doit tourner avant cablerCasesScoreEx()/cablerActionsScoreEx() plus bas,
+// pour que les cases à cocher qu'elles câblent existent déjà.
+remplirScoreExOptionsPartout();
 cablerCasesCategorie();
 majVisibiliteBlocsCategorie("bt");
 majVisibiliteBlocsCategorie("u");
@@ -2184,6 +2313,77 @@ function cablerActionsLigue(prefixe) {
 }
 ["bt", "u"].forEach(cablerActionsLigue);
 
+// --- "Score(s) pariés" (bloc "Score exact") : même widget que Ligue —------
+// liste peuplée dynamiquement (voir remplirScoreExMsel dans initMeta), rien
+// de coché par défaut (voir scoreExCochees), recherche texte et Tout cocher/
+// décocher limité aux options visibles. Injecté par blocFiltreCategorie,
+// donc câblé séparément comme "Issue pariée", après coup.
+function cablerCasesScoreEx() {
+  ["bt", "u"].forEach(pref => {
+    document.querySelectorAll("." + pref + "ScoreExChk").forEach(boite => {
+      boite.addEventListener("change", () => {
+        const autre = pref === "bt" ? "u" : "bt";
+        document.querySelectorAll("." + autre + "ScoreExChk").forEach(jumelle => {
+          if (jumelle.value === boite.value) jumelle.checked = boite.checked;
+        });
+        libelleMselScoreEx(pref);
+        libelleMselScoreEx(autre);
+        if (typeof renderBacktest === "function") renderBacktest();
+        if (typeof renderUpcoming === "function") renderUpcoming();
+      });
+    });
+  });
+}
+cablerCasesScoreEx();
+
+function libelleMselScoreEx(prefixe) {
+  const boites = [...document.querySelectorAll("." + prefixe + "ScoreExChk")];
+  const texte = $(prefixe + "ScoreExBtnText");
+  if (!texte) return;
+  const coche = boites.filter(b => b.checked);
+  if (!coche.length) texte.textContent = "Tous";
+  else if (coche.length === 1) texte.textContent = coche[0].value;
+  else texte.textContent = coche.length + " scores";
+}
+
+function filtrerOptionsScoreEx(prefixe) {
+  const rech = $(prefixe + "ScoreExSearch");
+  const terme = rech ? rech.value.trim().toLowerCase() : "";
+  document.querySelectorAll("#" + prefixe + "ScoreExOptions .chk-cat").forEach(label => {
+    const texte = label.textContent.toLowerCase();
+    label.style.display = (!terme || texte.includes(terme)) ? "" : "none";
+  });
+}
+["bt", "u"].forEach(pref => {
+  const rech = $(pref + "ScoreExSearch");
+  if (rech) rech.addEventListener("input", () => filtrerOptionsScoreEx(pref));
+});
+
+function cablerActionsScoreEx(prefixe) {
+  const boutonCocher = $(prefixe + "ScoreExCheckAll");
+  const boutonDecocher = $(prefixe + "ScoreExUncheckAll");
+  if (!boutonCocher && !boutonDecocher) return;
+  const autre = prefixe === "bt" ? "u" : "bt";
+  const appliquer = (valeur) => {
+    document.querySelectorAll("#" + prefixe + "ScoreExOptions .chk-cat").forEach(label => {
+      if (label.style.display === "none") return;
+      const input = label.querySelector("input." + prefixe + "ScoreExChk");
+      if (!input) return;
+      input.checked = valeur;
+      document.querySelectorAll("." + autre + "ScoreExChk").forEach(jumelle => {
+        if (jumelle.value === input.value) jumelle.checked = valeur;
+      });
+    });
+    libelleMselScoreEx(prefixe);
+    libelleMselScoreEx(autre);
+    if (typeof renderBacktest === "function") renderBacktest();
+    if (typeof renderUpcoming === "function") renderUpcoming();
+  };
+  if (boutonCocher) boutonCocher.addEventListener("click", () => appliquer(true));
+  if (boutonDecocher) boutonDecocher.addEventListener("click", () => appliquer(false));
+}
+["bt", "u"].forEach(cablerActionsScoreEx);
+
 // Ouverture/fermeture d'un menu "case a cocher" du gabarit .msel — factorise
 // pour servir aussi bien Type de pari que Ligue (et tout futur menu du même
 // genre) : un seul menu ouvert a la fois, fermeture au clic ailleurs ou sur
@@ -2227,6 +2427,16 @@ function cablerMenusDeroulants() {
     // gère déjà l'absence sans erreur si jamais le bloc n'est pas généré.
     cablerMenuDeroulant(pref + "IssueVmMsel", pref + "IssueVmBtn");
     libelleMselIssueVm(pref);
+    // "Score(s) pariés" (Score exact) : même remarque, + recherche qui
+    // repart vide à chaque ouverture comme pour Ligue.
+    cablerMenuDeroulant(pref + "ScoreExMsel", pref + "ScoreExBtn", () => {
+      const rech = $(pref + "ScoreExSearch");
+      if (!rech) return;
+      rech.value = "";
+      filtrerOptionsScoreEx(pref);
+      rech.focus();
+    });
+    libelleMselScoreEx(pref);
   });
   document.addEventListener("click", (e) => {
     document.querySelectorAll(".msel.open").forEach(msel => {
@@ -2699,6 +2909,9 @@ function btFiltered() {
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
   const issuesVm = issuesVmCochees("bt");
+  // Scores exacts inclus pour "Score exact" — voir scoreExCochees, même
+  // principe, propre à cette catégorie.
+  const scoresEx = scoreExCochees("bt");
   const dedup = $("btDedup") ? $("btDedup").value === "1" : false;
   const devig = $("btDevig") ? $("btDevig").value === "1" : false;
   const modeXg = $("btEnrichi") ? $("btEnrichi").value : "sans";
@@ -2844,6 +3057,9 @@ function btFiltered() {
     // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
     // awayWin) ; les autres catégories ne sont jamais filtrées ici.
     if (r.categorie === CATEGORY_RESULT && issuesVm && !issuesVm.has(r.colonne)) return false;
+    // "Score(s) pariés" — ne concerne que "Score exact" (colonne "H - A") ;
+    // les autres catégories ne sont jamais filtrées ici.
+    if (r.categorie === CATEGORY_SCORE && scoresEx && !scoresEx.has(r.colonne)) return false;
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
     if (cats && !cats.includes(r.categorie)) return false;
@@ -2880,8 +3096,6 @@ function btFiltered() {
 // exactement la regex Python de categorize_column (colonnes "H - A"), pour
 // que "quel pari est un score exact" soit tranché de façon identique des
 // deux côtés.
-const SCORE_EXACT_CAT = "Score exact";
-const SCORE_RE = /^\s*(\d+)\s*-\s*(\d+)\s*$/;
 // En dessous de ce nombre de paris, une case est affichée mais atténuée :
 // avec 1-2 paris sur un score précis, un seul résultat suffit à faire
 // basculer le ROI de -100 % à +400 % — même logique de prudence que
@@ -3264,7 +3478,7 @@ function renderScoreMatrix(rowsFiltrees) {
   if (!wrap) return;
   if (seuilTxt) seuilTxt.textContent = SCORE_CELL_SEUIL_FIABLE;
 
-  const rows = rowsFiltrees.filter(r => r.categorie === SCORE_EXACT_CAT && SCORE_RE.test(r.colonne || ""));
+  const rows = rowsFiltrees.filter(r => r.categorie === CATEGORY_SCORE && SCORE_RE.test(r.colonne || ""));
   if (!rows.length) {
     wrap.innerHTML = "";
     if (legend) legend.innerHTML = "";
