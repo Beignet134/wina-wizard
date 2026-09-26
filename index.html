@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926180803">
+<link rel="stylesheet" href="style.css?v=20260926191015">
 </head>
 <body>
 <div class="topbar">
@@ -375,6 +375,11 @@
           <div class="st-value" id="btNb">—</div>
           <div class="st-sub" id="btNbSub">—</div>
         </div>
+        <div class="score-tile" title="CLV (Closing Line Value) : écart entre la toute première cote observée et celle retenue pour le pari. Positif = la cote a raccourci depuis, le marché a fini par confirmer le pari — détail par tranche dans « Mouvement de cote » plus bas.">
+          <div class="st-label">CLV moyen</div>
+          <div class="st-value" id="btClv">—</div>
+          <div class="st-sub" id="btClvSub">—</div>
+        </div>
       </div>
     </div>
 
@@ -666,14 +671,20 @@
     </div>
 
 <div class="panel" id="btMvtFiltrePanel">
-      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14l4-5 3.5 3L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Mouvement de cote — sur vos paris filtrés</h2>
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14l4-5 3.5 3L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Mouvement de cote — sur vos paris filtrés <span class="hint">— le CLV en détail</span></h2>
       <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
         Répartit les paris qui passent vos filtres ci-dessus selon que la cote a raccourci ou
-        s'est allongée entre la première et la dernière capture avant le coup d'envoi. À la
-        différence du tableau « Suivre le marché plutôt que le modèle ? » plus bas dans les
-        diagnostics avancés — qui regarde <em>toutes</em> les cotes suivies, retenues comme pari
-        ou non — celui-ci ne porte que sur les paris qui correspondent à vos réglages actuels :
-        pratique pour voir en direct l'effet d'exclure les cotes qui ont déjà bougé.
+        s'est allongée entre la première et la dernière capture avant le coup d'envoi. Ce signal a
+        un nom dans le jargon des paris sportifs : le <strong>CLV</strong> (Closing Line Value —
+        l'écart entre le prix obtenu et celui du marché à la clôture). Un CLV positif de façon
+        répétée est considéré comme l'un des meilleurs indicateurs de savoir-faire à long terme,
+        plus stable qu'un ROI mesuré sur un échantillon encore restreint — c'est ce que le KPI
+        « CLV moyen » plus haut résume en un chiffre, et ce que le détail par tranche ci-dessous
+        permet de vérifier. À la différence du tableau « Suivre le marché plutôt que le modèle ? »
+        plus bas dans les diagnostics avancés — qui regarde <em>toutes</em> les cotes suivies,
+        retenues comme pari ou non — celui-ci ne porte que sur les paris qui correspondent à vos
+        réglages actuels : pratique pour voir en direct l'effet d'exclure les cotes qui ont déjà
+        bougé.
       </p>
       <div id="btMvtFiltreWrap"></div>
       <p class="muted" id="btMvtFiltreEmpty" style="display:none; font-size:.85rem">Aucun pari filtré ne dispose d'un mouvement de cote mesuré (il faut au moins deux captures avant le coup d'envoi).</p>
@@ -699,6 +710,31 @@
         </table>
       </div>
       <p class="muted" id="btLigueCompEmpty" style="display:none; font-size:.85rem">Pas assez de paris avec ces filtres pour comparer les ligues.</p>
+    </div>
+
+<div class="panel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 15V9m4 6V5m4 10v-7m4 7V7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Club vs sélections nationales <span class="hint">— le modèle est-il aussi fiable sur les deux ?</span></h2>
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Les matchs de sélection (Coupe du monde, Euro, Ligue des Nations, CAN, matchs amicaux
+        internationaux...) ont une dynamique différente du club : moins de matchs joués ensemble
+        par les mêmes joueurs, avantage du terrain plus faible, enjeux très inégaux d'un match à
+        l'autre. Le modèle n'a pourtant qu'une seule façon de calculer ses forces d'équipe — rien
+        ne garantit qu'elle soit aussi fiable ici. Recalculé sur l'ensemble filtré ci-dessus, comme
+        le reste de la page. La détection du type de match se fait par mots-clés sur le nom de la
+        ligue (pas encore par une liste officielle des compétitions) : si une compétition de
+        sélections apparaît classée « Club », signale-la pour qu'elle soit ajoutée.
+      </p>
+      <div class="tablewrap">
+        <table id="btTypeMatchTable" class="cardify">
+          <thead><tr>
+            <th>Type de match</th><th class="num">Paris</th><th class="num">Réussite</th>
+            <th class="num">Cote moy.</th><th class="num">ROI</th><th class="num">Net</th>
+          </tr></thead>
+          <tbody id="btTypeMatchBody"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="btTypeMatchEmpty" style="display:none; font-size:.85rem">Pas assez de paris avec ces filtres pour comparer.</p>
+      <p class="muted" id="btTypeMatchVerdict" style="margin:.7rem 0 0; font-size:.85rem"></p>
     </div>
 
 <div class="panel">
@@ -1390,7 +1426,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260926180816"></script>
-<script src="app.js?v=20260926180803"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260926191030"></script>
+<script src="app.js?v=20260926191015"></script>
 </body>
 </html>
