@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926191015">
+<link rel="stylesheet" href="style.css?v=20260926193415">
 </head>
 <body>
 <div class="topbar">
@@ -29,6 +29,7 @@
       <button class="tab" data-page="retro" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7.5V11l2.6 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 2.2 3.7 4.3l2.1 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Rétrospectif</span></button>
       <button class="tab" data-page="dc" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2 15c1.8 0 2.2-10 6-10s4.2 10 6 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2 15h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="label">Dixon-Coles</span></button>
       <button class="tab" data-page="backtest" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M6.6 10.2l2.3 2.3 4.5-4.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">DC rétrospectif</span></button>
+      <button class="tab" data-page="montecarlo" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="5" cy="14.5" r="1.6" fill="currentColor"/><circle cx="9.2" cy="7.8" r="1.6" fill="currentColor"/><circle cx="13.5" cy="15.3" r="1.6" fill="currentColor"/><circle cx="16.2" cy="6" r="1.6" fill="currentColor"/><circle cx="6.8" cy="3.6" r="1.3" fill="currentColor" opacity=".55"/></svg><span class="label">Simulation</span></button>
       <button class="tab" data-page="upcoming" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="label">Paris à venir</span> <span class="badge-count" id="tabUpCount">0</span></button>
       <button class="tab" data-page="bankroll" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="15" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8.5h15" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="12" r="1.4" fill="currentColor"/></svg><span class="label">Bankroll</span></button>
       <button class="tab" data-page="teams" role="tab"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.3 16.3 4.7v5C16.3 14.1 13.5 16.5 10 18c-3.5-1.5-6.3-3.9-6.3-8.3v-5L10 2.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="label">Stats équipes</span></button>
@@ -890,6 +891,154 @@
   </section>
 
   <!-- ================================================================= -->
+  <!-- PAGE 2 BIS — SIMULATION DE VARIANCE (MONTE CARLO)                  -->
+  <!-- ================================================================= -->
+  <section class="page" id="page-montecarlo" role="tabpanel">
+    <p class="lead">À quoi ressemble la <strong>fourchette réaliste</strong> de résultats, bonne
+      comme mauvaise, si le modèle est exactement aussi fiable qu'il le prétend ? Rejoue des
+      milliers de fois l'historique de paris déjà testé, en tirant chaque résultat au hasard selon
+      la probabilité du modèle plutôt que de ne regarder que ce qui s'est <em>réellement</em>
+      passé une fois.</p>
+
+    <div class="warn pred">
+      <strong>Ce graphique simule le hasard, pas l'avenir.</strong> Chaque trajectoire tire un
+      gagné/perdu aléatoire pour chaque pari avec la probabilité que <strong>le modèle</strong> lui
+      attribue — l'ordre chronologique des paris reste celui de l'historique, seul le résultat de
+      chacun est retiré au sort à chaque trajectoire. Cette simulation suppose donc que les
+      probabilités utilisées sont justes. Si le modèle est en réalité surconfiant, la vraie variance
+      est pire que ce qu'affiche ce graphique, pas meilleure — active le filtre
+      <strong>« Correction de calibration »</strong> sur la page DC rétrospectif pour simuler avec
+      des probabilités déjà corrigées de cette surconfiance plutôt qu'avec les probabilités brutes
+      du modèle ; cette page reprend automatiquement ce réglage, comme tous les autres filtres de
+      la page DC rétrospectif.
+    </div>
+
+    <div class="panel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Paramètres de la simulation</h2>
+      <div class="controls">
+        <div class="field">
+          <label for="mcN">Nombre de trajectoires simulées</label>
+          <select id="mcN">
+            <option value="500">500 (rapide)</option>
+            <option value="2000" selected>2 000 (recommandé)</option>
+            <option value="5000">5 000</option>
+            <option value="10000">10 000 (plus lent)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mcStrategie">Stratégie de mise</label>
+          <select id="mcStrategie">
+            <option value="fixe" selected>Montant fixe par pari</option>
+            <option value="kelly">Kelly (fraction de bankroll, compose)</option>
+          </select>
+        </div>
+        <div class="field" id="mcFixeWrap">
+          <label for="mcMontantFixe">Montant fixe (€)</label>
+          <input type="number" id="mcMontantFixe" value="10" min="0" step="1">
+        </div>
+        <div class="field" id="mcKellyWrap" style="display:none">
+          <label for="mcKellyFrac">Fraction de Kelly</label>
+          <select id="mcKellyFrac">
+            <option value="0.125">Kelly 1/8 (très prudent)</option>
+            <option value="0.25" selected>Kelly 1/4 (recommandé)</option>
+            <option value="0.5">Kelly 1/2 (agressif)</option>
+            <option value="1">Kelly entier (déconseillé)</option>
+          </select>
+        </div>
+      </div>
+      <p class="muted" id="mcKellyNote" style="display:none; margin:0 0 .4rem; font-size:.82rem">
+        La bankroll compose réellement d'un pari au suivant, dans l'ordre chronologique de
+        l'historique — comme la simulation d'exposition de la page Bankroll, mais rejouée des
+        milliers de fois avec un résultat différent à chaque fois plutôt qu'une seule fois avec le
+        résultat réel.
+      </p>
+      <p class="muted" style="margin:0 0 .9rem; font-size:.82rem">
+        Bankroll de départ : <strong id="mcDepartAff">—</strong> (réglage partagé avec la page
+        Bankroll) · Paris rejoués à chaque trajectoire : <strong id="mcNbParis">—</strong>, ceux qui
+        correspondent actuellement aux filtres de la page « DC rétrospectif » — change-les là-bas
+        pour restreindre la simulation à une catégorie, une période ou un edge minimum précis.
+      </p>
+      <button type="button" id="mcRelancer" class="btn btn-primary">🎲 Relancer la simulation</button>
+      <span class="muted" id="mcCalcTime" style="margin-left:.7rem; font-size:.8rem"></span>
+    </div>
+
+    <p id="mcEmpty" class="muted" style="display:none; text-align:center; margin-top:1.2rem">
+      Aucun pari ne correspond actuellement aux filtres de la page « DC rétrospectif » — rien à
+      simuler.
+    </p>
+
+    <div id="mcResults">
+      <div class="scoreboard">
+        <div class="scoreboard-head">
+          <span class="eyebrow">Sur <span id="mcNTraj">—</span> trajectoires simulées</span>
+        </div>
+        <div class="score-tiles">
+          <div class="score-tile">
+            <div class="st-label">Bankroll finale médiane</div>
+            <div class="st-value" id="mcMediane">—</div>
+            <div class="st-sub">50ᵉ percentile</div>
+          </div>
+          <div class="score-tile">
+            <div class="st-label">Pire cas plausible</div>
+            <div class="st-value" id="mcP5">—</div>
+            <div class="st-sub">5ᵉ percentile — 1 trajectoire sur 20 fait pire</div>
+          </div>
+          <div class="score-tile">
+            <div class="st-label">Meilleur cas plausible</div>
+            <div class="st-value" id="mcP95">—</div>
+            <div class="st-sub">95ᵉ percentile — 1 trajectoire sur 20 fait mieux</div>
+          </div>
+          <div class="score-tile">
+            <div class="st-label">Probabilité de finir en perte</div>
+            <div class="st-value" id="mcProbaPerte">—</div>
+            <div class="st-sub">bankroll finale &lt; bankroll de départ</div>
+          </div>
+          <div class="score-tile">
+            <div class="st-label">Probabilité de ruine</div>
+            <div class="st-value" id="mcProbaRuine">—</div>
+            <div class="st-sub" id="mcRuineSub">bankroll tombée à 0 à un moment</div>
+          </div>
+          <div class="score-tile">
+            <div class="st-label">Pire creux typique</div>
+            <div class="st-value" id="mcDrawdown">—</div>
+            <div class="st-sub">perte temporaire médiane depuis un sommet</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Fourchette des trajectoires possibles <span class="hint">— même historique, résultats tirés au hasard</span></h2>
+        <details class="chart-help" style="margin:-.3rem 0 .9rem">
+          <summary class="muted" style="cursor:pointer; font-size:.85rem">Comment lire ce graphique ?</summary>
+          <p class="muted" style="margin:.5rem 0 0; font-size:.85rem">
+            Chaque trajectoire simulée rejoue les mêmes paris, dans le même ordre, mais avec un
+            résultat gagné/perdu tiré au hasard à chaque fois selon la probabilité du modèle. La
+            bande large (claire) couvre 90 % des trajectoires simulées, entre le 5ᵉ et le 95ᵉ
+            percentile ; la bande centrale (plus soutenue) couvre 50 % d'entre elles, entre le 25ᵉ
+            et le 75ᵉ percentile. La ligne pleine est la trajectoire médiane. Plus la bande est
+            large à un point donné, plus le résultat à ce stade est incertain — elle s'élargit
+            presque toujours avec le nombre de paris joués, ce qui est normal : le hasard s'accumule
+            avec le temps, même quand le modèle a un vrai avantage.
+          </p>
+        </details>
+        <div id="mcFanWrap"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Distribution des résultats finaux <span class="hint">— où retombent les 2 000 trajectoires ?</span></h2>
+        <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+          Répartition du gain net final (bankroll finale − bankroll de départ) sur l'ensemble des
+          trajectoires simulées, en tranches égales. La hauteur d'une barre est le nombre de
+          trajectoires tombées dans cette tranche.
+        </p>
+        <div id="mcHistWrap"></div>
+      </div>
+
+      <p class="muted" id="mcVerdict" style="margin:.2rem 0 1.5rem; font-size:.9rem"></p>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
   <!-- PAGE 3 — PARIS À VENIR                                             -->
   <!-- ================================================================= -->
   <section class="page" id="page-upcoming" role="tabpanel">
@@ -1426,7 +1575,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260926191030"></script>
-<script src="app.js?v=20260926191015"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260926193432"></script>
+<script src="app.js?v=20260926193415"></script>
 </body>
 </html>
