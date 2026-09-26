@@ -475,6 +475,17 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
    ci-dessus sans conflit visuel) distingue "pari confirmé" du reste de la
    grille au premier coup d'œil, sans dépendre de la seule teinte du fond. */
 .score-cell-diag { box-shadow: inset 0 0 0 2px var(--violet); }
+/* Colonne "Total" de la matrice "Vainqueur du match" (voir renderResultMatrix)
+   : résumé de la ligne, pas une case de la grille croisée — fond neutre fixe
+   plutôt que la heatmap par ROI, séparée par un double liseré, et c'est le
+   texte lui-même (pas le fond) qui porte le signal positif/négatif ici. */
+.score-total-head { border-left: 2px solid var(--line); }
+.score-cell-total {
+  background: var(--bg-2) !important;
+  border-left: 2px solid var(--line);
+}
+.score-cell-total .score-net.pos { color: var(--up); }
+.score-cell-total .score-net.neg { color: var(--down); }
 .score-legend {
   display: flex; align-items: center; gap: .5rem; margin-top: .9rem; flex-wrap: wrap;
 }
