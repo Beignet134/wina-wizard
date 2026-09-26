@@ -820,6 +820,18 @@ details.cat-filter-block > summary:hover { color: var(--cyan); }
 .btn-copy-alias:hover { border-color: var(--cyan); background: rgba(34,211,238,.1); }
 .btn-copy-alias:active:not(:disabled) { transform: scale(.94); }
 .btn-copy-alias:disabled { opacity: .7; cursor: default; }
+/* Barre "cocher plusieurs entrées puis copier d'un coup" au-dessus des listes
+   de diagnostic (matchs non rapprochés, compétitions non alignées) : mêmes
+   boutons .msel-action que le menu Ligue (tout cocher/décocher), plus un
+   .btn-copy-alias agrandi pour l'action groupée — même famille visuelle que
+   les boutons individuels "Copier l'entrée Python" de chaque ligne. */
+.alias-batch-toolbar {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .7rem 0 .6rem;
+}
+.alias-batch-toolbar .msel-action { flex: none; padding: .3rem .7rem; }
+.alias-batch-toolbar .btn-copy-alias-batch { margin-left: 0; padding: .3rem .8rem; font-size: .72rem; }
+.chk-alias-wrap { margin-right: .45rem; cursor: pointer; }
+.chk-alias { accent-color: var(--cyan); cursor: pointer; vertical-align: middle; }
 .placed-actions { flex-wrap: wrap; }
 
 /* Analyse des marges */
