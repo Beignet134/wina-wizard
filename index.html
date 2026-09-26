@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926201521">
+<link rel="stylesheet" href="style.css?v=20260926205214">
 </head>
 <body>
 <div class="topbar">
@@ -227,7 +227,7 @@
         class="match-check warn" style="cursor:default">⚠ ligue différente</span> signale un candidat pris dans une
         autre compétition, donc probablement un trou de couverture plutôt qu'un vrai alias manquant ; le bouton
         "Copier l'entrée Python" n'apparaît alors pas, pour éviter de suivre une suggestion qui casserait plus
-        qu'elle ne corrige.</p>
+        qu'elle ne corrige. Un match dont la date n'est pas encore arrivée est mis à part (<span class="match-check ok" style="cursor:default">🗓 pas encore joué</span>) : l'absence de résultat y est normale, ce n'est pas un trou de couverture.</p>
         <div class="field unmatched-filter">
           <label for="unmatchedFilter">Filtrer</label>
           <select id="unmatchedFilter">
@@ -236,9 +236,16 @@
             <option value="ligue_ok">✓ même ligue</option>
             <option value="ligue_ko">⚠ ligue différente</option>
             <option value="date_decalee">📅 Date décalée (match probablement reporté/avancé)</option>
-            <option value="none">Aucun candidat (trou de couverture)</option>
+            <option value="none">Aucun candidat, déjà joué (trou de couverture)</option>
+            <option value="futur">🗓 Pas encore joué (futur)</option>
           </select>
           <span class="muted" id="unmatchedFilterCount"></span>
+        </div>
+        <div class="alias-batch-toolbar" id="unmatchedBatchToolbar">
+          <button type="button" class="msel-action" id="unmatchedCheckAll">Tout cocher (visibles)</button>
+          <button type="button" class="msel-action" id="unmatchedUncheckAll">Tout décocher (visibles)</button>
+          <span class="muted" id="unmatchedSelCount">0 sélectionné(s)</span>
+          <button type="button" class="btn-copy-alias btn-copy-alias-batch" id="unmatchedCopySelection" disabled>Copier les entrées sélectionnées</button>
         </div>
         <ul id="unmatchedList"></ul>
       </details>
@@ -250,6 +257,12 @@
         s'appelle...", c'est le libellé RÉEL retrouvé dans les résultats pour cette compétition (pas une
         supposition) : une entrée <code>LEAGUE_ALIASES_RESULTATS</code> (ou <code>PAYS_ALIASES_RESULTATS</code>)
         dans le script Python, avec ce texte exact, récupère généralement toute la ligne d'un coup.</p>
+        <div class="alias-batch-toolbar" id="unalignedBatchToolbar">
+          <button type="button" class="msel-action" id="unalignedCheckAll">Tout cocher</button>
+          <button type="button" class="msel-action" id="unalignedUncheckAll">Tout décocher</button>
+          <span class="muted" id="unalignedSelCount">0 sélectionné(s)</span>
+          <button type="button" class="btn-copy-alias btn-copy-alias-batch" id="unalignedCopySelection" disabled>Copier les entrées sélectionnées</button>
+        </div>
         <ul id="unalignedLeaguesList"></ul>
       </details>
     </div>
@@ -1575,7 +1588,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260926201533"></script>
-<script src="app.js?v=20260926201521"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260926205232"></script>
+<script src="app.js?v=20260926205214"></script>
 </body>
 </html>
