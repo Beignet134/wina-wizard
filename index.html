@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926122634">
+<link rel="stylesheet" href="style.css?v=20260926131912">
 </head>
 <body>
 <div class="topbar">
@@ -406,6 +406,22 @@
       </p>
       <div class="controls" style="margin-bottom:1.1rem">
         <div class="field">
+          <label id="btCatLabel">Type de pari</label>
+          <div class="msel" id="btCat">
+            <button type="button" class="msel-btn" id="btCatBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="btCatLabel">
+              <span class="msel-btn-text" id="btCatBtnText">Toutes</span>
+              <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="msel-panel">
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Score exact" checked><span>Score exact</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts"><span>Intervalle de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts"><span>Plus/Moins de buts</span></label>
+              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Les 2 équipes marquent"><span>Les 2 équipes marquent</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="field">
           <label for="btStake">Mise par pari (€)</label>
           <input type="number" id="btStake" value="10" min="0" step="1">
         </div>
@@ -424,22 +440,6 @@
             <option value="won">Seulement les gagnants</option>
             <option value="lost">Seulement les perdants</option>
           </select>
-        </div>
-        <div class="field">
-          <label id="btCatLabel">Type de pari</label>
-          <div class="msel" id="btCat">
-            <button type="button" class="msel-btn" id="btCatBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="btCatLabel">
-              <span class="msel-btn-text" id="btCatBtnText">Toutes</span>
-              <svg class="msel-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-            <div class="msel-panel">
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Score exact" checked><span>Score exact</span></label>
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Vainqueur du match" checked><span>Vainqueur du match</span></label>
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Intervalle de buts"><span>Intervalle de buts</span></label>
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Plus/Moins de buts"><span>Plus/Moins de buts</span></label>
-              <label class="chk-cat"><input type="checkbox" class="btCatChk" value="Les 2 équipes marquent"><span>Les 2 équipes marquent</span></label>
-            </div>
-          </div>
         </div>
         <div class="field">
           <label id="btLigueLabel">Ligue</label>
@@ -558,56 +558,24 @@
             <option value="1">Max +100 %</option>
           </select>
         </div>
-        <div class="field">
-          <label for="btFiltreQueue" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts » — rien n'indique le même biais ailleurs. Mesuré le 20/09/2026 (3084 paris réels) : sur ces deux catégories, les marchés extrêmes (Buts 7 et plus, Plus de 4/4.5/5, Moins de 0.5/1) affichent une probabilité modèle 2 à 3 fois supérieure au taux de réussite réel — une petite erreur sur les buts attendus se répercute de façon très non linéaire dans la queue de la distribution.">Marchés de queue (Interv. / Plus-Moins)</label>
-          <select id="btFiltreQueue">
-            <option value="0">Les inclure</option>
-            <option value="1" selected>Les exclure (recommandé)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btEdgeDevigMax" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts ». Mesuré le 20/09/2026 : sur ces deux catégories, l'écart entre probabilité modèle et réussite réelle croît avec l'edge affiché (2-5 % → environ 4 pt d'écart, 15-25 % → environ 15 pt) — signe d'un « winner's curse » : plus le modèle s'écarte du marché sur ces marchés, plus l'écart tient au bruit de l'estimation qu'à un vrai désaccord informé, face à un marché globalement efficient.">Edge dévigué maximum (Interv. / Plus-Moins)</label>
-          <select id="btEdgeDevigMax">
-            <option value="999">Illimité</option>
-            <option value="0.10">Max 10 %</option>
-            <option value="0.15" selected>Max 15 % (recommandé)</option>
-            <option value="0.20">Max 20 %</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btEdge">Edge minimum</label>
-          <select id="btEdge">
-            <option value="0.02">2 % (tous)</option>
-            <option value="0.05">5 %</option>
-            <option value="0.10">10 %</option>
-            <option value="0.15">15 %</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btGarantie">Garantie 2 buts</label>
-          <select id="btGarantie">
-            <option value="0">Ne pas en tenir compte</option>
-            <option value="1">Appliquer (ligues éligibles)</option>
-            <option value="2">Seulement les paris sauvés</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="btCoteRange">Plage de cotes</label>
-          <select id="btCoteRange">
-            <option value="">Toutes</option>
-            <option value="1-2">1,01 à 2,00</option>
-            <option value="2-4">2,01 à 4,00</option>
-            <option value="4-8">4,01 à 8,00</option>
-            <option value="8-15">8,01 à 15,00</option>
-            <option value="15-999">Au-delà de 15,00</option>
-            <option value="2-15">2,01 à 15,00 (hors extrêmes)</option>
-          </select>
-        </div>
       </div>
-      <p class="muted" style="font-size:.78rem; margin:.7rem 0 0">Ces filtres pilotent toute la page :
+
+      <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .6rem">Filtres par catégorie de pari</h3>
+      <p class="muted" style="margin:-.3rem 0 .8rem; font-size:.82rem">Edge minimum, plage de cotes,
+        marchés de queue, edge dévigué maximum et garantie 2 buts se règlent <strong>indépendamment
+        pour chaque catégorie cochée ci-dessus</strong> — le modèle n'a pas la même fiabilité sur un
+        score exact que sur un résultat ou un total de buts. Un bloc par catégorie, replié ou déplié
+        à volonté ; les KPI et tableaux plus bas agrègent toutes les catégories cochées, chacune
+        filtrée selon ses propres réglages.</p>
+      <div id="btCatFilterBlocks" class="cat-filter-blocks"></div>
+
+      <p class="muted" style="font-size:.78rem; margin:.9rem 0 0">Ces filtres pilotent toute la page :
         KPI, graphiques et tableaux. Catégorie, ligue, marge bookmaker, poids du modèle, mouvement de
-        cote, second avis, enrichissement xG, paris liés, espérance et calibration sont synchronisés
-        avec l'onglet « Paris à venir ».</p>
+        cote, second avis, enrichissement xG, paris liés, espérance et calibration sont globaux et
+        synchronisés avec l'onglet « Paris à venir ». Edge minimum, plage de cotes, marchés de queue
+        et edge dévigué maximum sont aussi synchronisés avec « Paris à venir », mais catégorie par
+        catégorie ; garantie 2 buts n'existe que sur cette page (les matchs à venir n'ont pas encore
+        de résultat).</p>
       <p class="muted" id="btEnrichiNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -791,12 +759,14 @@
 <div class="panel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v14M4 7h4M12 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/></svg>Le réglage tient-il hors échantillon ?</h2>
       <p class="muted" style="margin:-.5rem 0 1rem; font-size:.85rem">
-        Cette page offre une soixantaine de combinaisons de réglages. Les essayer toutes sur le même
-        jeu de paris pour garder la meilleure, c'est du <strong>surapprentissage garanti</strong> :
-        sur un échantillon modeste, au moins une paraîtra excellente par pur hasard.
-        Ici les paris sont coupés en deux périodes. Vous réglez en regardant la première ;
-        la seconde montre ce que <em>ce même réglage</em> aurait donné sur des paris qui n'ont
-        jamais servi à le choisir.
+        Cette page offre des centaines de combinaisons de réglages — d'autant plus depuis que
+        edge minimum, plage de cotes, marchés de queue, edge dévigué max et garantie 2 buts se
+        règlent indépendamment par catégorie de pari. Les essayer toutes sur le même jeu de paris
+        pour garder la meilleure, c'est du <strong>surapprentissage garanti</strong> : sur un
+        échantillon modeste, au moins une paraîtra excellente par pur hasard — et plus il y a de
+        réglages à essayer, plus ce risque grandit. Ici les paris sont coupés en deux périodes.
+        Vous réglez en regardant la première ; la seconde montre ce que <em>ce même réglage</em>
+        aurait donné sur des paris qui n'ont jamais servi à le choisir.
       </p>
       <div id="btOos"></div>
     </div>
@@ -858,10 +828,6 @@
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Filtrer les recommandations</h2>
       <div class="controls">
         <div class="field">
-          <label for="uStake">Mise par pari (€)</label>
-          <input type="number" id="uStake" value="10" min="0" step="1">
-        </div>
-        <div class="field">
           <label id="uCatLabel">Type de pari</label>
           <div class="msel" id="uCat">
             <button type="button" class="msel-btn" id="uCatBtn" aria-haspopup="true" aria-expanded="false" aria-labelledby="uCatLabel">
@@ -876,6 +842,10 @@
               <label class="chk-cat"><input type="checkbox" class="uCatChk" value="Les 2 équipes marquent"><span>Les 2 équipes marquent</span></label>
             </div>
           </div>
+        </div>
+        <div class="field">
+          <label for="uStake">Mise par pari (€)</label>
+          <input type="number" id="uStake" value="10" min="0" step="1">
         </div>
         <div class="field">
           <label id="uLigueLabel">Ligue</label>
@@ -893,15 +863,6 @@
               <div class="msel-options" id="uLigueOptions"><!-- peuplé en JS, voir initMeta() --></div>
             </div>
           </div>
-        </div>
-        <div class="field">
-          <label for="uEdge">Edge minimum</label>
-          <select id="uEdge">
-            <option value="0.02">2 % (tous)</option>
-            <option value="0.05">5 %</option>
-            <option value="0.10">10 %</option>
-            <option value="0.15">15 %</option>
-          </select>
         </div>
         <div class="field">
           <label for="uMvt">Mouvement de la cote</label>
@@ -1004,34 +965,6 @@
           </select>
         </div>
         <div class="field">
-          <label for="uFiltreQueue" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts ». Mesuré le 20/09/2026 (3084 paris réels) : sur ces deux catégories, les marchés extrêmes (Buts 7 et plus, Plus de 4/4.5/5, Moins de 0.5/1) affichent une probabilité modèle 2 à 3 fois supérieure au taux de réussite réel.">Marchés de queue (Interv. / Plus-Moins)</label>
-          <select id="uFiltreQueue">
-            <option value="0">Les inclure</option>
-            <option value="1" selected>Les exclure (recommandé)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uEdgeDevigMax" title="Réservé aux catégories « Intervalle de buts » et « Plus/Moins de buts ». Mesuré le 20/09/2026 : l'écart entre probabilité modèle et réussite réelle croît avec l'edge affiché sur ces deux catégories — signe de « winner's curse » plutôt que d'un vrai signal.">Edge dévigué maximum (Interv. / Plus-Moins)</label>
-          <select id="uEdgeDevigMax">
-            <option value="999">Illimité</option>
-            <option value="0.10">Max 10 %</option>
-            <option value="0.15" selected>Max 15 % (recommandé)</option>
-            <option value="0.20">Max 20 %</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="uCote">Plage de cotes</label>
-          <select id="uCote">
-            <option value="">Toutes</option>
-            <option value="1-2">1,01 à 2,00</option>
-            <option value="2-4">2,01 à 4,00</option>
-            <option value="4-8">4,01 à 8,00</option>
-            <option value="8-15">8,01 à 15,00</option>
-            <option value="15-999">Au-delà de 15,00</option>
-            <option value="2-15">2,01 à 15,00 (hors extrêmes)</option>
-          </select>
-        </div>
-        <div class="field">
           <label for="uSort">Trier par</label>
           <select id="uSort">
             <option value="kickoff" selected>Date du match (croissant)</option>
@@ -1041,9 +974,19 @@
           </select>
         </div>
       </div>
-      <p class="muted" style="font-size:.78rem; margin:.6rem 0 0">Catégorie, ligue, marge bookmaker,
-        poids du modèle, mouvement de cote et second avis sont synchronisés avec l'onglet
-        « DC rétrospectif ».</p>
+
+      <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .6rem">Filtres par catégorie de pari</h3>
+      <p class="muted" style="margin:-.3rem 0 .8rem; font-size:.82rem">Edge minimum, plage de cotes,
+        marchés de queue et edge dévigué maximum se règlent <strong>indépendamment pour chaque
+        catégorie cochée ci-dessus</strong> — mêmes réglages, synchronisés catégorie par catégorie
+        avec l'onglet « DC rétrospectif ». Les recommandations affichées plus bas agrègent toutes
+        les catégories cochées, chacune filtrée selon ses propres réglages.</p>
+      <div id="uCatFilterBlocks" class="cat-filter-blocks"></div>
+
+      <p class="muted" style="font-size:.78rem; margin:.9rem 0 0">Catégorie, ligue, marge bookmaker,
+        poids du modèle, mouvement de cote et second avis sont globaux et synchronisés avec l'onglet
+        « DC rétrospectif ». Edge minimum, plage de cotes, marchés de queue et edge dévigué maximum
+        le sont aussi, mais catégorie par catégorie.</p>
       <p class="muted" id="uEnrichiNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
 
@@ -1398,7 +1341,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926122634"></script>
-<script src="app.js?v=20260926122634"></script>
+<script src="donnees.js?v=20260926131912"></script>
+<script src="app.js?v=20260926131912"></script>
 </body>
 </html>
