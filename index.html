@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260926102753">
+<link rel="stylesheet" href="style.css?v=20260926110333">
 </head>
 <body>
 <div class="topbar">
@@ -639,7 +639,12 @@
         compte moins de <span id="btScoreSeuilTxt">5</span> paris — sa couleur reste affichée mais
         atténuée, l'échantillon est trop petit pour en tirer une conclusion.
       </p>
-      <div class="tablewrap"><div id="btScoreMatrixWrap"></div></div>
+      <div class="tablewrap">
+        <div class="chart-holder" id="btScoreHolder">
+          <div id="btScoreMatrixWrap"></div>
+          <div class="chart-tooltip score-tooltip" id="btScoreTooltip" hidden></div>
+        </div>
+      </div>
       <p class="muted" id="btScoreEmpty" style="display:none; font-size:.85rem">Aucun pari « Score exact » ne correspond à ces filtres.</p>
       <div class="score-legend" id="btScoreLegend"></div>
       <p class="muted" id="btScoreBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
@@ -1377,7 +1382,7 @@
 </div>
 
 
-<script src="donnees.js?v=20260926102753"></script>
-<script src="app.js?v=20260926102753"></script>
+<script src="donnees.js?v=20260926110333"></script>
+<script src="app.js?v=20260926110333"></script>
 </body>
 </html>
