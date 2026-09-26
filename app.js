@@ -2446,6 +2446,22 @@ function btFiltered() {
   return rows;
 }
 
+// --- Matrice "Score exact" (sous le tableau "Par catégorie") -------------
+// Une case par score (buts domicile × buts extérieur), recalculée sur le
+// même ensemble filtré que le reste de la page. SCORE_RE reprend très
+// exactement la regex Python de categorize_column (colonnes "H - A"), pour
+// que "quel pari est un score exact" soit tranché de façon identique des
+// deux côtés.
+const SCORE_EXACT_CAT = "Score exact";
+const SCORE_RE = /^\s*(\d+)\s*-\s*(\d+)\s*$/;
+// En dessous de ce nombre de paris, une case est affichée mais atténuée :
+// avec 1-2 paris sur un score précis, un seul résultat suffit à faire
+// basculer le ROI de -100 % à +400 % — même logique de prudence que
+// LIGUE_COMP_SEUIL_FIABLE ou g.n<30 dans btVerdict, juste calibrée plus bas
+// car un score exact précis reçoit mécaniquement beaucoup moins de paris
+// qu'une catégorie ou une ligue entière.
+const SCORE_CELL_SEUIL_FIABLE = 5;
+
 // Recalcule les agrégats sur un sous-ensemble (le JSON ne contient que les
 // totaux bruts, or la déduplication change tout : n, ROI, réussite...).
 function btAgg(rows) {
@@ -2713,6 +2729,7 @@ function renderBacktest() {
   }).join("") || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
 
   renderLigueComparaison(rowsFiltrees);
+  renderScoreMatrix(rowsFiltrees);
   renderBacktestRows();
   renderOosValidation();
   renderNbValidation();
@@ -2780,6 +2797,120 @@ function renderLigueComparaison(rowsFiltrees) {
       <td data-label="Net" class="num ${net>=0?'pos':'neg'}">${fmtEur(net)}</td>
     </tr>`;
   }).join("");
+}
+
+// Matrice de rentabilité "Score exact" : une ligne par score domicile, une
+// colonne par score extérieur, recalculée sur rowsFiltrees (mêmes filtres
+// que tout le reste de la page Rétrospectif — catégorie, ligue, dates,
+// edge, mise...). Si le filtre "Score exact" est décoché, rowsFiltrees ne
+// contient tout simplement aucune ligne de cette catégorie et le panneau
+// affiche l'état vide plutôt qu'une grille creuse.
+//
+// Couleur de fond = ROI de LA CASE (dégradé rouge -> vert), sur une échelle
+// relative aux valeurs réellement observées (pas de bornes fixes : avec un
+// petit échantillon de scores exacts, un ROI fixe à ±100 % écraserait tout
+// le monde à une teinte quasi neutre). Le gain net reste le chiffre affiché
+// en gras dans la case : c'est lui qu'on demande de "tracer", le ROI ne
+// sert qu'à la mise en forme conditionnelle.
+function renderScoreMatrix(rowsFiltrees) {
+  const wrap = $("btScoreMatrixWrap");
+  const empty = $("btScoreEmpty");
+  const legend = $("btScoreLegend");
+  const bestEl = $("btScoreBest");
+  const seuilTxt = $("btScoreSeuilTxt");
+  if (!wrap) return;
+  if (seuilTxt) seuilTxt.textContent = SCORE_CELL_SEUIL_FIABLE;
+
+  const rows = rowsFiltrees.filter(r => r.categorie === SCORE_EXACT_CAT && SCORE_RE.test(r.colonne || ""));
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    if (legend) legend.innerHTML = "";
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  // Regroupement par (buts domicile, buts extérieur)
+  const parCase = {};
+  let maxH = 0, maxA = 0;
+  rows.forEach(r => {
+    const m = SCORE_RE.exec(r.colonne);
+    const h = parseInt(m[1], 10), a = parseInt(m[2], 10);
+    if (h > maxH) maxH = h;
+    if (a > maxA) maxA = a;
+    const k = h + "-" + a;
+    (parCase[k] = parCase[k] || {h, a, rows: []}).rows.push(r);
+  });
+
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const cr = parCase[k];
+    const s = btAgg(cr.rows);
+    const net = cr.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    agg[k] = Object.assign({net, h: cr.h, a: cr.a, fiable: s.n >= SCORE_CELL_SEUIL_FIABLE}, s);
+  });
+
+  const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+
+  let thead = '<tr><th class="score-corner">Domicile ↓ · Extérieur →</th>';
+  for (let a = 0; a <= maxA; a++) thead += `<th class="num">${a}</th>`;
+  thead += "</tr>";
+
+  let tbody = "";
+  for (let h = 0; h <= maxH; h++) {
+    tbody += `<tr><th class="num">${h}</th>`;
+    for (let a = 0; a <= maxA; a++) {
+      const c = agg[h + "-" + a];
+      if (!c) {
+        tbody += `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+        continue;
+      }
+      const roi = c.roi ?? 0;
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      const bg = roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`;
+      const cls = roi >= 0 ? "pos" : "neg";
+      const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
+      tbody += `<td class="score-cell ${cls}${peuFiable}" style="background:${bg}"
+                   title="${c.h}-${c.a} : ${c.n} pari(s), ${c.wins} gagné(s) (${(c.taux*100).toFixed(0)} %), cote moy. ${c.cote_moy != null ? c.cote_moy.toFixed(2) : "—"}${!c.fiable ? " — échantillon trop petit pour conclure" : ""}">
+                  <div class="score-net ${cls}">${fmtEur(c.net)}</div>
+                  <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+                  <div class="score-roi ${cls}">${fmtPct(roi)}</div>
+                </td>`;
+    }
+    tbody += "</tr>";
+  }
+  wrap.innerHTML = `<table class="score-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  // Légende : dégradé calé sur les bornes réellement atteintes, pas des
+  // pourcentages arbitraires qui ne correspondraient à aucune case.
+  if (legend) {
+    const pireRoi = roiVals.length ? arrMin(roiVals) : 0;
+    const meilleurRoi = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pireRoi, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
+      <span class="muted score-legend-note">ROI par case · cases en pointillés = moins de ${SCORE_CELL_SEUIL_FIABLE} paris</span>`;
+  }
+
+  // Résumé : le(s) score(s) le(s) plus rentable(s) en gain net, parmi les
+  // cases jugées fiables (assez de paris) — pour ne pas mettre en avant un
+  // coup isolé comme s'il s'agissait d'un vrai signal.
+  if (bestEl) {
+    const fiables = Object.values(agg).filter(c => c.fiable && c.net > 0);
+    if (!fiables.length) {
+      bestEl.textContent = "Aucun score n'a encore assez de paris fiables pour ressortir comme rentable.";
+    } else {
+      fiables.sort((x, y) => y.net - x.net);
+      const top = fiables.slice(0, 3);
+      bestEl.innerHTML = "Score(s) le(s) plus rentable(s) : " + top.map(c =>
+        `<strong>${c.h}-${c.a}</strong> (${fmtEur(c.net)}, ${fmtPct(c.roi)}, ${c.n} paris)`
+      ).join(" · ");
+    }
+  }
 }
 
 // Colonne et sens de tri du tableau de détail. Par défaut : les plus
