@@ -1595,6 +1595,15 @@ function renderUpcoming() {
     // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
     // awayWin) ; les autres catégories ne sont jamais filtrées ici.
     if (v.categorie === CATEGORY_RESULT && issuesVm && !issuesVm.has(v.colonne)) return false;
+    // "Probabilité modèle" — même réglage et même portée (Domicile
+    // uniquement) que sur la page DC rétrospectif ; voir le commentaire
+    // détaillé sur optionsProbaModeleCat / btFiltered. Ici il agit comme un
+    // filtre de RECOMMANDATION : un pari à venir dans la zone exclue n'est
+    // simplement pas affiché.
+    if (v.categorie === CATEGORY_RESULT && v.colonne === "homeWin") {
+      const probaModele = valCat("uProbaModele", CATEGORY_RESULT, "0");
+      if (probaModele === "excl_30_50" && v.p_model >= 0.30 && v.p_model < 0.50) return false;
+    }
     // "Score(s) pariés" — ne concerne que "Score exact" (colonne "H - A") ;
     // les autres catégories ne sont jamais filtrées ici.
     if (v.categorie === CATEGORY_SCORE && scoresEx && !scoresEx.has(v.colonne)) return false;
@@ -2146,6 +2155,32 @@ function optionsEvMaxCat() {
     <option value="0.5" selected>Max +50 % (recommandé)</option>
     <option value="1">Max +100 %</option>`;
 }
+// Probabilité modèle (Vainqueur du match, Domicile uniquement) : réglage
+// PAR CATÉGORIE au même sens que les autres (idCat/valCat), mais avec un
+// menu à PRÉRÉGLAGE FIXE plutôt qu'un curseur libre comme Mouvement de la
+// cote ou Plage de cotes — délibérément : un curseur qu'on glisse en
+// observant le ROI se remettre à jour en direct serait une invitation au
+// surapprentissage sur ce même échantillon, l'inverse de ce que ce réglage
+// doit garantir (même philosophie de "filtre réversible" que MARCHES_QUEUE
+// en tête de fichier — une liste/un préréglage à exclure, pas un
+// réétalonnage fitté).
+// Mesure empirique du 27/09/2026 (88 paris réels, "Vainqueur du match" /
+// Domicile uniquement) : entre 30 % et 50 % de probabilité modèle, le taux
+// de réussite réel (20,5 %) est très en dessous de la probabilité prédite
+// (~40 %) — écart significatif (test binomial bilatéral, p ≈ 1,4 %),
+// confirmé indépendamment sur les deux moitiés du mois. Exclure cette seule
+// zone fait passer le marché Domicile de -19,6 % à +4,7 % de ROI réalisé
+// sur cet échantillon, sans quasiment bouger l'espérance du modèle lui-même
+// (+6,9 % -> +7,6 %) — signe que ce n'est pas qu'un tri a posteriori sur le
+// résultat. Un seul mois de données : désactivé par défaut ("Peu importe"),
+// à confirmer sur un deuxième mois avant de le considérer acquis. Portée
+// volontairement limitée au Domicile : Nul et Extérieur n'ont pas été
+// mesurés, donc pas de généralisation non justifiée (même précaution que
+// CATEGORIES_FILTRE_QUEUE).
+function optionsProbaModeleCat() {
+  return `<option value="0" selected>Peu importe</option>
+    <option value="excl_30_50">Exclure 30-50 % (zone sous-performante, Domicile — mesure du 27/09/2026)</option>`;
+}
 function blocFiltreCategorie(prefixe, cat) {
   let champs = `
     <div class="field">
@@ -2198,6 +2233,15 @@ function blocFiltreCategorie(prefixe, cat) {
           </div>
         </div>
       </div>
+    </div>`;
+    // Probabilité modèle (voir optionsProbaModeleCat) : utile des deux
+    // côtés (bt ET u) comme "Issue pariée" ci-dessus — sur "u" il agit en
+    // filtre de recommandation (n'affiche pas ces paris à venir), sur "bt"
+    // en filtre rétrospectif (les revit avec le même critère).
+    champs += `
+    <div class="field">
+      <label for="${idCat(prefixe + "ProbaModele", cat)}" title="Mesuré le 27/09/2026 (88 paris réels « Domicile » sur Vainqueur du match) : les paris où le modèle donne 30 à 50 % de probabilité au Domicile sous-performent nettement leur propre espérance (test binomial, p ≈ 1,4 %, confirmé sur les deux moitiés du mois — 20,5 % de réussite réelle contre ~40 % prédits). Ne s'applique qu'aux paris Domicile ; Nul et Extérieur ne sont pas concernés (non mesurés). Un seul mois de données : à confirmer avant de considérer ce réglage acquis.">Probabilité modèle</label>
+      <select id="${idCat(prefixe + "ProbaModele", cat)}">${optionsProbaModeleCat()}</select>
     </div>`;
   }
   if (prefixe === "bt" && cat === CATEGORY_RESULT) {
@@ -2625,6 +2669,11 @@ CATEGORIES_DC.forEach(cat => {
   if (CATEGORIES_FILTRE_QUEUE.has(cat)) {
     lierFiltres(idCat("btFiltreQueue", cat), idCat("uFiltreQueue", cat));
     lierFiltres(idCat("btEdgeDevigMax", cat), idCat("uEdgeDevigMax", cat));
+  }
+  // "Probabilité modèle" n'existe que pour "Vainqueur du match" (voir
+  // optionsProbaModeleCat) — même principe de paire bt<->u que les autres.
+  if (cat === CATEGORY_RESULT) {
+    lierFiltres(idCat("btProbaModele", cat), idCat("uProbaModele", cat));
   }
 });
 
@@ -3223,6 +3272,15 @@ function btFiltered(opts) {
     // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
     // awayWin) ; les autres catégories ne sont jamais filtrées ici.
     if (r.categorie === CATEGORY_RESULT && issuesVm && !issuesVm.has(r.colonne)) return false;
+    // "Probabilité modèle" — voir optionsProbaModeleCat : ne concerne que
+    // "Vainqueur du match" et, à l'intérieur de cette catégorie, uniquement
+    // les paris Domicile (seul sous-marché mesuré le 27/09/2026). Préréglage
+    // fixe plutôt qu'un curseur libre, volontairement (voir le commentaire
+    // sur optionsProbaModeleCat) ; désactivé par défaut ("0" = Peu importe).
+    if (r.categorie === CATEGORY_RESULT && r.colonne === "homeWin") {
+      const probaModele = valCat("btProbaModele", CATEGORY_RESULT, "0");
+      if (probaModele === "excl_30_50" && r.p_model >= 0.30 && r.p_model < 0.50) return false;
+    }
     // "Score(s) pariés" — ne concerne que "Score exact" (colonne "H - A") ;
     // les autres catégories ne sont jamais filtrées ici.
     if (r.categorie === CATEGORY_SCORE && scoresEx && !scoresEx.has(r.colonne)) return false;
