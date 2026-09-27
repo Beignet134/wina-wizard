@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260927084206">
+<link rel="stylesheet" href="style.css?v=20260927092038">
 </head>
 <body>
 <div class="topbar">
@@ -682,6 +682,31 @@
       <p class="muted" id="btResultEmpty" style="display:none; font-size:.85rem">Aucun pari « Vainqueur du match » ne correspond à ces filtres.</p>
       <div class="score-legend" id="btResultLegend"></div>
       <p class="muted" id="btResultBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
+    </div>
+
+<div class="panel" id="btHistPanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/></svg>Historique — matrice de rentabilité <span class="hint">— cliquable, filtre toute la page</span></h2>
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Croise le nombre de matchs ayant servi à estimer la force de l'équipe à domicile (Hist. dom.,
+        en ligne) et de l'équipe à l'extérieur (Hist. ext., en colonne) dans leur compétition actuelle —
+        typiquement faible juste après une montée ou une descente de division. Contrairement aux deux
+        matrices ci-dessus, <strong>cette grille est cliquable</strong> : sélectionner une case filtre
+        toute la page (KPI, tableau par catégorie, détail des paris…) sur cette combinaison précise —
+        cliquez à nouveau pour l'enlever. La grille elle-même reste toujours complète, quel que soit le
+        filtre actif, pour pouvoir comparer une case avec une autre. Une case en pointillés compte
+        moins de <span id="btHistSeuilTxt">5</span> paris — sa couleur reste affichée mais atténuée,
+        l'échantillon est trop petit pour en tirer une conclusion.
+      </p>
+      <p class="muted" id="btHistActive" style="display:none; font-size:.85rem; margin:0 0 .7rem"></p>
+      <div class="tablewrap">
+        <div class="chart-holder" id="btHistHolder">
+          <div id="btHistMatrixWrap"></div>
+          <div class="chart-tooltip score-tooltip" id="btHistTooltip" hidden></div>
+        </div>
+      </div>
+      <p class="muted" id="btHistEmpty" style="display:none; font-size:.85rem">Aucun pari ne correspond à ces filtres.</p>
+      <div class="score-legend" id="btHistLegend"></div>
+      <p class="muted" id="btHistBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
     </div>
 
 <div class="panel" id="btMvtFiltrePanel">
@@ -1588,7 +1613,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260927084221"></script>
-<script src="app.js?v=20260927084206"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20260927092051"></script>
+<script src="app.js?v=20260927092038"></script>
 </body>
 </html>
