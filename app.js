@@ -3061,7 +3061,14 @@ function catBadgeHtml(categorie, verdicts) {
 // mise, donc un simple facteur suffit).
 // Filtre unique appliqué partout sur la page DC rétrospectif, pour que les
 // KPI, le tableau et le graphique portent toujours sur le MÊME ensemble.
-function btFiltered() {
+// opts.sansHist=true saute UNIQUEMENT le filtre "historique" (voir
+// BT_HIST_SELECTION / renderHistMatrix plus bas) : c'est ce que la matrice
+// Historique elle-même utilise pour se recalculer, afin que la grille reste
+// complète et cliquable même quand une case est déjà sélectionnée — sinon
+// choisir une case ferait retomber toutes les autres à zéro et il
+// deviendrait impossible d'en choisir une différente pour comparer.
+function btFiltered(opts) {
+  opts = opts || {};
   const f = $("btFilter") ? $("btFilter").value : "";
   const cats = categoriesCochees("bt");
   const ligues = liguesCochees("bt");
@@ -3233,6 +3240,14 @@ function btFiltered() {
     return true;
   });
 
+  // Filtre "historique" (voir renderHistMatrix / BT_HIST_SELECTION plus
+  // bas) : ne s'applique jamais quand opts.sansHist est demandé — c'est
+  // précisément ce qui permet à la matrice elle-même de rester complète.
+  if (!opts.sansHist && BT_HIST_SELECTION) {
+    rows = rows.filter(r => histBucketKey(r.n_hist_dom) === BT_HIST_SELECTION.dom
+                          && histBucketKey(r.n_hist_ext) === BT_HIST_SELECTION.ext);
+  }
+
   if (dedup) {
     // Plusieurs seuils joués sur le même match ne sont PAS des paris
     // indépendants : ils gagnent ou perdent ensemble. Les compter tous gonfle
@@ -3338,6 +3353,12 @@ function renderBacktest() {
   const rowsFiltrees = btFiltered();
   const g = rowsFiltrees.length ? btAgg(rowsFiltrees) : (BT_ROWS.length ? btAgg([]) : (BT_STATS.global || {}));
   const empty = $("btEmpty");
+
+  // Toujours recalculée en premier, indépendamment du reste : la matrice
+  // Historique doit rester cliquable (donc à jour) même quand la sélection
+  // en cours ne laisse plus aucun pari pour le reste de la page (retour
+  // anticipé juste en dessous) — voir le commentaire sur btFiltered(opts).
+  renderHistMatrix(btFiltered({sansHist: true}));
 
   // Étiquette d'intervalle : reflète le calendrier choisi, pas une fenêtre
   // fixe. "Toute la période" si les deux bornes sont vides (aucun filtre
@@ -4163,6 +4184,271 @@ function renderResultMatrix(rowsFiltrees) {
       <div class="tt-score-head"><span>Pari ${RESULT_LABEL[c.pari]} → réel ${RESULT_LABEL[c.reel]}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
       <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${(c.pctLigne * 100).toFixed(0)} % des paris sur ${RESULT_LABEL[c.pari]}</div>
       <div class="tt-score-list">${lignes}${plus}</div>`;
+    tip.hidden = false;
+
+    const rect = holder.getBoundingClientRect();
+    const relX = clientX - rect.left, relY = clientY - rect.top;
+    const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 140;
+    let left = relX + 16;
+    if (left + tw > rect.width) left = relX - tw - 16;
+    let top = relY - th / 2;
+    top = Math.max(4, Math.min(top, rect.height - th - 4));
+    tip.style.left = Math.max(4, left) + "px";
+    tip.style.top = top + "px";
+  }
+
+  function onMove(ev) {
+    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    const target = document.elementFromPoint(clientX, clientY);
+    if (target && target.closest(".score-tooltip")) return;
+    const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
+    if (!cell) { hide(); return; }
+    show(cell, clientX, clientY);
+  }
+
+  holder.addEventListener("mousemove", onMove);
+  holder.addEventListener("mouseleave", hide);
+  holder.addEventListener("touchstart", onMove, {passive: true});
+  holder.addEventListener("touchmove", onMove, {passive: true});
+  holder.addEventListener("touchend", hide);
+})();
+
+// --- Historique — matrice de rentabilité, CLIQUABLE (filtre la page) ------
+// Croise le nombre de matchs ayant servi à estimer la force de l'équipe à
+// domicile (Hist. dom., lignes) et de l'équipe à l'extérieur (Hist. ext.,
+// colonnes) dans leur compétition actuelle — n_hist_dom/n_hist_ext, calculés
+// côté Python dans build_dc_backtest (cle_force() y regroupe déjà les
+// sélections nationales toutes compétitions confondues, donc ce compteur
+// reflète bien "l'historique dans la compétition ACTUELLE au sens large du
+// modèle"). Constat du 27/09/2026 (export réel) : le gain net est concentré
+// presque entièrement sur les cases où LES DEUX équipes ont 30 matchs ou
+// plus d'historique — en dessous, le bilan est plat ou négatif alors que
+// l'edge affiché par le modèle ne baisse pas en conséquence (typiquement les
+// équipes tout juste montées/descendues de division).
+//
+// Contrairement aux deux matrices précédentes (Score exact / Vainqueur du
+// match), celle-ci est CLIQUABLE : sélectionner une case ajoute un filtre
+// "historique" appliqué à TOUTE la page (voir BT_HIST_SELECTION, lu dans
+// btFiltered()). Elle est TOUJOURS recalculée sur l'ensemble filtré SANS son
+// propre filtre (btFiltered({sansHist:true}), voir l'appel en tête de
+// renderBacktest()) : sinon, dès qu'une case serait sélectionnée, toutes les
+// autres retomberaient à zéro et il deviendrait impossible de changer de
+// case pour comparer — la grille reste donc toujours complète, seule la
+// case active est mise en évidence (voir .score-cell-selected).
+const HIST_BUCKETS = [
+  {key: "5-9", min: 5, max: 10},
+  {key: "10-14", min: 10, max: 15},
+  {key: "15-19", min: 15, max: 20},
+  {key: "20-29", min: 20, max: 30},
+  {key: "30+", min: 30, max: Infinity},
+];
+function histBucketKey(n) {
+  if (n == null) return null;
+  for (const b of HIST_BUCKETS) { if (n >= b.min && n < b.max) return b.key; }
+  return null;
+}
+const HIST_CELL_SEUIL_FIABLE = 5;
+// Dernier rendu, pour l'infobulle au survol — même principe que
+// SCORE_MATRIX_DATA/RESULT_MATRIX_DATA (délégation d'événement, jamais
+// périmé même après un innerHTML qui a remplacé les <td>).
+let HIST_MATRIX_DATA = {};
+// Case actuellement sélectionnée comme filtre : {dom, ext} (deux clés de
+// HIST_BUCKETS), ou null si aucun filtre "historique" n'est actif. Simple
+// variable de module — elle survit aux rendus tant que la page reste
+// ouverte, exactement comme les valeurs des champs de filtre du DOM.
+let BT_HIST_SELECTION = null;
+
+function renderHistMatrix(rowsSansHist) {
+  const wrap = $("btHistMatrixWrap");
+  const empty = $("btHistEmpty");
+  const legend = $("btHistLegend");
+  const bestEl = $("btHistBest");
+  const seuilTxt = $("btHistSeuilTxt");
+  const actifEl = $("btHistActive");
+  if (!wrap) return;
+  if (seuilTxt) seuilTxt.textContent = HIST_CELL_SEUIL_FIABLE;
+
+  const rows = rowsSansHist.filter(r => r.n_hist_dom != null && r.n_hist_ext != null);
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    if (legend) legend.innerHTML = "";
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    if (actifEl) actifEl.style.display = "none";
+    HIST_MATRIX_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  // Regroupement par (tranche domicile, tranche extérieure)
+  const parCase = {};
+  rows.forEach(r => {
+    const bd = histBucketKey(r.n_hist_dom), be = histBucketKey(r.n_hist_ext);
+    if (!bd || !be) return;
+    const k = bd + "|" + be;
+    (parCase[k] = parCase[k] || {dom: bd, ext: be, rows: []}).rows.push(r);
+  });
+
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const cr = parCase[k];
+    const s = btAgg(cr.rows);
+    const net = cr.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    agg[k] = Object.assign({net, dom: cr.dom, ext: cr.ext, rows: cr.rows,
+                             fiable: s.n >= HIST_CELL_SEUIL_FIABLE}, s);
+  });
+  HIST_MATRIX_DATA = agg;
+
+  const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+
+  let thead = '<tr><th class="score-corner">Hist. dom. ↓ · Hist. ext. →</th>';
+  HIST_BUCKETS.forEach(b => { thead += `<th class="num">${b.key}</th>`; });
+  thead += "</tr>";
+
+  let tbody = "";
+  HIST_BUCKETS.forEach(rb => {
+    tbody += `<tr><th class="num">${rb.key}</th>`;
+    HIST_BUCKETS.forEach(cb => {
+      const key = rb.key + "|" + cb.key;
+      const c = agg[key];
+      const selected = !!(BT_HIST_SELECTION && BT_HIST_SELECTION.dom === rb.key && BT_HIST_SELECTION.ext === cb.key);
+      const selCls = selected ? " score-cell-selected" : "";
+      if (!c) {
+        tbody += `<td class="score-cell score-cell-empty${selCls}" data-hist="${key}"><span class="muted">—</span></td>`;
+        return;
+      }
+      const roi = c.roi ?? 0;
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      const bg = roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`;
+      const cls = roi >= 0 ? "pos" : "neg";
+      const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
+      // Pas de title= natif : l'infobulle riche (voir initHistMatrixTooltip)
+      // le remplace entièrement, même logique que les deux autres matrices.
+      tbody += `<td class="score-cell ${cls}${peuFiable}${selCls}" style="background:${bg}" data-hist="${key}">
+                  <div class="score-net">${fmtEur(c.net)}</div>
+                  <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+                  <div class="score-roi">${fmtPct(roi)}</div>
+                </td>`;
+    });
+    tbody += "</tr>";
+  });
+  wrap.innerHTML = `<table class="score-matrix hist-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  if (legend) {
+    const pireRoi = roiVals.length ? arrMin(roiVals) : 0;
+    const meilleurRoi = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pireRoi, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
+      <span class="muted score-legend-note">ROI par case · cases en pointillés = moins de
+      ${HIST_CELL_SEUIL_FIABLE} paris · cliquez sur une case pour filtrer toute la page sur cette
+      combinaison (cliquez à nouveau pour l'enlever)</span>`;
+  }
+
+  // Résumé : combinaison(s) la/les plus rentable(s) en gain net, parmi les
+  // cases jugées fiables — même principe que renderScoreMatrix.
+  if (bestEl) {
+    const fiables = Object.values(agg).filter(c => c.fiable && c.net > 0);
+    if (!fiables.length) {
+      bestEl.textContent = "Aucune combinaison n'a encore assez de paris fiables pour ressortir comme rentable.";
+    } else {
+      fiables.sort((x, y) => y.net - x.net);
+      const top = fiables.slice(0, 3);
+      bestEl.innerHTML = "Combinaison(s) la/les plus rentable(s) : " + top.map(c =>
+        `<strong>dom. ${c.dom} / ext. ${c.ext}</strong> (${fmtEur(c.net)}, ${fmtPct(c.roi)}, ${c.n} paris)`
+      ).join(" · ");
+    }
+  }
+
+  // Bandeau "filtre actif" : seule façon de voir/lever la sélection quand la
+  // case active vient elle-même de retomber à 0 pari (donc plus cliquable
+  // utilement) suite à un changement des AUTRES filtres.
+  if (actifEl) {
+    if (BT_HIST_SELECTION) {
+      actifEl.style.display = "";
+      actifEl.innerHTML = `Filtre « historique » actif sur toute la page : domicile
+        <strong>${BT_HIST_SELECTION.dom}</strong> · extérieur <strong>${BT_HIST_SELECTION.ext}</strong>
+        — <a href="#" id="btHistClear">réinitialiser</a>`;
+      const clearLink = $("btHistClear");
+      if (clearLink) clearLink.addEventListener("click", ev => {
+        ev.preventDefault();
+        BT_HIST_SELECTION = null;
+        renderBacktest();
+      });
+    } else {
+      actifEl.style.display = "none";
+      actifEl.innerHTML = "";
+    }
+  }
+}
+
+// Clic sur une case : bascule le filtre "historique" appliqué à toute la
+// page. Délégation d'événement sur le conteneur (même principe que les
+// infobulles ci-dessus) : la matrice est entièrement regénérée par
+// innerHTML à chaque rendu, un seul listener posé ici survit à ces
+// remplacements sans jamais se dupliquer ni se perdre. Recliquer la case
+// déjà sélectionnée l'enlève (bascule), exactement comme le lien
+// "réinitialiser" du bandeau ci-dessus.
+(function initHistMatrixClick() {
+  const holder = $("btHistHolder");
+  if (!holder) return;
+  holder.addEventListener("click", ev => {
+    const cell = ev.target.closest(".score-cell");
+    if (!cell || !holder.contains(cell)) return;
+    const key = cell.dataset.hist;
+    if (!key) return;
+    const [dom, ext] = key.split("|");
+    BT_HIST_SELECTION = (BT_HIST_SELECTION && BT_HIST_SELECTION.dom === dom && BT_HIST_SELECTION.ext === ext)
+      ? null : {dom, ext};
+    renderBacktest();
+  });
+})();
+
+// Infobulle détaillée au survol d'une case : même mécanique que
+// initScoreMatrixTooltip/initResultMatrixTooltip ci-dessus.
+(function initHistMatrixTooltip() {
+  const holder = $("btHistHolder");
+  const tip = $("btHistTooltip");
+  if (!holder || !tip) return;
+
+  function hide() { tip.hidden = true; }
+
+  function show(cell, clientX, clientY) {
+    const key = cell.dataset.hist;
+    const c = key ? HIST_MATRIX_DATA[key] : null;
+    if (!c) { hide(); return; }
+
+    const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
+    const CAP = 8;
+    const visibles = tries.slice(0, CAP);
+    const reste = tries.length - visibles.length;
+
+    const lignes = visibles.map(r => {
+      const gain = r.profit * btStakeFor(r);
+      return `<div class="tt-score-row">
+          <div class="tt-score-info">
+            <div class="tt-score-match">${r.match || ""}</div>
+            <div class="tt-score-meta">${ligueLabel(r.pays, r.ligue)} · ${r.date} · hist. ${r.n_hist_dom}/${r.n_hist_ext}</div>
+          </div>
+          <div class="tt-score-result">
+            ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
+            cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
+            <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
+          </div>
+        </div>`;
+    }).join("");
+    const plus = reste > 0
+      ? `<div class="tt-score-more">+ ${reste} autre${reste > 1 ? "s" : ""} pari${reste > 1 ? "s" : ""}</div>` : "";
+
+    tip.innerHTML = `
+      <div class="tt-score-head"><span>Dom. ${c.dom} / Ext. ${c.ext}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
+      <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux*100).toFixed(0)} %)</div>
+      <div class="tt-score-list">${lignes}${plus}</div>
+      <div class="tt-score-hint muted">Cliquer pour filtrer toute la page sur cette combinaison</div>`;
     tip.hidden = false;
 
     const rect = holder.getBoundingClientRect();
