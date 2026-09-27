@@ -546,6 +546,26 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
 .score-legend-lbl.pos { color: var(--up); }
 .score-legend-lbl.neg { color: var(--down); }
 .score-legend-note { font-size: .74rem; }
+/* Matrice "Historique" (voir renderHistMatrix) : seule des trois matrices à
+   être CLIQUABLE — curseur main + léger surlignage au survol, uniquement
+   sur les cases qui portent des données (une case vide ne filtre rien). */
+.hist-matrix .score-cell:not(.score-cell-empty) { cursor: pointer; }
+.hist-matrix .score-cell:not(.score-cell-empty):hover {
+  outline: 2px solid var(--violet); outline-offset: -2px;
+}
+/* Case retenue comme filtre "historique" actif sur toute la page : un
+   liseré plein (comme .score-cell-diag) + un repère ✓ en coin, pour rester
+   visible même quand la case est par ailleurs en pointillés (lowdata) ou
+   vide (plus aucun pari sous les autres filtres actifs). */
+.score-cell-selected {
+  box-shadow: inset 0 0 0 3px var(--violet);
+  position: relative;
+}
+.score-cell-selected::after {
+  content: "✓"; position: absolute; top: 3px; right: 5px;
+  font-size: .68rem; font-weight: 700; color: var(--violet);
+  text-shadow: 0 1px 2px rgba(6,4,20,.7);
+}
 /* Infobulle détaillée au survol d'une case (voir initScoreMatrixTooltip en
    JS) : variante plus large du .chart-tooltip générique, pour accueillir la
    liste des matchs derrière la case plutôt qu'un seul point de courbe.
@@ -575,6 +595,10 @@ tbody tr:hover { background: rgba(139,111,255,.08); }
 .score-tooltip .tt-score-result .tt-win { color: var(--up); font-weight: 600; display: block; font-size: .68rem; }
 .score-tooltip .tt-score-result .tt-lose { color: var(--down); font-weight: 600; display: block; font-size: .68rem; }
 .score-tooltip .tt-score-more { font-size: .7rem; color: var(--ink-faint); text-align: center; padding-top: .25rem; }
+/* Infobulle de la matrice Historique (seule cliquable, voir renderHistMatrix) :
+   rappelle qu'un clic filtre la page, séparé du reste par la même logique
+   visuelle que .tt-score-more (discret, centré). */
+.score-tooltip .tt-score-hint { font-size: .68rem; text-align: center; padding-top: .35rem; }
 @media (max-width: 640px) {
   .score-matrix th, .score-matrix td { padding: .35rem .45rem; }
   .score-cell { min-width: 4.2rem; }
