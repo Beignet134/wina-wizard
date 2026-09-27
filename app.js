@@ -2957,14 +2957,32 @@ const BT_STATS = WIZARD_DATA.dc_stats || {};
 // BETS du backtest Dixon-Coles (BT_ROWS, edge déjà positif), pas "parier
 // sur tout" (ce que fait updateCategoryTable sur la page Rétrospectif —
 // utile pour montrer le coût de la marge bookmaker, mais pas pour juger le
-// modèle). Calculé une seule fois puis réutilisé partout où une catégorie
-// apparaît : filtre de "Paris à venir", badge sur chaque carte de
-// recommandation, et colonne de ce même tableau "Par catégorie" ci-dessous.
+// modèle).
+//
+// Sans argument : verdict GLOBAL sur tout BT_ROWS, calculé une seule fois
+// et mis en cache — réutilisé partout où le badge sert de repère STABLE
+// pour décider (Vue d'ensemble, cartes "Paris à venir", étiquette du
+// filtre "Type de pari" dans initCategoryFilterBadges) : ces badges
+// répondent à "cette catégorie a-t-elle historiquement marché ?", pas à
+// "que donne le filtre actuel ?" — les recalculer à chaque changement de
+// filtre les ferait osciller sans rapport avec ce qu'ils affichent.
+//
+// Avec un tableau de lignes en argument : verdict recalculé sur CET
+// ensemble précis, jamais mis en cache. Sert au tableau "Par catégorie" de
+// DC rétrospectif (voir renderBacktest, plus bas) : avant ce correctif du
+// 26/09/2026, ce tableau affichait un Verdict figé sur tout l'historique à
+// côté de colonnes (Paris, ROI, Net...) déjà recalculées sur rowsFiltrees —
+// incohérent dès qu'un filtre de date, d'edge, de ligue etc. était actif
+// (ex. "Non rentable" affiché à côté d'un ROI filtré largement positif).
 let _dcCatVerdicts = null;
-function dcCategoryVerdicts() {
-  if (_dcCatVerdicts) return _dcCatVerdicts;
+function dcCategoryVerdicts(rows) {
+  const global = rows === undefined;
+  if (global) {
+    if (_dcCatVerdicts) return _dcCatVerdicts;
+    rows = BT_ROWS;
+  }
   const cats = {};
-  BT_ROWS.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
+  rows.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
   const out = {};
   Object.keys(cats).forEach(cat => {
     const arr = cats[cat].slice().sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
@@ -2985,7 +3003,7 @@ function dcCategoryVerdicts() {
     }
     out[cat] = { n, roi, trainRoi, testRoi, verdict };
   });
-  _dcCatVerdicts = out;
+  if (global) _dcCatVerdicts = out;
   return out;
 }
 
@@ -2994,8 +3012,12 @@ function dcCategoryVerdicts() {
 // le ROI réel et la taille de l'échantillon, pour ne pas se fier au seul
 // mot ("Robuste" sur 31 paris et sur 900 n'inspire pas la même confiance,
 // même si le badge est identique).
-function catBadgeHtml(categorie) {
-  const v = dcCategoryVerdicts()[categorie];
+//
+// verdicts (optionnel) : la map déjà calculée à réutiliser (typiquement
+// dcCategoryVerdicts(rowsFiltrees)) plutôt que la map globale par défaut —
+// voir le tableau "Par catégorie" de renderBacktest.
+function catBadgeHtml(categorie, verdicts) {
+  const v = (verdicts || dcCategoryVerdicts())[categorie];
   if (!v) return "";
   const titre = v.roi != null
     ? `Backtest Dixon-Coles (value bets) : ${v.n} pari(s), ROI ${fmtPct(v.roi)} `
@@ -3521,11 +3543,18 @@ function renderBacktest() {
     }
   }
 
-  // Tableau par catégorie, recalculé sur l'ensemble filtré
+  // Tableau par catégorie, recalculé sur l'ensemble filtré — y compris le
+  // Verdict (dcCategoryVerdicts(rowsFiltrees), PAS l'appel sans argument) :
+  // avant le 26/09/2026, cette dernière colonne restait figée sur tout
+  // l'historique pendant que les autres (Paris, ROI, Net...) suivaient déjà
+  // les filtres, produisant des lignes incohérentes (ex. "Non rentable" à
+  // côté d'un ROI filtré positif). Jamais mis en cache : recalculé à
+  // chaque rendu, comme le reste de ce tableau.
   const cats = {};
   rowsFiltrees.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
   const catsAgg = {};
   Object.keys(cats).forEach(k => { catsAgg[k] = btAgg(cats[k]); });
+  const verdictsFiltres = dcCategoryVerdicts(rowsFiltrees);
   const order = Object.keys(catsAgg).sort((a,b) => (catsAgg[b].roi ?? -99) - (catsAgg[a].roi ?? -99));
   $("btCatBody").innerHTML = order.map(c => {
     const s = catsAgg[c];
@@ -3542,7 +3571,7 @@ function renderBacktest() {
       <td data-label="Cote moy." class="num">${s.cote_moy != null ? s.cote_moy.toFixed(2) : "—"}</td>
       <td data-label="ROI" class="num ${s.roi>=0?'pos':'neg'}"><strong>${fmtPct(s.roi)}</strong></td>
       <td data-label="Net" class="num ${cnet>=0?'pos':'neg'}">${fmtEur(cnet)}</td>
-      <td data-label="Verdict">${catBadgeHtml(c)}</td>
+      <td data-label="Verdict">${catBadgeHtml(c, verdictsFiltres)}</td>
     </tr>`;
   }).join("") || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
 
