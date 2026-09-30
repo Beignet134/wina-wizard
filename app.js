@@ -571,19 +571,32 @@ const fmtPct = x => (x==null||isNaN(x)) ? "—" : (x>=0?"+":"") + (x*100).toFixe
 initMeta();  // appelé ici : $ est maintenant défini
 
 /* ---------- Navigation par onglets ---------- */
-document.querySelectorAll(".tab").forEach(tab => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-    tab.classList.add("active");
-    $("page-" + tab.dataset.page).classList.add("active");
-    window.scrollTo({top:0, behavior:"instant"});
-    // La simulation Monte Carlo est coûteuse (des milliers de trajectoires
-    // aléatoires) : plutôt que la relancer à chaque changement de filtre
-    // ailleurs sur le site — ce qui la ralentirait pour rien tant que cet
-    // onglet n'est pas regardé — elle se contente de se relancer à
-    // l'ouverture de l'onglet, avec les filtres tels qu'ils sont alors.
-    if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
+const tabs = [...document.querySelectorAll(".tab")];
+function activerOnglet(tab) {
+  tabs.forEach(t => {
+    const actif = t === tab;
+    t.classList.toggle("active", actif);
+    t.setAttribute("aria-selected", String(actif));
+    t.tabIndex = actif ? 0 : -1;
+  });
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  const page = $(tab.getAttribute("aria-controls") || ("page-" + tab.dataset.page));
+  if (page) page.classList.add("active");
+  window.scrollTo({top:0, behavior:"instant"});
+  if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
+}
+tabs.forEach((tab, index) => {
+  tab.addEventListener("click", () => activerOnglet(tab));
+  tab.addEventListener("keydown", e => {
+    let next = index;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (index + 1) % tabs.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (index - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    tabs[next].focus();
+    activerOnglet(tabs[next]);
   });
 });
 
@@ -684,7 +697,7 @@ function updateCategoryTable(rows, stake) {
     if (n<MIN_BETS || test.length<OOS_MIN) verdict = ["Données insuffisantes","#555"];
     else if (trainRoi>0 && testRoi>0) verdict = ["Tient en test","#1a7f5a"];
     else if (trainRoi>0 && testRoi<=0) verdict = ["Disparaît en test","#b23b3b"];
-    else verdict = ["Non rentable","#8a6d1f"];
+    else verdict = ["ROI non positif","#8a6d1f"];
     return {cat,n,roi,winRate:n>0?wins/n:0,avgCote,testRoi,verdict};
   }).sort((a,b)=> (b.roi||-99)-(a.roi||-99));
 
@@ -712,6 +725,11 @@ function updateCategoryTable(rows, stake) {
 // ce genre, quelle que soit la taille du tableau.
 function arrMin(a) { return a.reduce((m, x) => x < m ? x : m, a[0]); }
 function arrMax(a) { return a.reduce((m, x) => x > m ? x : m, a[0]); }
+
+function fmtChartDate(value) {
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}` : String(value).slice(0, 10);
+}
 
 function drawChart(rows, stake, wrapId, height) {
   const wrap = $(wrapId || "chartWrap");
@@ -751,15 +769,15 @@ function drawChart(rows, stake, wrapId, height) {
   let yticks = "";
   for (let i=0;i<=4;i++) {
     const yv = yMin + (yMax-yMin)*i/4, yy = sy(yv);
-    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--line-soft)" opacity=".7"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${Math.round(yv)} €</text>`;
+    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${Math.round(yv).toLocaleString("fr-FR")} €</text>`;
   }
   const zeroLine = (0>=yMin && 0<=yMax)
     ? `<line class="zeroline" x1="${padL}" y1="${sy(0).toFixed(1)}" x2="${W-padR}" y2="${sy(0).toFixed(1)}"/>` : "";
 
   let xticks = ""; const step = Math.max(1, Math.floor(pts.length/7));
   for (let i=0;i<pts.length;i+=step) {
-    xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date.slice(5)}</text>`;
+    xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${fmtChartDate(pts[i].date)}</text>`;
   }
 
   // Points remarquables : sommet, creux, valeur finale.
@@ -790,8 +808,8 @@ function drawChart(rows, stake, wrapId, height) {
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Évolution du gain cumulé">
         <defs>
           <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${positive ? '#34d399' : '#fb7185'}" stop-opacity=".28"/>
-            <stop offset="100%" stop-color="${positive ? '#34d399' : '#fb7185'}" stop-opacity="0"/>
+            <stop offset="0%" stop-color="${positive ? "var(--up)" : "var(--down)"}" stop-opacity=".28"/>
+            <stop offset="100%" stop-color="${positive ? "var(--up)" : "var(--down)"}" stop-opacity="0"/>
           </linearGradient>
         </defs>
         ${yticks}${zeroLine}
@@ -1353,6 +1371,12 @@ document.querySelectorAll("#vTable th.sortable").forEach(th => {
 
 /* ================= PAGE 3 — PARIS À VENIR ================= */
 const UPCOMING = VALUE_BETS.filter(v => v.is_upcoming && v.days_until!=null && v.days_until <= UPCOMING_DAYS);
+// Dernières pistes réellement visibles après les filtres de « Paris à venir ».
+// La Vue d'ensemble reprend le même périmètre pour éviter d'y afficher des
+// recommandations ou des verdicts qui ne correspondent pas à la sélection.
+let CURRENT_UPCOMING_ROWS = UPCOMING.slice();
+let CURRENT_UPCOMING_VERDICTS = null;
+let CURRENT_UPCOMING_VERDICT_SIGNATURE = null;
 // Le badge sur l'onglet est mis à jour dans renderUpcoming() (voir plus
 // bas, juste à côté de $("uNb")) : il doit refléter le nombre de cartes
 // RÉELLEMENT affichées compte tenu des filtres actifs, pas un total figé
@@ -1655,6 +1679,13 @@ function renderUpcoming() {
     if (sortBy==="edge") return b.edge_aff - a.edge_aff;
     return b[sortBy]-a[sortBy];
   });
+  CURRENT_UPCOMING_ROWS = rows.slice();
+  // Les badges des paris à venir sont calculés sur le backtest historique
+  // passé par les filtres communs sélectionnés. Les filtres propres au
+  // rétrospectif (dates, gagné/perdu, garantie et cellule d'historique) ne
+  // peuvent pas qualifier une recommandation future.
+  CURRENT_UPCOMING_VERDICTS = verdictsFiltresAvenir();
+  mettreAJourBadgesCategorie("u", CURRENT_UPCOMING_VERDICTS, "filtres communs actifs");
   const n = rows.length;
   // Mise reellement engagee par pari : la mise fixe saisie, ou la mise
   // conseillee par Kelly (variable selon l'edge et la cote de CHAQUE pari).
@@ -1731,6 +1762,7 @@ function renderUpcoming() {
     empty.textContent = UPCOMING.length===0
       ? `Aucun match à venir dans les ${UPCOMING_DAYS} prochains jours n'a de value bet (ou l'historique est encore insuffisant). Reviens quand de nouvelles cotes auront été capturées.`
       : "Aucune recommandation ne correspond à ces filtres. Baisse l'edge minimum ou change de catégorie.";
+    renderOverviewUpcoming(CURRENT_UPCOMING_ROWS, CURRENT_UPCOMING_VERDICTS);
     return;
   }
   empty.style.display = "none";
@@ -1844,7 +1876,7 @@ function renderUpcoming() {
         <div class="rec-when">${fmtKickoff(v.kickoff)}</div>
       </div>
       <div class="rec-league">${ligueLabel(v.pays, v.ligue)} · <span class="tag-cat">${v.categorie}</span>
-        ${catBadgeHtml(v.categorie)}</div>
+        ${catBadgeHtml(v.categorie, CURRENT_UPCOMING_VERDICTS, "filtres communs actifs")}</div>
       <div class="rec-bet">
         <span class="rec-pill">${v.colonne}</span>
         <span class="muted">à la cote</span> <strong style="font-family:var(--mono)">${v.cote.toFixed(2)}</strong>
@@ -1921,6 +1953,7 @@ function renderUpcoming() {
   updatePlacedSummary();
   renderPlacedExport();
   attachPredTooltips();
+  renderOverviewUpcoming(CURRENT_UPCOMING_ROWS, CURRENT_UPCOMING_VERDICTS);
 }
 
 /* Infobulle de la prévision indépendante d'API-Football sur la page
@@ -2277,7 +2310,7 @@ function blocFiltreCategorie(prefixe, cat) {
       </div>
     </div>`;
   }
-  return `<details class="cat-filter-block" open data-cat="${cat}">
+  return `<details class="cat-filter-block" data-cat="${cat}">
     <summary>${cat}</summary>
     <div class="controls cat-filter-controls">${champs}</div>
   </details>`;
@@ -2871,107 +2904,183 @@ document.addEventListener("click", e => {
   if (chip) irVersOnglet(chip.dataset.page);
 });
 
-// Cette page servait auparavant les stats du "pari sur tout" (BETS) :
-// trompeur, car ce n'est pas une stratégie jouable — juste une mesure du
-// coût de la marge bookmaker (utile sur la page Rétrospectif, où c'est
-// explicite, pas ici en vitrine). Ce qui compte vraiment, c'est le backtest
-// Dixon-Coles sur les VALUE BETS (BT_ROWS, edge déjà positif) : la seule
-// chose qui ressemble à ce qu'on jouerait réellement. Voir aussi
-// dcCategoryVerdicts()/catBadgeHtml(), déjà utilisés sur "Paris à venir" et
-// "DC rétrospectif" — réutilisés ici pour que le verdict par catégorie soit
-// visible dès la première page, pas seulement dans les onglets de détail.
-function renderOverview() {
-  const stake = 10; // mise de référence pour la vue d'ensemble (indépendante des filtres des autres onglets)
-  const n = BT_ROWS.length;
-  let net = 0, wins = 0;
-  BT_ROWS.forEach(r => { net += r.profit * stake; if (r.gagne) wins++; });
-  const roi = n > 0 ? net / (n * stake) : null;
+// Cette page ne mélange plus des agrégats historiques et des recommandations
+// futures. Elle résume les pistes disponibles, le split hors échantillon des
+// value bets et la qualité/fraîcheur des données. Les gains cumulés et les
+// classements détaillés restent dans l'onglet DC rétrospectif.
+function renderOverviewUpcoming(rowsActifs, verdictsActifs) {
+  const rows = rowsActifs || UPCOMING;
+  const verdicts = verdictsActifs || CURRENT_UPCOMING_VERDICTS || {};
+  const topUpcoming = rows.slice()
+    .sort((a, b) => ((b.ev_aff ?? b.ev) ?? -Infinity) - ((a.ev_aff ?? a.ev) ?? -Infinity))
+    .slice(0, 4);
 
-  const verdicts = dcCategoryVerdicts();
-  const catNoms = Object.keys(verdicts);
-  const nRobustes = catNoms.filter(c => verdicts[c].verdict.code === "robuste").length;
+  const upcomingCount = $("ovUpcoming");
+  if (upcomingCount) upcomingCount.textContent = rows.length.toLocaleString("fr-FR");
+  const upcomingSub = $("ovUpcomingSub");
+  if (upcomingSub) upcomingSub.textContent = rows.length
+    ? "Dans les " + UPCOMING_DAYS + " prochains jours · selon les filtres actifs."
+    : "Aucune piste ne correspond aux filtres actifs.";
 
-  const netEl = $("ovNet");
-  netEl.textContent = fmtEur(net);
-  netEl.className = "st-value " + (net >= 0 ? "pos" : "neg");
-  $("ovNetSub").textContent = `${n} value bet(s) évalué(s)`;
-  const bar = $("ovNetBar");
-  bar.style.width = Math.min(100, Math.abs(roi || 0) * 150).toFixed(0) + "%";
-  bar.style.background = net >= 0 ? "var(--pitch)" : "var(--card-red)";
-
-  const roiEl = $("ovRoi");
-  roiEl.textContent = fmtPct(roi);
-  roiEl.className = "st-value " + (roi >= 0 ? "pos" : "neg");
-  // Un ROI global positif peut cacher un mélange (1 catégorie qui tire tout
-  // vers le haut, les autres perdantes) — d'où ce rappel explicite plutôt
-  // qu'un simple "sur N paris", avec le détail juste en dessous.
-  $("ovRoiSub").textContent = catNoms.length
-    ? `${nRobustes} / ${catNoms.length} catégorie(s) robuste(s) — détail ci-dessous`
-    : "aucune donnée";
-
-  $("ovWin").textContent = n > 0 ? (wins / n * 100).toFixed(1) + " %" : "—";
-  $("ovWinSub").textContent = n > 0 ? `${wins} / ${n} gagnés` : "value bets";
-
-  $("ovUpcoming").textContent = UPCOMING.length;
-  $("ovUpcomingSub").textContent = `sur ${UPCOMING_DAYS} jours · modèle Dixon-Coles`;
-
-  // Même mécanique que drawChart (mise fixe, cumul par ordre chronologique),
-  // mais sur les value bets réels : profit/gagne/categorie/colonne portent
-  // des noms différents côté DC backtest (voir build_dc_backtest), d'où ce
-  // petit mappage vers les champs attendus par drawChart.
-  const chartRows = BT_ROWS.map(r => ({
-    date: r.date, match: r.match, cote: r.cote, won: r.gagne, col: r.colonne,
-  }));
-  drawChart(chartRows, stake, "ovChartWrap", 300);
-
-  const catRows = catNoms.map(cat => ({ cat, ...verdicts[cat] }))
-    .sort((a, b) => (b.roi ?? -99) - (a.roi ?? -99));
-  $("ovCatList").innerHTML = catRows.map(c => `
-    <li>
-      <div><div class="ov-name">${c.cat} ${catBadgeHtml(c.cat)}</div><div class="ov-meta">${c.n} value bet(s)</div></div>
-      <div class="ov-val ${c.roi >= 0 ? 'pos' : 'neg'}">${fmtPct(c.roi)}</div>
-    </li>`).join("") || `<li class="muted">Pas encore de données.</li>`;
-
-  const topUpcoming = UPCOMING.slice().sort((a, b) => b.ev - a.ev).slice(0, 5);
-  $("ovUpcomingList").innerHTML = topUpcoming.map(v => `
-    <li>
-      <div><div class="ov-name">${v.match} ${catBadgeHtml(v.categorie)}</div><div class="ov-meta">${v.colonne} · cote ${v.cote.toFixed(2)}</div></div>
-      <div class="ov-val pos">${fmtPct(v.ev)}</div>
-    </li>`).join("") || `<li class="muted">Aucune piste pour l'instant — reviens après la prochaine collecte.</li>`;
-
-  // Qualité des données : chips de contexte (comme avant) + un chip
-  // d'alerte cliquable si des matchs/compétitions restent mal alignés
-  // (fusion backtest + poisson, même logique qu'initLiguesNonAlignees), ou
-  // un chip rassurant sinon — pour qu'un problème d'alignement saute aux
-  // yeux dès la première page plutôt que d'être découvert par hasard sur
-  // Rétrospectif.
-  const m = WIZARD_DATA.meta;
-  const totalNonRapproches = m.unmatched || 0;
-  const compteLigues = new Map();
-  const ajouterLigues = src => (src || []).forEach(([cle, cnt]) => compteLigues.set(cle, (compteLigues.get(cle) || 0) + cnt));
-  ajouterLigues((WIZARD_DATA.dc_stats || {}).ligues_non_alignees);
-  ajouterLigues((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees);
-  const totalLiguesNonAlignees = compteLigues.size;
-
-  const chips = [
-    `${m.n_odds_files} fichier(s) cotes`,
-    `${m.n_results_files} fichier(s) résultats`,
-    `${m.matched} match(s) rapproché(s)`,
-    `${TEAM_STATS.length} équipe(s) modélisée(s)`,
-    `${VALUE_BETS.length} value bet(s) au total`,
-  ];
-  let html = chips.map(c => `<span class="coverage-chip">${c}</span>`).join("");
-  if (totalNonRapproches > 0 || totalLiguesNonAlignees > 0) {
-    const details = [];
-    if (totalNonRapproches > 0) details.push(`${totalNonRapproches} match(s) non rapproché(s)`);
-    if (totalLiguesNonAlignees > 0) details.push(`${totalLiguesNonAlignees} compétition(s) non alignée(s)`);
-    html += `<button type="button" class="coverage-chip alert link ov-jump-tab" data-page="retro">⚠ ${details.join(" · ")} — corriger</button>`;
-  } else {
-    html += `<span class="coverage-chip ok">✓ Aucun souci d'alignement détecté</span>`;
+  const upcomingList = $("ovUpcomingList");
+  if (upcomingList) {
+    upcomingList.innerHTML = topUpcoming.map(v => {
+      const jour = fmtKickoff(v.kickoff || v.date);
+      const ligue = ligueLabel(v.pays, v.ligue);
+      const cote = Number.isFinite(Number(v.cote)) ? Number(v.cote).toFixed(2) : "—";
+      return '<li><div class="ov-pick-copy">' +
+        '<div class="ov-name">' + v.match + " " + catBadgeHtml(v.categorie, verdicts, "filtres communs actifs") + '</div>' +
+        '<div class="ov-meta">' + ligue + " · " + v.colonne + " · " + jour + '</div>' +
+        '<div class="ov-pick-odds">Cote ' + cote + '</div></div>' +
+        '<div class="ov-opportunity"><strong>' + fmtPct(v.ev_aff ?? v.ev) + '</strong><span>EV</span></div></li>';
+    }).join("") || '<li class="ov-empty">Aucune piste ne correspond aux filtres actifs. Ajuste-les dans « Paris à venir ».</li>';
   }
-  $("ovCoverage").innerHTML = html;
 }
 
+function renderOverview() {
+  // Trois lectures distinctes : pistes à venir, validation chronologique,
+  // puis qualité de la collecte. Aucun calcul du modèle n'est modifié.
+  renderOverviewUpcoming(
+    CURRENT_UPCOMING_ROWS,
+    CURRENT_UPCOMING_VERDICTS || verdictsFiltresAvenir()
+  );
+
+  const dateCourte = value => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+    return match ? match[3] + "/" + match[2] + "/" + match[1] : (value || "");
+  };
+  // Même split chronologique et même agrégateur que renderOosValidation().
+  // On ne crée pas de test artificiel quand l'historique compte moins de 8 paris.
+  const rowsChrono = BT_ROWS.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const splitPossible = rowsChrono.length >= 8;
+  const coupe = splitPossible ? Math.floor(rowsChrono.length / 2) : 0;
+  const apprentissage = splitPossible ? rowsChrono.slice(0, coupe) : [];
+  const test = splitPossible ? rowsChrono.slice(coupe) : [];
+  const testAgg = test.length ? btAgg(test) : null;
+  const trainAgg = apprentissage.length ? btAgg(apprentissage) : null;
+
+  const roiEl = $("ovTestRoi");
+  if (roiEl) {
+    roiEl.textContent = testAgg ? fmtPct(testAgg.roi) : "—";
+    roiEl.className = "ov-metric-value" + (testAgg ? (testAgg.roi >= 0 ? " pos" : " neg") : "");
+  }
+  const periodEl = $("ovTestPeriod");
+  if (periodEl) periodEl.textContent = test.length
+    ? dateCourte(test[0].date) + " → " + dateCourte(test[test.length - 1].date)
+    : "Test indisponible";
+  const sampleEl = $("ovTestSample");
+  if (sampleEl) sampleEl.textContent = test.length.toLocaleString("fr-FR");
+  const sampleSub = $("ovTestSampleSub");
+  if (sampleSub) sampleSub.textContent = splitPossible
+    ? "sur " + rowsChrono.length.toLocaleString("fr-FR") + " value bets · seuil indicatif " + OOS_MIN
+    : rowsChrono.length + " au total · 8 nécessaires pour créer un test";
+
+  const clvRows = test.filter(r => r.raccourcit !== undefined);
+  const clvEl = $("ovTestClv");
+  const clvSub = $("ovTestClvSub");
+  if (clvEl) {
+    if (!clvRows.length) {
+      clvEl.textContent = "—";
+      clvEl.className = "ov-metric-value";
+      if (clvSub) clvSub.textContent = "mouvement de cote non mesuré";
+    } else {
+      const clv = clvRows.reduce((sum, r) => sum + (r.variation_proba || 0), 0) / clvRows.length * 100;
+      const raccourcis = clvRows.filter(r => r.variation_proba > 0).length;
+      clvEl.textContent = (clv >= 0 ? "+" : "") + clv.toFixed(2) + " pt";
+      clvEl.className = "ov-metric-value " + (clv >= 0 ? "pos" : "neg");
+      if (clvSub) clvSub.textContent = clvRows.length + "/" + test.length +
+        " mesurés · " + Math.round(raccourcis / clvRows.length * 100) + " % raccourcis";
+    }
+  }
+
+  const validationNote = $("ovValidationNote");
+  if (validationNote) {
+    let niveau = "is-low", titre, texte;
+    if (!splitPossible) {
+      titre = "Pas assez de données pour créer un test.";
+      texte = rowsChrono.length + " value bet(s) disponibles ; il en faut au moins 8 pour séparer apprentissage et test chronologique.";
+    } else if (test.length < OOS_MIN) {
+      titre = "Échantillon de test trop faible pour conclure.";
+      texte = test.length + " paris dans la moitié récente, sous le seuil indicatif de " + OOS_MIN +
+        ". Le ROI et la CLV peuvent encore beaucoup varier.";
+    } else if (trainAgg.roi > 0 && testAgg.roi > 0) {
+      niveau = "is-good";
+      titre = "Le signal reste positif sur la période de test.";
+      texte = "Encourageant, mais à confirmer à mesure que de nouveaux matchs entrent dans le test.";
+    } else if (trainAgg.roi > 0 && testAgg.roi <= 0) {
+      niveau = "is-watch";
+      titre = "L’avantage observé à l’apprentissage ne se retrouve pas au test.";
+      texte = "Consulte le détail des deux périodes avant d’en tirer une conclusion.";
+    } else if (trainAgg.roi <= 0 && testAgg.roi > 0) {
+      niveau = "is-watch";
+      titre = "Les deux périodes donnent des signaux différents.";
+      texte = "Ce découpage ne suffit pas à distinguer une amélioration durable de la variance.";
+    } else {
+      niveau = "is-watch";
+      titre = "Le ROI est négatif sur les deux périodes.";
+      texte = "Le détail du DC rétrospectif permet de voir quelles catégories et quels marchés pèsent sur le résultat.";
+    }
+    validationNote.className = "ov-validation-note " + niveau;
+    validationNote.innerHTML = "<strong>" + titre + "</strong><span>" + texte + "</span>";
+  }
+
+  // Fraîcheur, rapprochements et accès direct aux diagnostics existants.
+  const meta = WIZARD_DATA.meta || {};
+  const updatedEl = $("ovDataUpdated");
+  if (updatedEl) updatedEl.textContent = WIZARD_DATA.generated || "—";
+  const matched = Number(meta.matched) || 0;
+  const unmatched = Number(meta.unmatched) || 0;
+  const totalMatchs = matched + unmatched;
+  const coverageEl = $("ovMatchCoverage");
+  if (coverageEl) coverageEl.textContent = totalMatchs
+    ? matched.toLocaleString("fr-FR") + " / " + totalMatchs.toLocaleString("fr-FR") +
+      " · " + Math.round(matched / totalMatchs * 100) + " %"
+    : "En attente";
+  const unmatchedEl = $("ovUnmatched");
+  if (unmatchedEl) {
+    unmatchedEl.textContent = unmatched.toLocaleString("fr-FR");
+    unmatchedEl.className = unmatched ? "is-warning" : "is-ok";
+  }
+
+  const compteLigues = new Map();
+  const ajouterLigues = src => (src || []).forEach(([cle, cnt]) =>
+    compteLigues.set(cle, (compteLigues.get(cle) || 0) + cnt));
+  ajouterLigues((WIZARD_DATA.dc_stats || {}).ligues_non_alignees);
+  ajouterLigues((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees);
+  const nonAlignees = compteLigues.size;
+  const coverage = $("ovCoverage");
+  if (!coverage) return;
+
+  let html = "";
+  const generatedAt = Date.parse(WIZARD_DATA.generated_iso || "");
+  if (Number.isFinite(generatedAt)) {
+    const ageMs = Math.max(0, Date.now() - generatedAt);
+    const ageHours = ageMs / 36e5;
+    const ageLabel = ageHours < 1
+      ? "mise à jour il y a " + Math.max(1, Math.floor(ageMs / 60000)) + " min"
+      : ageHours < 48
+        ? "mise à jour il y a " + Math.floor(ageHours) + " h"
+        : "mise à jour il y a " + Math.floor(ageHours / 24) + " j";
+    html += '<span class="coverage-chip ' + (ageHours >= 24 ? "alert" : "ok") + '">' +
+      (ageHours >= 24 ? "À actualiser · " : "À jour · ") + ageLabel + '</span>';
+  } else {
+    html += '<span class="coverage-chip">Horodatage de génération indisponible</span>';
+  }
+  if (unmatched > 0) {
+    html += '<button type="button" class="coverage-chip alert link ov-jump-tab" data-page="retro">' +
+      unmatched.toLocaleString("fr-FR") + " match(s) non rapproché(s) · vérifier</button>";
+  }
+  if (nonAlignees > 0) {
+    html += '<button type="button" class="coverage-chip alert link ov-jump-tab" data-page="retro">' +
+      nonAlignees + " compétition(s) non alignée(s) · vérifier</button>";
+  }
+  if (!totalMatchs) {
+    html += '<span class="coverage-chip">Couverture encore insuffisante pour juger les rapprochements</span>';
+  } else if (!unmatched && !nonAlignees) {
+    html += '<span class="coverage-chip ok">Rapprochements complets</span>';
+  }
+  coverage.innerHTML = html;
+}
 /* ================= PAGE — DIXON-COLES RÉTROSPECTIF ================= */
 const BT_ROWS = WIZARD_DATA.dc_backtest || [];
 
@@ -3008,34 +3117,24 @@ const BT_STATS = WIZARD_DATA.dc_stats || {};
 // utile pour montrer le coût de la marge bookmaker, mais pas pour juger le
 // modèle).
 //
-// Sans argument : verdict GLOBAL sur tout BT_ROWS, calculé une seule fois
-// et mis en cache — réutilisé partout où le badge sert de repère STABLE
-// pour décider (Vue d'ensemble, cartes "Paris à venir", étiquette du
-// filtre "Type de pari" dans initCategoryFilterBadges) : ces badges
-// répondent à "cette catégorie a-t-elle historiquement marché ?", pas à
-// "que donne le filtre actuel ?" — les recalculer à chaque changement de
-// filtre les ferait osciller sans rapport avec ce qu'ils affichent.
-//
-// Avec un tableau de lignes en argument : verdict recalculé sur CET
-// ensemble précis, jamais mis en cache. Sert au tableau "Par catégorie" de
-// DC rétrospectif (voir renderBacktest, plus bas) : avant ce correctif du
-// 26/09/2026, ce tableau affichait un Verdict figé sur tout l'historique à
-// côté de colonnes (Paris, ROI, Net...) déjà recalculées sur rowsFiltrees —
-// incohérent dès qu'un filtre de date, d'edge, de ligue etc. était actif
-// (ex. "Non rentable" affiché à côté d'un ROI filtré largement positif).
-let _dcCatVerdicts = null;
-function dcCategoryVerdicts(rows) {
-  const global = rows === undefined;
-  if (global) {
-    if (_dcCatVerdicts) return _dcCatVerdicts;
-    rows = BT_ROWS;
-  }
+// Sans argument : verdict sur l'historique complet (repli de sécurité).
+// Dans l'interface, les badges passent explicitement les lignes filtrées :
+// cartes et filtres « Paris à venir » suivent les réglages communs actifs ;
+// le tableau DC suit l'ensemble filtré propre à cette page.
+function dcCategoryVerdicts(rows, categoriesIncluses) {
+  if (rows === undefined) rows = BT_ROWS;
   const cats = {};
   rows.forEach(r => { (cats[r.categorie] = cats[r.categorie] || []).push(r); });
+  (categoriesIncluses || []).forEach(cat => { if (!cats[cat]) cats[cat] = []; });
   const out = {};
   Object.keys(cats).forEach(cat => {
     const arr = cats[cat].slice().sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
     const n = arr.length;
+    if (!n) {
+      out[cat] = { n: 0, roi: null, trainRoi: null, testRoi: null,
+        verdict: { code: "insuffisant", label: "Données insuffisantes", color: "#555" } };
+      return;
+    }
     const split = Math.floor(n / 2);
     const roiOf = list => list.length ? list.reduce((s, r) => s + r.profit, 0) / list.length : null;
     const train = arr.slice(0, split), test = arr.slice(split);
@@ -3046,48 +3145,45 @@ function dcCategoryVerdicts(rows) {
     } else if (trainRoi > 0 && testRoi > 0) {
       verdict = { code: "robuste", label: "Robuste", color: "#1a7f5a" };
     } else if (trainRoi > 0 && testRoi <= 0) {
-      verdict = { code: "overfit", label: "Disparaît en test", color: "#b23b3b" };
+      verdict = { code: "overfit", label: "Ne tient pas au test", color: "#b23b3b" };
+    } else if (trainRoi <= 0 && testRoi > 0) {
+      verdict = { code: "discordant", label: "Signal contrasté", color: "#53738f" };
     } else {
-      verdict = { code: "non_rentable", label: "Non rentable", color: "#8a6d1f" };
+      verdict = { code: "roi_non_positif", label: "ROI non positif", color: "#8a6d1f" };
     }
     out[cat] = { n, roi, trainRoi, testRoi, verdict };
   });
-  if (global) _dcCatVerdicts = out;
   return out;
 }
 
-// Badge compact réutilisé partout où une catégorie de pari est affichée à
-// côté d'un verdict (carte de recommandation, filtre). Le survol détaille
-// le ROI réel et la taille de l'échantillon, pour ne pas se fier au seul
-// mot ("Robuste" sur 31 paris et sur 900 n'inspire pas la même confiance,
-// même si le badge est identique).
-//
-// verdicts (optionnel) : la map déjà calculée à réutiliser (typiquement
-// dcCategoryVerdicts(rowsFiltrees)) plutôt que la map globale par défaut —
-// voir le tableau "Par catégorie" de renderBacktest.
-function catBadgeHtml(categorie, verdicts) {
-  const v = (verdicts || dcCategoryVerdicts())[categorie];
+// Badge compact : le texte reste prudent, le titre explique le périmètre et
+// les deux moitiés temporelles sans répéter le nombre de paris déjà visible
+// dans les KPI ou le tableau.
+function catBadgeHtml(categorie, verdicts, contexte) {
+  const v = verdicts && verdicts[categorie];
   if (!v) return "";
-  const titre = v.roi != null
-    ? `Backtest Dixon-Coles (value bets) : ${v.n} pari(s), ROI ${fmtPct(v.roi)} `
-      + `(entraînement ${fmtPct(v.trainRoi)} / test ${fmtPct(v.testRoi)})`
-    : `${v.n} pari(s) testé(s) — pas encore assez pour un verdict`;
-  return `<span class="badge cat-verdict" style="background:${v.verdict.color}" title="${titre}">${v.verdict.label}</span>`;
+  const prefixe = contexte ? `Verdict calculé avec les ${contexte}. ` : "Verdict historique. ";
+  const titre = v.n
+    ? `${prefixe}ROI ${fmtPct(v.roi)} · apprentissage ${fmtPct(v.trainRoi)} · test ${fmtPct(v.testRoi)}.`
+    : `${prefixe}Aucun pari ne correspond à ce périmètre.`;
+  const symboles = {robuste: "✓", overfit: "↘", roi_non_positif: "×", insuffisant: "i", discordant: "↔"};
+  const symbole = symboles[v.verdict.code] || "•";
+  return `<span class="badge cat-verdict cat-verdict--${v.verdict.code}" title="${titre}" aria-label="${v.verdict.label}">
+    <span class="cat-verdict-mark" aria-hidden="true">${symbole}</span>
+    <span class="cat-verdict-label">${v.verdict.label}</span>
+  </span>`;
 }
 
-// Étiquette le filtre "Type de pari" (Paris à venir ET DC rétrospectif) avec
-// le même badge que les cartes, pour qu'on voie d'emblée qu'une catégorie
-// est historiquement perdante SANS avoir à décocher/recocher pour vérifier.
-// Purement informatif : ne change aucune case cochée par défaut — la
-// décision de jouer une catégorie reste à l'utilisateur, pas décidée à sa
-// place par le tableau de bord.
-(function initCategoryFilterBadges() {
-  document.querySelectorAll(".uCatChk, .btCatChk").forEach(input => {
-    const badge = catBadgeHtml(input.value);
+function mettreAJourBadgesCategorie(prefixe, verdicts, contexte) {
+  document.querySelectorAll("." + prefixe + "CatChk").forEach(input => {
     const span = input.nextElementSibling;
-    if (badge && span) span.insertAdjacentHTML("afterend", badge);
+    if (!span) return;
+    const badgeActuel = span.nextElementSibling;
+    if (badgeActuel && badgeActuel.classList.contains("cat-verdict")) badgeActuel.remove();
+    const badgeActif = catBadgeHtml(input.value, verdicts, contexte);
+    if (badgeActif) span.insertAdjacentHTML("afterend", badgeActif);
   });
-})();
+}
 
 // Bornes du calendrier : toute la période disponible, calculée côté Python
 // (BT_STATS.date_min/max) — avec repli sur un balayage de BT_ROWS pour un
@@ -3105,6 +3201,208 @@ function catBadgeHtml(categorie, verdicts) {
   if (mn) fin.min = mn;
   if (mx) deb.max = mx;
 })();
+// Calendrier compact et cohérent avec le thème. Les champs date d'origine
+// restent la source de vérité des filtres et continuent d'émettre change.
+(function initBtDatePickers() {
+  const inputs = [$("btDateDebut"), $("btDateFin")].filter(Boolean);
+  if (!inputs.length) return;
+  const today = new Date();
+  const isoFromDate = date => String(date.getFullYear()).padStart(4, "0") + "-"
+    + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  const parseIso = value => {
+    const parts = String(value || "").split("-");
+    return parts.length === 3 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])) : null;
+  };
+  const dateLabel = new Intl.DateTimeFormat("fr-FR", {day: "numeric", month: "long", year: "numeric"});
+  const monthLabel = new Intl.DateTimeFormat("fr-FR", {month: "long", year: "numeric"});
+  const weekdayNames = ["lu", "ma", "me", "je", "ve", "sa", "di"];
+  const weekdayFull = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  let ouvert = null;
+
+  function estAutorisee(input, date) {
+    const iso = isoFromDate(date);
+    return (!input.min || iso >= input.min) && (!input.max || iso <= input.max);
+  }
+  function fermer(picker, rendreFocus = false) {
+    if (!picker) return;
+    picker.panel.hidden = true;
+    picker.root.classList.remove("is-open");
+    picker.trigger.setAttribute("aria-expanded", "false");
+    if (ouvert === picker) ouvert = null;
+    if (rendreFocus) picker.trigger.focus();
+  }
+
+  inputs.forEach((input, index) => {
+    const root = document.createElement("div");
+    root.className = "date-picker";
+    input.parentNode.insertBefore(root, input);
+    root.appendChild(input);
+    input.classList.add("date-picker-source");
+    input.tabIndex = -1;
+    input.setAttribute("aria-hidden", "true");
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "date-picker-trigger";
+    trigger.id = input.id + "Button";
+    trigger.setAttribute("aria-haspopup", "dialog");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-controls", input.id + "Calendar");
+    trigger.innerHTML = '<span class="date-picker-value"></span><svg class="date-picker-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 3v3M13.5 3v3M3.5 8h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6.5 11h.01M10 11h.01M13.5 11h.01M6.5 14h.01M10 14h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    const label = input.closest(".field") && input.closest(".field").querySelector('label[for="' + input.id + '"]');
+    if (label) {
+      label.htmlFor = trigger.id;
+      trigger.setAttribute("aria-label", label.textContent.trim() + " : choisir une date");
+    }
+
+    const panel = document.createElement("div");
+    panel.className = "date-picker-popover";
+    panel.id = input.id + "Calendar";
+    panel.hidden = true;
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "false");
+    panel.setAttribute("aria-label", "Calendrier — " + (label ? label.textContent.trim() : "date " + (index + 1)));
+    panel.innerHTML = '<div class="date-picker-head"><button type="button" class="date-picker-nav" data-month="-1" aria-label="Mois précédent"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m12 4-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="date-picker-month" aria-live="polite"></div><button type="button" class="date-picker-nav" data-month="1" aria-label="Mois suivant"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m8 4 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div class="date-picker-weekdays" aria-hidden="true"></div><div class="date-picker-days"></div><div class="date-picker-footer"><button type="button" data-action="clear">Effacer</button><button type="button" data-action="today">Aujourd’hui</button></div>';
+    root.append(trigger, panel);
+
+    const current = parseIso(input.value) || today;
+    const picker = {
+      input, root, trigger, panel, label,
+      month: new Date(current.getFullYear(), current.getMonth(), 1),
+      days: panel.querySelector(".date-picker-days"),
+      monthText: panel.querySelector(".date-picker-month"),
+      prev: panel.querySelector('[data-month="-1"]'),
+      next: panel.querySelector('[data-month="1"]'),
+      todayButton: panel.querySelector('[data-action="today"]'),
+    };
+    panel.querySelector(".date-picker-weekdays").innerHTML = weekdayNames.map((short, i) =>
+      '<span title="' + weekdayFull[i] + '">' + short + "</span>").join("");
+
+    function actualiserValeur() {
+      const date = parseIso(input.value);
+      const value = trigger.querySelector(".date-picker-value");
+      value.textContent = date ? dateLabel.format(date) : "Choisir une date";
+      trigger.title = date ? dateLabel.format(date) : "Choisir une date";
+    }
+    function rendreCalendrier(focusDate = null) {
+      const year = picker.month.getFullYear(), month = picker.month.getMonth();
+      const first = new Date(year, month, 1);
+      const offset = (first.getDay() + 6) % 7;
+      const start = new Date(year, month, 1 - offset);
+      const selected = input.value;
+      const minDate = parseIso(input.min), maxDate = parseIso(input.max);
+      picker.monthText.textContent = monthLabel.format(first);
+      picker.days.replaceChildren();
+      picker.prev.disabled = !!(minDate && new Date(year, month, 0) < minDate);
+      picker.next.disabled = !!(maxDate && new Date(year, month + 1, 1) > maxDate);
+      picker.todayButton.disabled = !estAutorisee(input, today);
+
+      for (let i = 0; i < 42; i++) {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const iso = isoFromDate(date);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "date-picker-day";
+        button.textContent = String(date.getDate());
+        button.tabIndex = -1;
+        button.dataset.date = iso;
+        button.setAttribute("aria-label", dateLabel.format(date));
+        if (date.getMonth() !== month) button.classList.add("is-outside");
+        if (iso === isoFromDate(today)) {
+          button.classList.add("is-today");
+          button.setAttribute("aria-current", "date");
+        }
+        if (iso === selected) {
+          button.classList.add("is-selected");
+          button.setAttribute("aria-pressed", "true");
+        }
+        button.disabled = !estAutorisee(input, date);
+        button.addEventListener("click", () => {
+          input.value = iso;
+          input.dispatchEvent(new Event("change", {bubbles: true}));
+          actualiserValeur();
+          fermer(picker, true);
+        });
+        picker.days.appendChild(button);
+      }
+      const focusable = (focusDate && picker.days.querySelector('.date-picker-day[data-date="' + focusDate + '"]:not(:disabled)'))
+        || picker.days.querySelector(".date-picker-day.is-selected:not(:disabled)")
+        || picker.days.querySelector(".date-picker-day.is-today:not(:disabled)")
+        || picker.days.querySelector(".date-picker-day:not(:disabled)");
+      if (focusable) focusable.tabIndex = 0;
+      if (focusDate) {
+        if (focusable) focusable.focus();
+      }
+    }
+
+    trigger.addEventListener("click", () => {
+      if (!panel.hidden) { fermer(picker); return; }
+      if (ouvert && ouvert !== picker) fermer(ouvert);
+      const date = parseIso(input.value) || today;
+      picker.month = new Date(date.getFullYear(), date.getMonth(), 1);
+      panel.hidden = false;
+      root.classList.add("is-open");
+      trigger.setAttribute("aria-expanded", "true");
+      ouvert = picker;
+      rendreCalendrier(isoFromDate(date));
+    });
+    panel.addEventListener("click", event => {
+      const nav = event.target.closest("[data-month]");
+      if (nav && !nav.disabled) {
+        picker.month = new Date(picker.month.getFullYear(), picker.month.getMonth() + Number(nav.dataset.month), 1);
+        rendreCalendrier();
+        return;
+      }
+      const action = event.target.closest("[data-action]") && event.target.closest("[data-action]").dataset.action;
+      if (action === "clear") {
+        input.value = "";
+        input.dispatchEvent(new Event("change", {bubbles: true}));
+        actualiserValeur();
+        fermer(picker, true);
+      } else if (action === "today" && estAutorisee(input, today)) {
+        input.value = isoFromDate(today);
+        input.dispatchEvent(new Event("change", {bubbles: true}));
+        actualiserValeur();
+        fermer(picker, true);
+      }
+    });
+    picker.days.addEventListener("keydown", event => {
+      const button = event.target.closest(".date-picker-day[data-date]");
+      if (!button) return;
+      const currentDate = parseIso(button.dataset.date);
+      let offset = 0;
+      if (event.key === "ArrowLeft") offset = -1;
+      else if (event.key === "ArrowRight") offset = 1;
+      else if (event.key === "ArrowUp") offset = -7;
+      else if (event.key === "ArrowDown") offset = 7;
+      else if (event.key === "Home") offset = -((currentDate.getDay() + 6) % 7);
+      else if (event.key === "End") offset = 6 - ((currentDate.getDay() + 6) % 7);
+      else if (event.key === "PageUp" || event.key === "PageDown") {
+        event.preventDefault();
+        const delta = event.key === "PageUp" ? -1 : 1;
+        if ((delta < 0 && picker.prev.disabled) || (delta > 0 && picker.next.disabled)) return;
+        const year = picker.month.getFullYear(), month = picker.month.getMonth() + delta;
+        const daysInTargetMonth = new Date(year, month + 1, 0).getDate();
+        const focusDate = new Date(year, month, Math.min(currentDate.getDate(), daysInTargetMonth));
+        picker.month = new Date(focusDate.getFullYear(), focusDate.getMonth(), 1);
+        rendreCalendrier(isoFromDate(focusDate));
+        return;
+      } else return;
+      event.preventDefault();
+      const nextDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + offset);
+      picker.month = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1);
+      rendreCalendrier(isoFromDate(nextDate));
+    });
+    actualiserValeur();
+  });
+
+  document.addEventListener("click", event => {
+    if (ouvert && !ouvert.root.contains(event.target) && event.target !== ouvert.label) fermer(ouvert);
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && ouvert) fermer(ouvert, true);
+  });
+})();
 // Mise du backtest : lue depuis le champ, pour pouvoir simuler d'autres
 // montants sans relancer le calcul (les profits sont stockés en UNITÉS de
 // mise, donc un simple facteur suffit).
@@ -3118,8 +3416,8 @@ function catBadgeHtml(categorie, verdicts) {
 // deviendrait impossible d'en choisir une différente pour comparer.
 function btFiltered(opts) {
   opts = opts || {};
-  const f = $("btFilter") ? $("btFilter").value : "";
-  const cats = categoriesCochees("bt");
+  const f = !opts.prospectif && $("btFilter") ? $("btFilter").value : "";
+  const cats = opts.sansCategories ? null : categoriesCochees("bt");
   const ligues = liguesCochees("bt");
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
@@ -3134,8 +3432,8 @@ function btFiltered(opts) {
   // fixe de 14 jours. r.date est au format AAAA-MM-JJ, exactement celui que
   // renvoie un <input type="date">, donc une comparaison de chaînes suffit
   // sans repasser par des objets Date.
-  const dateDebut = $("btDateDebut") ? $("btDateDebut").value : "";
-  const dateFin = $("btDateFin") ? $("btDateFin").value : "";
+  const dateDebut = !opts.prospectif && $("btDateDebut") ? $("btDateDebut").value : "";
+  const dateFin = !opts.prospectif && $("btDateFin") ? $("btDateFin").value : "";
 
   // ENRICHISSEMENT xG. Plutôt que de faire vérifier le mode par chaque
   // fonction consommatrice (blended, btAgg, drawCalibration...), la
@@ -3177,7 +3475,7 @@ function btFiltered(opts) {
   // ne fait que choisir quelle lecture utiliser. Réglage propre à
   // "Vainqueur du match" : c'est la seule catégorie où garantie_sauve est
   // calculé côté Python (voir LIGUES_GARANTIE_2_BUTS).
-  const garantie = valCat("btGarantie", CATEGORY_RESULT, "0");
+  const garantie = opts.prospectif ? "0" : valCat("btGarantie", CATEGORY_RESULT, "0");
   const alpha = blendAlpha("btAlpha");
   // Filtre sur le MOUVEMENT DE LA COTE entre la première et la dernière
   // capture. Une cote qui raccourcit signale que de l'argent est entré sur
@@ -3227,7 +3525,9 @@ function btFiltered(opts) {
       : r);
   }
 
-  let rows = source.filter(r => {
+  // La référence complète réutilise les mêmes transformations et la même
+  // déduplication, mais neutralise les filtres de sélection de la page.
+  let rows = opts.referenceComplete ? source.slice() : source.filter(r => {
     // Edge minimum et plage de cotes : réglage propre à la catégorie DE CE
     // PARI (voir le commentaire plus haut) — deux catégories cochées en même
     // temps peuvent donc appliquer des seuils différents dans la même passe.
@@ -3301,7 +3601,7 @@ function btFiltered(opts) {
   // Filtre "historique" (voir renderHistMatrix / BT_HIST_SELECTION plus
   // bas) : ne s'applique jamais quand opts.sansHist est demandé — c'est
   // précisément ce qui permet à la matrice elle-même de rester complète.
-  if (!opts.sansHist && BT_HIST_SELECTION) {
+  if (!opts.referenceComplete && !opts.sansHist && !opts.prospectif && BT_HIST_SELECTION) {
     rows = rows.filter(r => histBucketKey(r.n_hist_dom) === BT_HIST_SELECTION.dom
                           && histBucketKey(r.n_hist_ext) === BT_HIST_SELECTION.ext);
   }
@@ -3320,6 +3620,30 @@ function btFiltered(opts) {
     rows = Object.values(meilleur);
   }
   return rows;
+}
+
+// Mise en cache légère : le calcul des verdicts parcourt le backtest entier,
+// mais le montant de mise et le tri n'en changent pas le résultat. On ne le
+// relance que si un filtre réellement utilisé par « Paris à venir » bouge.
+function verdictsFiltresAvenir() {
+  const ids = [
+    "uDevig", "uAlpha", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
+    "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
+  ];
+  const controles = [
+    ...ids.map(id => $(id)).filter(Boolean),
+    ...document.querySelectorAll("#uCatFilterBlocks select, .uLigueChk, .uIssueVmChk, .uScoreExChk"),
+  ];
+  const signature = controles.map(el => `${el.id || el.className}:${el.value}:${el.checked ? 1 : 0}`).join("|");
+  if (!CURRENT_UPCOMING_VERDICTS || signature !== CURRENT_UPCOMING_VERDICT_SIGNATURE) {
+    CURRENT_UPCOMING_VERDICTS = dcCategoryVerdicts(
+      btFiltered({sansHist: true, prospectif: true, sansCategories: true}),
+      CATEGORIES_DC
+    );
+    CURRENT_UPCOMING_VERDICT_SIGNATURE = signature;
+  }
+  return CURRENT_UPCOMING_VERDICTS;
 }
 
 // --- Matrice "Score exact" (sous le tableau "Par catégorie") -------------
@@ -3342,8 +3666,7 @@ const SCORE_CELL_SEUIL_FIABLE = 5;
 const RESULT_ORDER = ["homeWin", "draw", "awayWin"];
 const RESULT_LABEL = {homeWin: "Domicile", draw: "Nul", awayWin: "Extérieur"};
 const RESULT_CELL_SEUIL_FIABLE = 5;
-// Dernier rendu de la matrice, gardé pour l'infobulle au survol (voir
-// initScoreMatrixTooltip) : un objet {"h-a": {..agg, rows: [...]}}, rows
+// Dernier rendu de la matrice, utilisé par le panneau de détail au clic : un objet {"h-a": {..agg, rows: [...]}}, rows
 // étant les paris individuels derrière cette case — ré-affecté à chaque
 // renderScoreMatrix, lu par délégation d'événement donc jamais périmé même
 // après un innerHTML qui a remplacé les <td>.
@@ -3404,11 +3727,291 @@ function btStakeFor(r) {
   return kellyFraction(p, r.cote, frac) * bankroll;
 }
 
+// ROI de comparaison calculé avec la même stratégie de mise que le KPI,
+// afin que la référence et le périmètre filtré restent comparables en Kelly.
+function btRoiAvecMise(rows) {
+  if (!rows || !rows.length) return null;
+  let net = 0, totalMise = 0;
+  rows.forEach(r => {
+    const mise = btStakeFor(r);
+    totalMise += mise;
+    net += r.profit * mise;
+  });
+  return totalMise > 0 ? net / totalMise : null;
+}
+
+function renderBtFilterImpact(rowsFiltrees, historiqueComplet) {
+  const currentEl = $("btImpactFilteredRoi");
+  const fullEl = $("btImpactFullRoi");
+  const deltaEl = $("btImpactDelta");
+  const noteEl = $("btImpactNote");
+  if (!currentEl || !fullEl || !deltaEl) return;
+
+  const roiActuel = btRoiAvecMise(rowsFiltrees);
+  const roiComplet = btRoiAvecMise(historiqueComplet);
+  currentEl.textContent = roiActuel == null
+    ? (rowsFiltrees && rowsFiltrees.length ? "Mise nulle" : "Aucun pari")
+    : fmtPct(roiActuel);
+  fullEl.textContent = roiComplet == null
+    ? (historiqueComplet && historiqueComplet.length ? "Mise nulle" : "Aucune donnée")
+    : fmtPct(roiComplet);
+
+  deltaEl.className = "bt-impact-delta";
+  if (roiActuel == null || roiComplet == null) {
+    deltaEl.textContent = "—";
+    if (noteEl) noteEl.textContent = "L’écart s’affichera dès qu’un ROI peut être calculé des deux côtés.";
+    return;
+  }
+
+  const ecartPoints = (roiActuel - roiComplet) * 100;
+  const signe = ecartPoints > .05 ? "+" : ecartPoints < -.05 ? "−" : "";
+  const valeur = Math.abs(ecartPoints).toLocaleString("fr-FR", {
+    minimumFractionDigits: 1, maximumFractionDigits: 1,
+  });
+  deltaEl.textContent = `${signe}${valeur} pt`;
+  deltaEl.classList.add(ecartPoints > .05 ? "is-above" : ecartPoints < -.05 ? "is-below" : "is-close");
+  if (noteEl) {
+    noteEl.textContent = "Écart descriptif entre la sélection et l’historique complet ; il ne constitue pas une validation indépendante.";
+  }
+}
+
+// Résumé lisible de l'échantillon réellement affiché. Les contrôles restent
+// la source de vérité ; ce bandeau rend simplement leurs effets visibles
+// sans devoir rouvrir les menus ni inspecter chaque KPI séparément.
+function renderBtActiveFilters(rowsFiltrees) {
+  const host = $("btActiveFilters");
+  if (!host) return;
+  const chips = [];
+  const esc = value => String(value).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+  })[c]);
+  const add = (label, value, title = "") => {
+    if (!value) return;
+    chips.push(`<span class="active-filter-chip"${title ? ` title="${esc(title)}"` : ""}>`
+      + `<span>${esc(label)}</span><strong>${esc(value)}</strong></span>`);
+  };
+  const fmtNum = (value, digits = 2) => Number(value).toLocaleString("fr-FR", {
+    minimumFractionDigits: 0, maximumFractionDigits: digits,
+  });
+  const fmtDate = iso => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : iso;
+  };
+  const shortCat = cat => ({
+    "Score exact": "Score exact",
+    "Vainqueur du match": "Vainqueur",
+    "Intervalle de buts": "Intervalle",
+    "Plus/Moins de buts": "Plus/Moins",
+    "Les 2 équipes marquent": "2 équipes marquent",
+  })[cat] || cat;
+
+  const catInputs = [...document.querySelectorAll(".btCatChk")];
+  const catChecked = catInputs.filter(input => input.checked).map(input => input.value);
+  // Une sélection vide équivaut à « toutes » dans categoriesCochees().
+  if (catChecked.length && catChecked.length < catInputs.length) {
+    add("Catégories", catChecked.map(shortCat).join(" · "), `${catChecked.length} catégorie(s) sur ${catInputs.length}`);
+  }
+
+  const dateStart = $("btDateDebut"), dateEnd = $("btDateFin");
+  const start = dateStart ? dateStart.value : "", end = dateEnd ? dateEnd.value : "";
+  const fullStart = dateStart ? dateStart.min : "", fullEnd = dateEnd ? dateEnd.max : "";
+  const startActive = !!start && !!fullStart && start !== fullStart;
+  const endActive = !!end && !!fullEnd && end !== fullEnd;
+  if (startActive || endActive) {
+    add("Période", `${fmtDate(startActive ? start : fullStart)} → ${fmtDate(endActive ? end : fullEnd)}`,
+      "Période réduite par rapport à l'historique complet");
+  }
+
+  const resultFilter = $("btFilter");
+  if (resultFilter && resultFilter.value) {
+    add("Résultat", resultFilter.selectedOptions[0]?.textContent.trim() || resultFilter.value);
+  }
+
+  const leagueBoxes = [...document.querySelectorAll(".btLigueChk")];
+  const chosenLeagues = leagueBoxes.filter(box => box.checked);
+  if (chosenLeagues.length) {
+    const names = chosenLeagues.map(box => box.closest("label")?.querySelector("span")?.textContent.trim() || box.value);
+    add("Ligues", names.length <= 2 ? names.join(" · ") : `${names.length} sélectionnées`, names.join(", "));
+  }
+
+  const odds = coteBornesActives("bt");
+  if (odds.actif) {
+    const lo = odds.lo <= COTE_SLIDER_MIN ? "sans minimum" : fmtNum(odds.lo);
+    const hi = odds.hi >= COTE_SLIDER_MAX ? "sans maximum" : fmtNum(odds.hi);
+    add("Cotes", `${lo} – ${hi}`, "Bornes décimales appliquées aux cotes des paris");
+  }
+
+  const movement = mvtBornesActives("bt");
+  if (movement.actif) {
+    const signed = value => `${value > 0 ? "+" : ""}${fmtNum(value, 1)} pt`;
+    const lo = movement.lo <= MVT_SLIDER_MIN ? "sans minimum" : signed(movement.lo);
+    const hi = movement.hi >= MVT_SLIDER_MAX ? "sans maximum" : signed(movement.hi);
+    add("Mouvement", `${lo} – ${hi}`, "Variation de probabilité implicite entre la première et la dernière cote");
+  }
+
+  const alpha = $("btAlpha");
+  if (alpha && parseFloat(alpha.value) !== 1) {
+    add("Poids modèle", alpha.selectedOptions[0]?.textContent.trim() || `${fmtNum(parseFloat(alpha.value) * 100, 0)} %`);
+  }
+  const strategy = $("btMise");
+  if (strategy && strategy.value !== "fixe") {
+    add("Mise", strategy.selectedOptions[0]?.textContent.trim() || "Kelly");
+  } else {
+    const stake = $("btStake");
+    const stakeValue = stake ? parseFloat(stake.value) : NaN;
+    if (stake && Number.isFinite(stakeValue) && stakeValue !== parseFloat(stake.defaultValue)) {
+      add("Mise", `${fmtNum(stakeValue, 2)} € / pari`);
+    }
+  }
+
+  // Rend visibles les seuils actifs de chaque catégorie sélectionnée, y
+  // compris les réglages recommandés déjà appliqués au chargement.
+  document.querySelectorAll("#btCatFilterBlocks .cat-filter-block").forEach(block => {
+    const cat = block.dataset.cat;
+    if (catChecked.length && !catChecked.includes(cat)) return;
+    const settings = [];
+    block.querySelectorAll("select").forEach(select => {
+      const label = [...block.querySelectorAll("label")].find(item => item.htmlFor === select.id)?.textContent.trim();
+      let value = select.selectedOptions[0]?.textContent.trim();
+      if (!label || !value) return;
+      value = value.replace(/\s*\(recommandé\)/gi, "").replace(/\s+/g, " ");
+      const compactLabel = ({
+        "Edge minimum": "edge min",
+        "Espérance": "EV min",
+        "Espérance maximum": "EV max",
+        "Marchés de queue": "queues",
+        "Edge dévigué maximum": "edge dévigé max",
+        "Garantie 2 buts": "garantie",
+        "Probabilité modèle": "proba modèle",
+      })[label] || label;
+      const compactValue = value
+        .replace("2 % (tous)", "2 %")
+        .replace("Positive (> 0 %)", "> 0 %")
+        .replace("Les exclure", "exclues")
+        .replace("Appliquer (ligues éligibles)", "2 buts active");
+      settings.push(`${compactLabel} : ${compactValue}`);
+    });
+    if (settings.length) add(`Filtres · ${shortCat(cat)}`, settings.join(" · "), `${cat} — ${settings.join(" ; ")}`);
+
+    const issueBoxes = [...block.querySelectorAll(".btIssueVmChk")];
+    const selectedIssues = issueBoxes.filter(box => box.checked);
+    if (selectedIssues.length && selectedIssues.length < issueBoxes.length) {
+      const names = selectedIssues.map(box => box.closest("label")?.querySelector("span")?.textContent.trim() || box.value);
+      add(shortCat(cat), `Issues · ${names.join(", ")}`, `Issues pariées incluses : ${names.join(", ")}`);
+    }
+
+    const scoreBoxes = [...block.querySelectorAll(".btScoreExChk")];
+    const selectedScores = scoreBoxes.filter(box => box.checked);
+    if (selectedScores.length && selectedScores.length < scoreBoxes.length) {
+      const names = selectedScores.map(box => box.value);
+      add(shortCat(cat), `Scores · ${selectedScores.length} sélectionné(s)`, `Scores inclus : ${names.join(", ")}`);
+    }
+  });
+
+  if (BT_HIST_SELECTION) {
+    add("Historique", `dom. ${BT_HIST_SELECTION.dom} · ext. ${BT_HIST_SELECTION.ext}`);
+  }
+
+  const count = (rowsFiltrees || []).length.toLocaleString("fr-FR");
+  host.innerHTML = `<div class="active-filter-overview">
+      <span class="active-filter-icon" aria-hidden="true">≡</span>
+      <span class="active-filter-heading"><strong>Périmètre affiché</strong><span><b>${count}</b> paris retenus</span></span>
+    </div>
+    <div class="active-filter-content">
+      <span class="active-filter-caption">${chips.length ? `${chips.length} filtre(s) ou réglage(s) actif(s)` : "Historique complet"}</span>
+      <div class="active-filter-chips">${chips.join("") || '<span class="active-filter-empty">Aucun filtre supplémentaire</span>'}</div>
+    </div>`;
+}
+
+function initBacktestSectionNav() {
+  const page = $("page-backtest");
+  const nav = $("btSectionNav");
+  if (!page || !nav) return;
+
+  const links = [...nav.querySelectorAll("[data-bt-target]")];
+  const sections = links.map(link => ({link, target: $(link.dataset.btTarget)}))
+    .filter(item => item.target);
+  if (!sections.length) return;
+
+  const topbar = document.querySelector(".topbar");
+  const root = document.documentElement;
+  let frame = 0;
+
+  const setActive = id => links.forEach(link => {
+    if (link.dataset.btTarget === id) link.setAttribute("aria-current", "location");
+    else link.removeAttribute("aria-current");
+  });
+
+  const measureOffsets = () => {
+    const topbarHeight = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 0;
+    const navHeight = Math.ceil(nav.getBoundingClientRect().height);
+    root.style.setProperty("--ww-topbar-height", `${topbarHeight}px`);
+    if (navHeight) root.style.setProperty("--ww-section-nav-height", `${navHeight}px`);
+    scheduleActive();
+  };
+
+  const updateActive = () => {
+    frame = 0;
+    if (!page.classList.contains("active")) return;
+    const navBottom = nav.getBoundingClientRect().bottom;
+    const boundary = (navBottom > 0 ? navBottom : 0) + 18;
+    let current = sections[0];
+    let lastVisible = current;
+    sections.forEach(item => {
+      if (!item.target.getClientRects().length) return;
+      lastVisible = item;
+      if (item.target.getBoundingClientRect().top <= boundary) current = item;
+    });
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 3) {
+      current = lastVisible;
+    }
+    setActive(current.link.dataset.btTarget);
+  };
+
+  function scheduleActive() {
+    if (!frame) frame = requestAnimationFrame(updateActive);
+  }
+
+  links.forEach(link => link.addEventListener("click", () => {
+    const target = $(link.dataset.btTarget);
+    if (!target) return;
+    setActive(link.dataset.btTarget);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({behavior: reducedMotion ? "auto" : "smooth", block: "start"});
+  }));
+
+  nav.querySelectorAll("[data-bt-fold]").forEach(button => button.addEventListener("click", () => {
+    const open = button.dataset.btFold === "open";
+    page.querySelectorAll("details.panel-foldable, details.panel-group").forEach(panel => {
+      if (panel.style.display === "none") return;
+      panel.open = open;
+    });
+    scheduleActive();
+  }));
+
+  page.addEventListener("toggle", scheduleActive, true);
+  window.addEventListener("scroll", scheduleActive, {passive: true});
+  window.addEventListener("resize", measureOffsets, {passive: true});
+  const backtestTab = $("tab-backtest");
+  if (backtestTab) backtestTab.addEventListener("click", () => requestAnimationFrame(measureOffsets));
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(measureOffsets);
+    if (topbar) observer.observe(topbar);
+    observer.observe(nav);
+  }
+  measureOffsets();
+}
+
 function renderBacktest() {
   // Les agrégats sont recalculés sur l'ensemble filtré : la déduplication
   // change n, ROI, réussite... on ne peut donc pas réutiliser les totaux
   // bruts calculés côté Python.
   const rowsFiltrees = btFiltered();
+  const rowsReferenceComplete = btFiltered({referenceComplete: true});
+  const verdictsMenus = dcCategoryVerdicts(
+    btFiltered({sansCategories: true}), CATEGORIES_DC
+  );
+  mettreAJourBadgesCategorie("bt", verdictsMenus, "filtres DC actifs");
   const g = rowsFiltrees.length ? btAgg(rowsFiltrees) : (BT_ROWS.length ? btAgg([]) : (BT_STATS.global || {}));
   const empty = $("btEmpty");
 
@@ -3417,6 +4020,8 @@ function renderBacktest() {
   // en cours ne laisse plus aucun pari pour le reste de la page (retour
   // anticipé juste en dessous) — voir le commentaire sur btFiltered(opts).
   renderHistMatrix(btFiltered({sansHist: true}));
+  renderBtActiveFilters(rowsFiltrees);
+  renderBtFilterImpact(rowsFiltrees, rowsReferenceComplete);
 
   // Étiquette d'intervalle : reflète le calendrier choisi, pas une fenêtre
   // fixe. "Toute la période" si les deux bornes sont vides (aucun filtre
@@ -3626,7 +4231,7 @@ function renderBacktest() {
   // Verdict (dcCategoryVerdicts(rowsFiltrees), PAS l'appel sans argument) :
   // avant le 26/09/2026, cette dernière colonne restait figée sur tout
   // l'historique pendant que les autres (Paris, ROI, Net...) suivaient déjà
-  // les filtres, produisant des lignes incohérentes (ex. "Non rentable" à
+  // les filtres, produisant des lignes incohérentes (ex. "ROI non positif" à
   // côté d'un ROI filtré positif). Jamais mis en cache : recalculé à
   // chaque rendu, comme le reste de ce tableau.
   const cats = {};
@@ -3650,7 +4255,7 @@ function renderBacktest() {
       <td data-label="Cote moy." class="num">${s.cote_moy != null ? s.cote_moy.toFixed(2) : "—"}</td>
       <td data-label="ROI" class="num ${s.roi>=0?'pos':'neg'}"><strong>${fmtPct(s.roi)}</strong></td>
       <td data-label="Net" class="num ${cnet>=0?'pos':'neg'}">${fmtEur(cnet)}</td>
-      <td data-label="Verdict">${catBadgeHtml(c, verdictsFiltres)}</td>
+      <td data-label="Verdict">${catBadgeHtml(c, verdictsFiltres, "filtres DC du tableau")}</td>
     </tr>`;
   }).join("") || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
 
@@ -3919,10 +4524,9 @@ function renderScoreMatrix(rowsFiltrees) {
       const bg = roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`;
       const cls = roi >= 0 ? "pos" : "neg";
       const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
-      // Pas de title= natif : l'infobulle riche (liste des matchs, voir
-      // initScoreMatrixTooltip) le remplace entièrement — les deux à la
-      // fois auraient affiché un double tooltip contradictoire.
-      tbody += `<td class="score-cell ${cls}${peuFiable}" style="background:${bg}" data-score="${c.h}-${c.a}">
+      // Pas de title= natif : le panneau de détail au clic remplace le tooltip
+      // natif, comme pour les autres matrices.
+      tbody += `<td class="score-cell ${cls}${peuFiable}" style="background:${bg}" data-score="${c.h}-${c.a}" tabindex="0" aria-label="Afficher le détail du score ${c.h}-${c.a} ; ${c.n} paris ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
                   <div class="score-net">${fmtEur(c.net)}</div>
                   <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
                   <div class="score-roi">${fmtPct(roi)}</div>
@@ -3941,7 +4545,8 @@ function renderScoreMatrix(rowsFiltrees) {
       <span class="score-legend-lbl neg">${fmtPct(Math.min(pireRoi, 0))}</span>
       <span class="score-legend-bar" aria-hidden="true"></span>
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
-      <span class="muted score-legend-note">ROI par case · cases en pointillés = moins de ${SCORE_CELL_SEUIL_FIABLE} paris</span>`;
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
+      <span class="muted score-legend-note">ROI par case · pastille ambre = moins de ${SCORE_CELL_SEUIL_FIABLE} paris</span>`;
   }
 
   // Résumé : le(s) score(s) le(s) plus rentable(s) en gain net, parmi les
@@ -3961,89 +4566,146 @@ function renderScoreMatrix(rowsFiltrees) {
   }
 }
 
-// Infobulle détaillée au survol d'une case de la matrice "Score exact" :
-// liste les matchs individuels derrière la case (ligue, match, date, cote,
-// gain), même principe que les tooltips des graphiques SVG plus haut
-// (holder position:relative + tooltip absolute, position clampée dans le
-// cadre). Délégation d'événement sur le conteneur plutôt qu'un listener par
-// case : la matrice est entièrement regénérée par innerHTML à chaque
-// changement de filtre (renderScoreMatrix), un listener posé une seule fois
-// ici survit à ces remplacements sans jamais se dupliquer ni se perdre.
-(function initScoreMatrixTooltip() {
-  const holder = $("btScoreHolder");
-  const tip = $("btScoreTooltip");
-  if (!holder || !tip) return;
+// Détails des matrices : ouverture au clic pour garder le contexte pendant
+// la lecture, sans infobulle flottante qui recouvre ou redimensionne la grille.
+const MATRIX_DETAIL_INITIAL = 8;
+const MATRIX_DETAIL_BATCH = 18;
 
-  function hide() { tip.hidden = true; }
+function matrixDetailRowsMarkup(rows, metaForRow) {
+  return rows.map(r => {
+    const gain = r.profit * btStakeFor(r);
+    return `<div class="tt-score-row">
+        <div class="tt-score-info">
+          <div class="tt-score-match">${r.match || ""}</div>
+          <div class="tt-score-meta">${metaForRow(r)}</div>
+        </div>
+        <div class="tt-score-result">
+          ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
+          cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
+          <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
+        </div>
+      </div>`;
+  }).join("");
+}
 
-  function show(cell, clientX, clientY) {
-    const key = cell.dataset.score;
-    const c = key ? SCORE_MATRIX_DATA[key] : null;
-    if (!c) { hide(); return; }
+function matrixDetailMarkup(c, title, summary, metaForRow, hint = "") {
+  const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const initial = tries.slice(0, MATRIX_DETAIL_INITIAL);
+  const suite = tries.length > initial.length
+    ? `<div class="tt-score-more" role="status">↓ Faites défiler pour charger la suite</div>` : "";
+  return `
+    <div class="tt-score-head"><span>${title}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
+    <div class="tt-score-agg">${summary}</div>
+    <div class="tt-score-list" data-rendered="${initial.length}">${matrixDetailRowsMarkup(initial, metaForRow)}${suite}</div>
+    ${hint ? `<div class="tt-score-hint muted">${hint}</div>` : ""}`;
+}
 
-    // Plus récents en premier, comme le tri par défaut du tableau de détail
-    // (btSortKey="date", btSortDir=-1) — même logique de lecture.
+function initMatrixCellInspector({holderId, panelId, inspectorId, tooltipId, dataKey, getData, buildDetails, rowMeta}) {
+  const holder = $(holderId);
+  const panel = $(panelId);
+  const inspector = $(inspectorId);
+  const tip = $(tooltipId);
+  if (!holder || !panel || !inspector || !tip) return;
+
+  let activeKey = null;
+  const cells = () => holder.querySelectorAll(`.score-cell[data-${dataKey}]`);
+
+  function renderDetails(c) {
+    tip.innerHTML = buildDetails(c);
+    const list = tip.querySelector(".tt-score-list");
+    if (!list || !rowMeta || c.rows.length <= MATRIX_DETAIL_INITIAL) return;
     const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
-    const CAP = 8;
-    const visibles = tries.slice(0, CAP);
-    const reste = tries.length - visibles.length;
+    list.addEventListener("scroll", () => {
+      if (list.scrollHeight - list.scrollTop - list.clientHeight > 72) return;
+      const start = Number(list.dataset.rendered || 0);
+      if (start >= tries.length) return;
+      const batch = tries.slice(start, start + MATRIX_DETAIL_BATCH);
+      const more = list.querySelector(".tt-score-more");
+      if (more) more.remove();
+      list.insertAdjacentHTML("beforeend", matrixDetailRowsMarkup(batch, rowMeta));
+      const rendered = start + batch.length;
+      list.dataset.rendered = String(rendered);
+      if (rendered < tries.length) {
+        list.insertAdjacentHTML("beforeend", '<div class="tt-score-more" role="status">↓ Faites défiler pour charger la suite</div>');
+      }
+    }, {passive: true});
+  }
 
-    const lignes = visibles.map(r => {
-      const gain = r.profit * btStakeFor(r);
-      return `<div class="tt-score-row">
-          <div class="tt-score-info">
-            <div class="tt-score-match">${r.match || ""}</div>
-            <div class="tt-score-meta">${ligueLabel(r.pays, r.ligue)} · ${r.date}</div>
-          </div>
-          <div class="tt-score-result">
-            ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
-            cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
-            <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
-          </div>
-        </div>`;
-    }).join("");
-    const plus = reste > 0
-      ? `<div class="tt-score-more">+ ${reste} autre${reste > 1 ? "s" : ""} pari${reste > 1 ? "s" : ""}</div>` : "";
+  function markActiveCell() {
+    cells().forEach(cell => {
+      const selected = activeKey != null && cell.dataset[dataKey] === activeKey;
+      cell.classList.toggle("score-cell-inspected", selected);
+      cell.setAttribute("aria-expanded", String(selected));
+    });
+  }
 
-    tip.innerHTML = `
-      <div class="tt-score-head"><span>Score ${c.h}-${c.a}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
-      <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux*100).toFixed(0)} %)</div>
-      <div class="tt-score-list">${lignes}${plus}</div>`;
+  function hide() {
+    activeKey = null;
+    tip.hidden = true;
+    inspector.hidden = true;
+    markActiveCell();
+  }
+
+  function showKey(key) {
+    const c = key ? getData()[key] : null;
+    if (!c) { hide(); return; }
+    activeKey = key;
+    renderDetails(c);
+    inspector.hidden = false;
     tip.hidden = false;
-
-    const rect = holder.getBoundingClientRect();
-    const relX = clientX - rect.left, relY = clientY - rect.top;
-    const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 140;
-    let left = relX + 16;
-    if (left + tw > rect.width) left = relX - tw - 16;
-    let top = relY - th / 2;
-    top = Math.max(4, Math.min(top, rect.height - th - 4));
-    tip.style.left = Math.max(4, left) + "px";
-    tip.style.top = top + "px";
+    markActiveCell();
   }
 
-  function onMove(ev) {
-    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-    const target = document.elementFromPoint(clientX, clientY);
-    // Le curseur qui entre DANS l'infobulle (pour atteindre la liste
-    // scrollable, par ex.) ne doit surtout pas la fermer : elle a
-    // maintenant pointer-events:auto (voir .score-tooltip en CSS) pour
-    // pouvoir être scrollée, donc elementFromPoint la retourne elle plutôt
-    // que la case en dessous dès qu'on la survole — sans ce garde-fou,
-    // s'approcher de la liste pour la faire défiler la fermait aussitôt.
-    if (target && target.closest(".score-tooltip")) return;
-    const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
-    if (!cell) { hide(); return; }
-    show(cell, clientX, clientY);
+  function toggleCell(cell) {
+    const key = cell && cell.dataset[dataKey];
+    if (!key || cell.classList.contains("score-cell-empty")) return;
+    if (activeKey === key && !inspector.hidden) hide();
+    else showKey(key);
   }
 
-  holder.addEventListener("mousemove", onMove);
-  holder.addEventListener("mouseleave", hide);
-  holder.addEventListener("touchstart", onMove, {passive: true});
-  holder.addEventListener("touchmove", onMove, {passive: true});
-  holder.addEventListener("touchend", hide);
-})();
+  panel.addEventListener("click", ev => {
+    const cell = ev.target.closest(`.score-cell[data-${dataKey}]`);
+    if (cell) toggleCell(cell);
+  });
+  panel.addEventListener("keydown", ev => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const cell = ev.target.closest(`.score-cell[data-${dataKey}]`);
+    if (!cell) return;
+    ev.preventDefault();
+    cell.click();
+  });
+  document.addEventListener("click", ev => {
+    const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+    if (path.includes(panel) || panel.contains(ev.target)) return;
+    if (!inspector.hidden) hide();
+  });
+  document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape" && !inspector.hidden) hide();
+  });
+
+  // Les filtres remplacent le contenu de la matrice. On rafraîchit le détail
+  // sélectionné avec les nouvelles données, ou on le ferme si la case disparaît.
+  const observer = new MutationObserver(() => {
+    if (activeKey == null) return;
+    const c = getData()[activeKey];
+    if (!c) { hide(); return; }
+    renderDetails(c);
+    markActiveCell();
+  });
+  observer.observe(holder, {childList: true, subtree: true});
+}
+
+initMatrixCellInspector({
+  holderId: "btScoreHolder", panelId: "btScorePanel",
+  inspectorId: "btScoreInspector", tooltipId: "btScoreTooltip",
+  dataKey: "score", getData: () => SCORE_MATRIX_DATA,
+  rowMeta: r => `${ligueLabel(r.pays, r.ligue)} · ${r.date}`,
+  buildDetails: c => matrixDetailMarkup(
+    c, `Score ${c.h}-${c.a}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`,
+    r => `${ligueLabel(r.pays, r.ligue)} · ${r.date}`
+  )
+});
 
 // --- Matrice "Vainqueur du match" (même principe que la matrice "Score
 // exact" ci-dessus, adaptée à 3 issues au lieu d'une grille de scores) -----
@@ -4152,9 +4814,9 @@ function renderResultMatrix(rowsFiltrees) {
       const cls = roi >= 0 ? "pos" : "neg";
       const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
       const diag = pari === reel ? " score-cell-diag" : "";
-      // Pas de title= natif : l'infobulle riche (voir initResultMatrixTooltip)
-      // le remplace entièrement, même logique que la matrice Score exact.
-      tbody += `<td class="score-cell ${cls}${peuFiable}${diag}" style="background:${bg}" data-result="${pari}|${reel}">
+      // Pas de title= natif : le panneau de détail au clic remplace le tooltip
+      // natif, comme pour la matrice Score exact.
+      tbody += `<td class="score-cell ${cls}${peuFiable}${diag}" style="background:${bg}" data-result="${pari}|${reel}" tabindex="0" aria-label="Afficher le détail : pari ${RESULT_LABEL[pari]}, résultat réel ${RESULT_LABEL[reel]} ; ${c.n} paris ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
                   <div class="score-net">${(c.pctLigne * 100).toFixed(0)} %</div>
                   <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${fmtEur(c.net)}</div>
                   <div class="score-roi">cote moy. ${c.cote_moy != null ? c.cote_moy.toFixed(2) : "—"}</div>
@@ -4181,8 +4843,9 @@ function renderResultMatrix(rowsFiltrees) {
       <span class="score-legend-lbl neg">${fmtPct(Math.min(pireRoi, 0))}</span>
       <span class="score-legend-bar" aria-hidden="true"></span>
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
       <span class="muted score-legend-note">ROI par case (fond) · % en gras = part de la ligne
-      (parmi les paris sur cette issue) · cases en pointillés = moins de ${RESULT_CELL_SEUIL_FIABLE} paris
+      (parmi les paris sur cette issue) · pastille ambre = moins de ${RESULT_CELL_SEUIL_FIABLE} paris
       · diagonale encadrée = pari gagné · colonne Total = gain net de tous les paris joués sur cette
       issue, quel qu'ait été le résultat réel</span>`;
   }
@@ -4201,76 +4864,18 @@ function renderResultMatrix(rowsFiltrees) {
   }
 }
 
-// Infobulle détaillée au survol d'une case de la matrice "Vainqueur du
-// match" : même mécanique que initScoreMatrixTooltip (délégation d'événement
-// sur le conteneur, une seule fois, survit aux remplacements par innerHTML).
-(function initResultMatrixTooltip() {
-  const holder = $("btResultHolder");
-  const tip = $("btResultTooltip");
-  if (!holder || !tip) return;
-
-  function hide() { tip.hidden = true; }
-
-  function show(cell, clientX, clientY) {
-    const key = cell.dataset.result;
-    const c = key ? RESULT_MATRIX_DATA[key] : null;
-    if (!c) { hide(); return; }
-
-    const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
-    const CAP = 8;
-    const visibles = tries.slice(0, CAP);
-    const reste = tries.length - visibles.length;
-
-    const lignes = visibles.map(r => {
-      const gain = r.profit * btStakeFor(r);
-      return `<div class="tt-score-row">
-          <div class="tt-score-info">
-            <div class="tt-score-match">${r.match || ""}</div>
-            <div class="tt-score-meta">${ligueLabel(r.pays, r.ligue)} · ${r.date} · score ${r.score_reel}</div>
-          </div>
-          <div class="tt-score-result">
-            ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
-            cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
-            <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
-          </div>
-        </div>`;
-    }).join("");
-    const plus = reste > 0
-      ? `<div class="tt-score-more">+ ${reste} autre${reste > 1 ? "s" : ""} pari${reste > 1 ? "s" : ""}</div>` : "";
-
-    tip.innerHTML = `
-      <div class="tt-score-head"><span>Pari ${RESULT_LABEL[c.pari]} → réel ${RESULT_LABEL[c.reel]}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
-      <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${(c.pctLigne * 100).toFixed(0)} % des paris sur ${RESULT_LABEL[c.pari]}</div>
-      <div class="tt-score-list">${lignes}${plus}</div>`;
-    tip.hidden = false;
-
-    const rect = holder.getBoundingClientRect();
-    const relX = clientX - rect.left, relY = clientY - rect.top;
-    const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 140;
-    let left = relX + 16;
-    if (left + tw > rect.width) left = relX - tw - 16;
-    let top = relY - th / 2;
-    top = Math.max(4, Math.min(top, rect.height - th - 4));
-    tip.style.left = Math.max(4, left) + "px";
-    tip.style.top = top + "px";
-  }
-
-  function onMove(ev) {
-    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-    const target = document.elementFromPoint(clientX, clientY);
-    if (target && target.closest(".score-tooltip")) return;
-    const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
-    if (!cell) { hide(); return; }
-    show(cell, clientX, clientY);
-  }
-
-  holder.addEventListener("mousemove", onMove);
-  holder.addEventListener("mouseleave", hide);
-  holder.addEventListener("touchstart", onMove, {passive: true});
-  holder.addEventListener("touchmove", onMove, {passive: true});
-  holder.addEventListener("touchend", hide);
-})();
+// Le détail s'ouvre au clic, dans un panneau fixe sous la grille.
+initMatrixCellInspector({
+  holderId: "btResultHolder", panelId: "btResultPanel",
+  inspectorId: "btResultInspector", tooltipId: "btResultTooltip",
+  dataKey: "result", getData: () => RESULT_MATRIX_DATA,
+  rowMeta: r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · score ${r.score_reel}`,
+  buildDetails: c => matrixDetailMarkup(
+    c, `Pari ${RESULT_LABEL[c.pari]} → réel ${RESULT_LABEL[c.reel]}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${(c.pctLigne * 100).toFixed(0)} % des paris sur ${RESULT_LABEL[c.pari]}`,
+    r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · score ${r.score_reel}`
+  )
+});
 
 // --- Historique — matrice de rentabilité, CLIQUABLE (filtre la page) ------
 // Croise le nombre de matchs ayant servi à estimer la force de l'équipe à
@@ -4285,8 +4890,8 @@ function renderResultMatrix(rowsFiltrees) {
 // l'edge affiché par le modèle ne baisse pas en conséquence (typiquement les
 // équipes tout juste montées/descendues de division).
 //
-// Contrairement aux deux matrices précédentes (Score exact / Vainqueur du
-// match), celle-ci est CLIQUABLE : sélectionner une case ajoute un filtre
+// Comme les autres matrices, celle-ci ouvre son détail au clic ; sélectionner
+// une case ajoute aussi un filtre
 // "historique" appliqué à TOUTE la page (voir BT_HIST_SELECTION, lu dans
 // btFiltered()). Elle est TOUJOURS recalculée sur l'ensemble filtré SANS son
 // propre filtre (btFiltered({sansHist:true}), voir l'appel en tête de
@@ -4307,7 +4912,7 @@ function histBucketKey(n) {
   return null;
 }
 const HIST_CELL_SEUIL_FIABLE = 5;
-// Dernier rendu, pour l'infobulle au survol — même principe que
+// Dernier rendu de la matrice — même principe que
 // SCORE_MATRIX_DATA/RESULT_MATRIX_DATA (délégation d'événement, jamais
 // périmé même après un innerHTML qui a remplacé les <td>).
 let HIST_MATRIX_DATA = {};
@@ -4374,7 +4979,7 @@ function renderHistMatrix(rowsSansHist) {
       const selected = !!(BT_HIST_SELECTION && BT_HIST_SELECTION.dom === rb.key && BT_HIST_SELECTION.ext === cb.key);
       const selCls = selected ? " score-cell-selected" : "";
       if (!c) {
-        tbody += `<td class="score-cell score-cell-empty${selCls}" data-hist="${key}"><span class="muted">—</span></td>`;
+        tbody += `<td class="score-cell score-cell-empty${selCls}" data-hist="${key}" tabindex="0" aria-label="Historique domicile ${rb.key}, extérieur ${cb.key} : aucun pari dans cette case"><span class="muted">—</span></td>`;
         return;
       }
       const roi = c.roi ?? 0;
@@ -4383,9 +4988,9 @@ function renderHistMatrix(rowsSansHist) {
       const bg = roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`;
       const cls = roi >= 0 ? "pos" : "neg";
       const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
-      // Pas de title= natif : l'infobulle riche (voir initHistMatrixTooltip)
-      // le remplace entièrement, même logique que les deux autres matrices.
-      tbody += `<td class="score-cell ${cls}${peuFiable}${selCls}" style="background:${bg}" data-hist="${key}">
+      // Pas de title= natif : le panneau de détail au clic remplace le tooltip
+      // natif, même logique que les deux autres matrices.
+      tbody += `<td class="score-cell ${cls}${peuFiable}${selCls}" style="background:${bg}" data-hist="${key}" tabindex="0" aria-label="Afficher le détail et filtrer : historique domicile ${rb.key}, extérieur ${cb.key} ; ${c.n} paris ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
                   <div class="score-net">${fmtEur(c.net)}</div>
                   <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
                   <div class="score-roi">${fmtPct(roi)}</div>
@@ -4402,7 +5007,8 @@ function renderHistMatrix(rowsSansHist) {
       <span class="score-legend-lbl neg">${fmtPct(Math.min(pireRoi, 0))}</span>
       <span class="score-legend-bar" aria-hidden="true"></span>
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
-      <span class="muted score-legend-note">ROI par case · cases en pointillés = moins de
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
+      <span class="muted score-legend-note">ROI par case · pastille ambre = moins de
       ${HIST_CELL_SEUIL_FIABLE} paris · cliquez sur une case pour filtrer toute la page sur cette
       combinaison (cliquez à nouveau pour l'enlever)</span>`;
   }
@@ -4456,7 +5062,7 @@ function renderHistMatrix(rowsSansHist) {
   if (!holder) return;
   holder.addEventListener("click", ev => {
     const cell = ev.target.closest(".score-cell");
-    if (!cell || !holder.contains(cell)) return;
+    if (!cell || !holder.contains(cell) || cell.classList.contains("score-cell-empty")) return;
     const key = cell.dataset.hist;
     if (!key) return;
     const [dom, ext] = key.split("|");
@@ -4466,76 +5072,20 @@ function renderHistMatrix(rowsSansHist) {
   });
 })();
 
-// Infobulle détaillée au survol d'une case : même mécanique que
-// initScoreMatrixTooltip/initResultMatrixTooltip ci-dessus.
-(function initHistMatrixTooltip() {
-  const holder = $("btHistHolder");
-  const tip = $("btHistTooltip");
-  if (!holder || !tip) return;
-
-  function hide() { tip.hidden = true; }
-
-  function show(cell, clientX, clientY) {
-    const key = cell.dataset.hist;
-    const c = key ? HIST_MATRIX_DATA[key] : null;
-    if (!c) { hide(); return; }
-
-    const tries = c.rows.slice().sort((a, b) => b.date.localeCompare(a.date));
-    const CAP = 8;
-    const visibles = tries.slice(0, CAP);
-    const reste = tries.length - visibles.length;
-
-    const lignes = visibles.map(r => {
-      const gain = r.profit * btStakeFor(r);
-      return `<div class="tt-score-row">
-          <div class="tt-score-info">
-            <div class="tt-score-match">${r.match || ""}</div>
-            <div class="tt-score-meta">${ligueLabel(r.pays, r.ligue)} · ${r.date} · hist. ${r.n_hist_dom}/${r.n_hist_ext}</div>
-          </div>
-          <div class="tt-score-result">
-            ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}
-            cote ${r.cote != null ? r.cote.toFixed(2) : "—"}<br>
-            <strong class="${gain >= 0 ? 'pos' : 'neg'}">${fmtEur(gain)}</strong>
-          </div>
-        </div>`;
-    }).join("");
-    const plus = reste > 0
-      ? `<div class="tt-score-more">+ ${reste} autre${reste > 1 ? "s" : ""} pari${reste > 1 ? "s" : ""}</div>` : "";
-
-    tip.innerHTML = `
-      <div class="tt-score-head"><span>Dom. ${c.dom} / Ext. ${c.ext}</span><span>${c.n} pari${c.n > 1 ? "s" : ""}</span></div>
-      <div class="tt-score-agg">Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux*100).toFixed(0)} %)</div>
-      <div class="tt-score-list">${lignes}${plus}</div>
-      <div class="tt-score-hint muted">Cliquer pour filtrer toute la page sur cette combinaison</div>`;
-    tip.hidden = false;
-
-    const rect = holder.getBoundingClientRect();
-    const relX = clientX - rect.left, relY = clientY - rect.top;
-    const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 140;
-    let left = relX + 16;
-    if (left + tw > rect.width) left = relX - tw - 16;
-    let top = relY - th / 2;
-    top = Math.max(4, Math.min(top, rect.height - th - 4));
-    tip.style.left = Math.max(4, left) + "px";
-    tip.style.top = top + "px";
-  }
-
-  function onMove(ev) {
-    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-    const target = document.elementFromPoint(clientX, clientY);
-    if (target && target.closest(".score-tooltip")) return;
-    const cell = target && target.closest(".score-cell:not(.score-cell-empty)");
-    if (!cell) { hide(); return; }
-    show(cell, clientX, clientY);
-  }
-
-  holder.addEventListener("mousemove", onMove);
-  holder.addEventListener("mouseleave", hide);
-  holder.addEventListener("touchstart", onMove, {passive: true});
-  holder.addEventListener("touchmove", onMove, {passive: true});
-  holder.addEventListener("touchend", hide);
-})();
+// Le détail reste épinglé au clic. Le même clic conserve aussi le filtre
+// historique déjà géré par initHistMatrixClick ci-dessus.
+initMatrixCellInspector({
+  holderId: "btHistHolder", panelId: "btHistPanel",
+  inspectorId: "btHistInspector", tooltipId: "btHistTooltip",
+  dataKey: "hist", getData: () => HIST_MATRIX_DATA,
+  rowMeta: r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · hist. ${r.n_hist_dom}/${r.n_hist_ext}`,
+  buildDetails: c => matrixDetailMarkup(
+    c, `Dom. ${c.dom} / Ext. ${c.ext}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`,
+    r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · hist. ${r.n_hist_dom}/${r.n_hist_ext}`,
+    "Le filtre historique est actif sur toute la page. Recliquez cette case pour le retirer."
+  )
+});
 
 // --- Mouvement de cote, recalculé sur l'ensemble filtré --------------------
 // Même découpage en 5 tranches que mouvement_stats côté Python (voir
@@ -5256,8 +5806,8 @@ function drawCalibration() {
   let grid = "";
   for (let i = 0; i <= 5; i++) {
     const v = i / 5;
-    grid += `<line x1="${sx(v).toFixed(1)}" y1="${sy(0).toFixed(1)}" x2="${sx(v).toFixed(1)}" y2="${sy(1).toFixed(1)}" stroke="var(--line-soft)" opacity=".5"/>
-      <line x1="${sx(0).toFixed(1)}" y1="${sy(v).toFixed(1)}" x2="${sx(1).toFixed(1)}" y2="${sy(v).toFixed(1)}" stroke="var(--line-soft)" opacity=".5"/>
+    grid += `<line x1="${sx(v).toFixed(1)}" y1="${sy(0).toFixed(1)}" x2="${sx(v).toFixed(1)}" y2="${sy(1).toFixed(1)}" class="chart-grid-line"/>
+      <line x1="${sx(0).toFixed(1)}" y1="${sy(v).toFixed(1)}" x2="${sx(1).toFixed(1)}" y2="${sy(v).toFixed(1)}" class="chart-grid-line"/>
       <text x="${sx(v).toFixed(1)}" y="${(H - pad + 18).toFixed(1)}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${(v*100).toFixed(0)}%</text>
       <text x="${(pad - 10).toFixed(1)}" y="${(sy(v) + 4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${(v*100).toFixed(0)}%</text>`;
   }
@@ -5589,15 +6139,15 @@ function drawEvolution() {
   let yticks = "";
   for (let i = 0; i <= 4; i++) {
     const yv = yMin + (yMax - yMin) * i / 4, yy = sy(yv);
-    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--line-soft)" opacity=".7"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(1)}</text>`;
+    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(1)} u</text>`;
   }
   const zeroLine = (0 >= yMin && 0 <= yMax)
     ? `<line class="zeroline" x1="${padL}" y1="${sy(0).toFixed(1)}" x2="${W-padR}" y2="${sy(0).toFixed(1)}"/>` : "";
 
   let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
   for (let i = 0; i < pts.length; i += step) {
-    xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date.slice(5)}</text>`;
+    xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${fmtChartDate(pts[i].date)}</text>`;
   }
 
   // Sommet et creux : montrent l'amplitude des variations, utile pour juger
@@ -5628,8 +6178,8 @@ function drawEvolution() {
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Évolution du gain cumulé du modèle">
         <defs>
           <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${positif ? '#34d399' : '#fb7185'}" stop-opacity=".26"/>
-            <stop offset="100%" stop-color="${positif ? '#34d399' : '#fb7185'}" stop-opacity="0"/>
+            <stop offset="0%" stop-color="${positif ? "var(--up)" : "var(--down)"}" stop-opacity=".26"/>
+            <stop offset="100%" stop-color="${positif ? "var(--up)" : "var(--down)"}" stop-opacity="0"/>
           </linearGradient>
         </defs>
         ${yticks}${zeroLine}
@@ -5940,12 +6490,12 @@ function drawBankrollChart(pts, wrapId) {
   let yticks = "";
   for (let i = 0; i <= 4; i++) {
     const yv = yMin + (yMax - yMin) * i / 4, yy = sy(yv);
-    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--line-soft)" opacity=".7"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0)}€</text>`;
+    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0).toLocaleString("fr-FR")} €</text>`;
   }
   let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
   for (let i = 0; i < pts.length; i += step) {
-    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? "Départ" : pts[i].date.slice(5)}</text>`;
+    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? "Départ" : fmtChartDate(pts[i].date)}</text>`;
   }
 
   wrap.innerHTML = `
@@ -5953,8 +6503,8 @@ function drawBankrollChart(pts, wrapId) {
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Évolution de la bankroll">
         <defs>
           <linearGradient id="grad-${wrapId}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${positif ? '#34d399' : '#fb7185'}" stop-opacity=".26"/>
-            <stop offset="100%" stop-color="${positif ? '#34d399' : '#fb7185'}" stop-opacity="0"/>
+            <stop offset="0%" stop-color="${positif ? "var(--up)" : "var(--down)"}" stop-opacity=".26"/>
+            <stop offset="100%" stop-color="${positif ? "var(--up)" : "var(--down)"}" stop-opacity="0"/>
           </linearGradient>
         </defs>
         ${yticks}
@@ -6209,12 +6759,12 @@ function drawFanChart(pts, wrapId) {
   let yticks = "";
   for (let i = 0; i <= 4; i++) {
     const yv = yMin + (yMax - yMin) * i / 4, yy = sy(yv);
-    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--line-soft)" opacity=".7"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0)}€</text>`;
+    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0).toLocaleString("fr-FR")} €</text>`;
   }
   let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
   for (let i = 0; i < pts.length; i += step) {
-    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? "Départ" : pts[i].date.slice(5)}</text>`;
+    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? "Départ" : fmtChartDate(pts[i].date)}</text>`;
   }
 
   wrap.innerHTML = `
@@ -6335,7 +6885,7 @@ function drawHistogram(finales, depart, wrapId) {
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Distribution des résultats finaux">
         ${(zeroX >= padL && zeroX <= W - padR) ? `<line x1="${zeroX.toFixed(1)}" y1="${padT}" x2="${zeroX.toFixed(1)}" y2="${baseY}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".7"/>` : ""}
         ${barres}
-        <line x1="${padL}" y1="${baseY}" x2="${W-padR}" y2="${baseY}" stroke="var(--line-soft)"/>
+        <line x1="${padL}" y1="${baseY}" x2="${W-padR}" y2="${baseY}" class="chart-grid-line"/>
         ${xticks}
       </svg>
     </div>
@@ -6672,6 +7222,7 @@ document.querySelectorAll("#tirsTable th.sortable").forEach(th => {
   });
 });
 
+initBacktestSectionNav();
 renderBacktest();
 drawShotsCoverage();
 renderTirsPage();
