@@ -6728,33 +6728,37 @@ if ($("simStrategie")) {
 // cette page ne propose pas son propre réglage de calibration : celui de la
 // page DC rétrospectif (btCalib) s'applique déjà avant que btFiltered() ne
 // renvoie ses lignes.
-function drawFanChart(pts, wrapId) {
+//
+// Deux axes de comparaison, ajoutés sans toucher au principe ci-dessus :
+// - plusieurs stratégies de mise cochées à la fois (montant fixe, Kelly à
+//   différentes fractions), rejouant toutes le MÊME monde simulé à chaque
+//   trajectoire (mêmes journées, mêmes résultats gagné/perdu tirés au
+//   sort) — seule la mise change, pour isoler son effet du hasard pur ;
+// - un horizon optionnellement plus long que l'historique réel : au-delà
+//   des jours déjà observés, on pioche des journées entières au hasard
+//   parmi celles déjà vues (avec remise) plutôt que d'inventer des paris,
+//   ce qui préserve la vraie structure d'une journée (plusieurs matchs
+//   corrélés, mélange de catégories et de cotes).
+function drawFanChartMulti(series, wrapId) {
   const wrap = $(wrapId);
   if (!wrap) return;
-  if (pts.length < 2) {
+  const valides = series.filter(s => s.pts.length >= 2);
+  if (!valides.length) {
     wrap.innerHTML = '<p class="muted">Pas assez de paris dans l\'historique filtré pour tracer une fourchette.</p>';
     return;
   }
+  const nPts = valides[0].pts.length;
   const W = 1180, H = 280, padL = 66, padR = 22, padT = 26, padB = 38;
-  const xMax = pts.length - 1;
+  const xMax = nPts - 1;
   let yMin = Infinity, yMax = -Infinity;
-  pts.forEach(p => { if (p.p5 < yMin) yMin = p.p5; if (p.p95 > yMax) yMax = p.p95; });
+  valides.forEach(s => s.pts.forEach(p => { if (p.p50 < yMin) yMin = p.p50; if (p.p50 > yMax) yMax = p.p50; }));
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
-  const pad = (yMax - yMin) * 0.10; yMin = Math.max(0, yMin - pad); yMax += pad;
+  const pad = (yMax - yMin) * 0.12; yMin = Math.max(0, yMin - pad); yMax += pad;
   const sx = i => padL + i / (xMax || 1) * (W - padL - padR);
   const sy = y => padT + (yMax - y) / (yMax - yMin) * (H - padT - padB);
 
-  const pathLigne = cle => pts.map((p, i) => (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(p[cle]).toFixed(1)).join(" ");
-  const pathBande = (bas, haut) => {
-    let d = "M" + sx(0).toFixed(1) + " " + sy(pts[0][bas]).toFixed(1);
-    for (let i = 1; i < pts.length; i++) d += " L" + sx(i).toFixed(1) + " " + sy(pts[i][bas]).toFixed(1);
-    for (let i = pts.length - 1; i >= 0; i--) d += " L" + sx(i).toFixed(1) + " " + sy(pts[i][haut]).toFixed(1);
-    return d + " Z";
-  };
-  const bandeLarge = pathBande("p5", "p95");
-  const bandeEtroite = pathBande("p25", "p75");
-  const ligneMediane = pathLigne("p50");
-  const yDepart = sy(pts[0].p50);
+  const depart = valides[0].pts[0].p50;
+  const yDepart = sy(depart);
 
   let yticks = "";
   for (let i = 0; i <= 4; i++) {
@@ -6762,39 +6766,43 @@ function drawFanChart(pts, wrapId) {
     yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
       <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0).toLocaleString("fr-FR")} €</text>`;
   }
-  let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
-  for (let i = 0; i < pts.length; i += step) {
-    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? "Départ" : fmtChartDate(pts[i].date)}</text>`;
+  let xticks = ""; const step = Math.max(1, Math.floor(nPts / 7));
+  for (let i = 0; i < nPts; i += step) {
+    const d = valides[0].pts[i].date;
+    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${d === "Départ" ? "Départ" : fmtChartDate(d)}</text>`;
   }
+
+  const lignes = valides.map(s => {
+    const path = s.pts.map((p, i) => (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(p.p50).toFixed(1)).join(" ");
+    return `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }).join("");
+
+  const legende = valides.map(s =>
+    `<span style="display:inline-flex; align-items:center; gap:.35rem; margin-right:1.1rem">
+      <span style="width:10px; height:10px; border-radius:50%; background:${s.color}; display:inline-block; flex:none"></span>${s.label}
+     </span>`).join("");
 
   wrap.innerHTML = `
     <div class="chart-holder">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Fourchette des trajectoires simulées">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Bankroll médiane par stratégie">
         ${yticks}
         <line x1="${padL}" y1="${yDepart.toFixed(1)}" x2="${W-padR}" y2="${yDepart.toFixed(1)}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".55"/>
-        <path d="${bandeLarge}" fill="var(--violet)" opacity=".16"/>
-        <path d="${bandeEtroite}" fill="var(--violet)" opacity=".32"/>
-        <path d="${ligneMediane}" fill="none" stroke="var(--violet)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+        ${lignes}
         <line class="chart-cursor" x1="0" y1="${padT}" x2="0" y2="${H-padB}" opacity="0"/>
-        <circle class="chart-cursor-dot" r="4.5" opacity="0"/>
         ${xticks}
         <rect class="chart-hit" x="${padL}" y="${padT}" width="${W-padL-padR}" height="${H-padT-padB}" fill="transparent"/>
       </svg>
       <div class="chart-tooltip" hidden></div>
     </div>
-    <p class="muted" style="margin:.6rem 0 0; font-size:.78rem">
-      <span style="color:var(--violet)">━</span> médiane (P50) ·
-      <span style="opacity:.65">▮</span> P25 – P75 (une trajectoire sur deux) ·
-      <span style="opacity:.4">▮</span> P5 – P95 (neuf trajectoires sur dix)
-    </p>`;
+    <p class="muted" style="margin:.6rem 0 .2rem; font-size:.78rem">${legende}</p>
+    <p class="muted" style="margin:0; font-size:.78rem">Courbes = bankroll <strong>médiane</strong> (P50) de chaque stratégie cochée ; le tableau au-dessus donne leur fourchette complète (P5 à P95).</p>`;
 
   const holder = wrap.querySelector(".chart-holder");
   const svg = holder.querySelector("svg");
   const cursor = holder.querySelector(".chart-cursor");
-  const cursorDot = holder.querySelector(".chart-cursor-dot");
   const tip = holder.querySelector(".chart-tooltip");
 
-  function hide() { cursor.setAttribute("opacity", "0"); cursorDot.setAttribute("opacity", "0"); tip.hidden = true; }
+  function hide() { cursor.setAttribute("opacity", "0"); tip.hidden = true; }
 
   function onMove(ev) {
     const rect = svg.getBoundingClientRect();
@@ -6803,32 +6811,26 @@ function drawFanChart(pts, wrapId) {
     if (relX < padL - 4 || relX > W - padR + 4) { hide(); return; }
 
     let bestI = 0, bestD = Infinity;
-    pts.forEach((p, i) => { const d = Math.abs(sx(i) - relX); if (d < bestD) { bestD = d; bestI = i; } });
-    const best = pts[bestI];
-    const px = sx(bestI), py = sy(best.p50);
+    for (let i = 0; i < nPts; i++) { const d = Math.abs(sx(i) - relX); if (d < bestD) { bestD = d; bestI = i; } }
+    const px = sx(bestI);
 
     cursor.setAttribute("x1", px.toFixed(1));
     cursor.setAttribute("x2", px.toFixed(1));
     cursor.setAttribute("opacity", "1");
-    cursorDot.setAttribute("cx", px.toFixed(1));
-    cursorDot.setAttribute("cy", py.toFixed(1));
-    cursorDot.setAttribute("fill", "var(--violet)");
-    cursorDot.setAttribute("opacity", "1");
 
-    tip.innerHTML = `
-      <div class="tt-date">${best.date}</div>
-      <div class="tt-row"><span class="muted">Médiane</span><strong>${best.p50.toLocaleString("fr-FR",{maximumFractionDigits:2})} €</strong></div>
-      <div class="tt-row"><span class="muted">P25 – P75</span><span>${best.p25.toLocaleString("fr-FR",{maximumFractionDigits:0})} € – ${best.p75.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</span></div>
-      <div class="tt-row"><span class="muted">P5 – P95</span><span>${best.p5.toLocaleString("fr-FR",{maximumFractionDigits:0})} € – ${best.p95.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</span></div>`;
+    const lignesTip = valides.map(s =>
+      `<div class="tt-row"><span style="color:${s.color}">●</span> <span class="muted">${s.label}</span><strong>${s.pts[bestI].p50.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</strong></div>`
+    ).join("");
+    const dateAff = valides[0].pts[bestI].date === "Départ" ? "Départ" : valides[0].pts[bestI].date;
+    tip.innerHTML = `<div class="tt-date">${dateAff}</div>${lignesTip}`;
     tip.hidden = false;
 
     const pxReal = px / W * rect.width;
-    const pyReal = py / H * rect.height;
-    const tw = tip.offsetWidth || 200;
+    const tw = tip.offsetWidth || 220;
     let left = pxReal + 14;
     if (left + tw > rect.width) left = pxReal - tw - 14;
     tip.style.left = Math.max(4, left) + "px";
-    tip.style.top = Math.max(4, Math.min(pyReal - 10, rect.height - (tip.offsetHeight||100) - 4)) + "px";
+    tip.style.top = "8px";
   }
 
   const hit = holder.querySelector(".chart-hit");
@@ -6839,19 +6841,48 @@ function drawFanChart(pts, wrapId) {
   hit.addEventListener("touchend", hide);
 }
 
-// Histogramme du gain net final (bankroll finale − bankroll de départ),
-// une barre par tranche égale de résultat, sur l'ensemble des trajectoires.
-function drawHistogram(finales, depart, wrapId) {
-  const wrap = $(wrapId);
-  if (!wrap) return;
-  if (finales.length < 2) { wrap.innerHTML = '<p class="muted">Pas assez de trajectoires.</p>'; return; }
-  const nets = Array.from(finales, v => v - depart);
-  let mn = arrMin(nets), mx = arrMax(nets);
+// Bornes P1-P99 de `nets`, utilisées pour cadrer un histogramme sur SA
+// PROPRE distribution plutôt que sur un min/max global partagé entre
+// stratégies (voir le commentaire de drawHistogramDans() ci-dessous pour
+// pourquoi un axe partagé casse tout dès qu'une stratégie compose).
+function calculerPlagePercentile(nets, pLo, pHi) {
+  const sorted = Float64Array.from(nets).sort();
+  const n = sorted.length;
+  return {
+    mn: sorted[Math.max(0, Math.round(pLo * (n - 1)))],
+    mx: sorted[Math.min(n - 1, Math.round(pHi * (n - 1)))],
+  };
+}
+
+// Histogramme du gain net final (bankroll finale − bankroll de départ) pour
+// UNE stratégie, dessiné dans l'élément DOM fourni directement (et non
+// récupéré par id) car la grille comparative en affiche plusieurs côte à
+// côte. `plage` cadre l'axe sur LA PROPRE distribution de cette stratégie
+// (percentiles P1-P99 calculés par calculerPlagePercentile(), pas un
+// min/max global partagé entre stratégies) : une stratégie qui compose
+// (Kelly) peut, sur un horizon étendu, produire une poignée de trajectoires
+// à plusieurs ordres de grandeur au-dessus des autres (une même journée
+// gagnante à forte cote repiochée plusieurs fois par le tirage avec remise
+// au-delà de l'historique réel — voir construireSequenceJours() plus haut —
+// fait multiplier la bankroll à chaque répétition). Avec un axe partagé,
+// CETTE poignée de trajectoires extrêmes écrase visuellement les barres de
+// TOUTES les stratégies dans le premier bin, pas seulement la sienne.
+// Les points hors de la plage affichée sont comptés à part (jamais
+// entassés dans le bin de bord, ce qui fausserait sa hauteur) et signalés
+// en légende plutôt que silencieusement coupés — la queue extrême est
+// réelle, pas une erreur d'affichage à cacher.
+function drawHistogramDans(elWrap, nets, plage, couleur) {
+  if (!elWrap) return;
+  if (nets.length < 2) { elWrap.innerHTML = '<p class="muted">Pas assez de trajectoires.</p>'; return; }
+  let mn = plage.mn, mx = plage.mx;
   if (mn === mx) { mn -= 1; mx += 1; }
-  const NB_BINS = 26;
+  const NB_BINS = 20;
   const largeur = (mx - mn) / NB_BINS;
   const bins = new Array(NB_BINS).fill(0);
+  let nSousPlage = 0, nSurPlage = 0;
   nets.forEach(v => {
+    if (v < mn) { nSousPlage++; return; }
+    if (v > mx) { nSurPlage++; return; }
     let b = Math.floor((v - mn) / largeur);
     if (b >= NB_BINS) b = NB_BINS - 1;
     if (b < 0) b = 0;
@@ -6859,7 +6890,7 @@ function drawHistogram(finales, depart, wrapId) {
   });
   const maxCount = arrMax(bins);
 
-  const W = 1180, H = 220, padL = 60, padR = 20, padT = 16, padB = 36;
+  const W = 360, H = 150, padL = 8, padR = 8, padT = 10, padB = 24;
   const bw = (W - padL - padR) / NB_BINS;
   const sy = c => padT + (1 - (maxCount ? c / maxCount : 0)) * (H - padT - padB);
   const baseY = H - padB;
@@ -6869,52 +6900,101 @@ function drawHistogram(finales, depart, wrapId) {
   bins.forEach((c, i) => {
     if (!c) return;
     const x = padL + i * bw, y = sy(c);
-    const centreVal = mn + (i + 0.5) * largeur;
-    const couleur = centreVal >= 0 ? "var(--lime)" : "var(--coral)";
-    barres += `<rect x="${(x+1).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, bw-2).toFixed(1)}" height="${(baseY-y).toFixed(1)}" fill="${couleur}" opacity=".78" rx="1.5"/>`;
+    barres += `<rect x="${(x+0.5).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, bw-1).toFixed(1)}" height="${(baseY-y).toFixed(1)}" fill="${couleur}" opacity=".8" rx="1"/>`;
   });
 
-  const xticks = [mn, (mn+mx)/2, mx].map((v, idx) => {
-    const x = idx === 0 ? padL : (idx === 2 ? W - padR : (padL + W - padR) / 2);
-    const ancre = idx === 0 ? "start" : (idx === 2 ? "end" : "middle");
-    return `<text x="${x.toFixed(1)}" y="${H-12}" text-anchor="${ancre}" class="chart-tip" fill="var(--ink-faint)">${fmtEur(v)}</text>`;
-  }).join("");
+  let legendeHors = "";
+  if (nSousPlage + nSurPlage > 0) {
+    const vraiMin = arrMin(nets), vraiMax = arrMax(nets);
+    const morceaux = [];
+    if (nSousPlage) morceaux.push(`${nSousPlage} en dessous (jusqu'à ${fmtEur(vraiMin)})`);
+    if (nSurPlage) morceaux.push(`${nSurPlage} au-dessus (jusqu'à ${fmtEur(vraiMax)})`);
+    legendeHors = `<p class="muted" style="margin:.3rem 0 0; font-size:.66rem; line-height:1.3">Axe cadré sur P1–P99 · ${morceaux.join(" · ")} hors cadre</p>`;
+  }
 
-  wrap.innerHTML = `
-    <div class="chart-holder">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Distribution des résultats finaux">
-        ${(zeroX >= padL && zeroX <= W - padR) ? `<line x1="${zeroX.toFixed(1)}" y1="${padT}" x2="${zeroX.toFixed(1)}" y2="${baseY}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".7"/>` : ""}
-        ${barres}
-        <line x1="${padL}" y1="${baseY}" x2="${W-padR}" y2="${baseY}" class="chart-grid-line"/>
-        ${xticks}
-      </svg>
-    </div>
-    <p class="muted" style="margin:.5rem 0 0; font-size:.78rem">Ligne pointillée = seuil de rentabilité (gain net = 0 €).</p>`;
+  elWrap.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Distribution des résultats finaux">
+      ${(zeroX >= padL && zeroX <= W - padR) ? `<line x1="${zeroX.toFixed(1)}" y1="${padT}" x2="${zeroX.toFixed(1)}" y2="${baseY}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".7"/>` : ""}
+      ${barres}
+      <line x1="${padL}" y1="${baseY}" x2="${W-padR}" y2="${baseY}" class="chart-grid-line"/>
+      <text x="${padL}" y="${H-7}" text-anchor="start" class="chart-tip" fill="var(--ink-faint)">${fmtEur(mn)}</text>
+      <text x="${W-padR}" y="${H-7}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${fmtEur(mx)}</text>
+    </svg>${legendeHors}`;
+}
+
+// Dernière distribution simulée (gain net trié par stratégie), conservée
+// pour que le curseur "explorer un percentile précis" (majExplorateurPercentile())
+// puisse lire n'importe quel percentile INSTANTANÉMENT, sans relancer toute
+// la simulation Monte Carlo — contrairement au reste des réglages, déplacer
+// ce curseur ne touche à rien de ce qui a été tiré au hasard, seulement à
+// la lecture qu'on en fait.
+let mcDernierSnapshot = null;
+
+// Lit les cases de stratégies cochées dans les contrôles et renvoie un
+// tableau {id, label, color, type, montant|frac} — une entrée par
+// stratégie à comparer. Les couleurs sont lues depuis les variables CSS du
+// design system (voir :root dans style.css) plutôt que codées en dur ici,
+// pour rester cohérentes si elles sont retouchées un jour.
+function mcStrategiesActives() {
+  const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const defs = [
+    { id: "fixe", chk: "mcCmpFixe", label: "Montant fixe", color: cssVar("--gold"),
+      lire: () => ({ type: "fixe", montant: parseFloat($("mcCmpFixeMontant") ? $("mcCmpFixeMontant").value : "10") || 0 }) },
+    { id: "k8", chk: "mcCmpK8", label: "Kelly 1/8", color: cssVar("--ink-dim"),
+      lire: () => ({ type: "kelly", frac: 0.125 }) },
+    { id: "k4", chk: "mcCmpK4", label: "Kelly 1/4", color: cssVar("--violet"),
+      lire: () => ({ type: "kelly", frac: 0.25 }) },
+    { id: "k2", chk: "mcCmpK2", label: "Kelly 1/2", color: cssVar("--cyan"),
+      lire: () => ({ type: "kelly", frac: 0.5 }) },
+    { id: "k1", chk: "mcCmpK1", label: "Kelly entier", color: cssVar("--coral"),
+      lire: () => ({ type: "kelly", frac: 1 }) },
+  ];
+  return defs
+    .filter(d => $(d.chk) && $(d.chk).checked)
+    .map(d => Object.assign({ id: d.id, label: d.label, color: d.color }, d.lire()));
+}
+
+// Lit le curseur #mcPctSlider et affiche, pour chaque stratégie du dernier
+// snapshot simulé, le gain net au percentile choisi — une lecture libre,
+// en plus des P5/médiane/P95 fixes déjà dans le tableau comparatif (utile
+// par ex. pour voir "le mauvais scénario mais pas le pire" à un percentile
+// précis, ou comparer deux stratégies à un même rang plutôt qu'à un rang
+// fixe arbitraire). Ne relance AUCUN calcul : relit juste mcDernierSnapshot,
+// donc peut réagir à chaque frappe/glissement du curseur sans à-coup.
+function majExplorateurPercentile() {
+  const zone = $("mcPctResult");
+  if (!zone) return;
+  const slider = $("mcPctSlider");
+  const pctChoisi = slider ? parseInt(slider.value, 10) : 50;
+  if ($("mcPctVal")) $("mcPctVal").textContent = pctChoisi;
+
+  if (!mcDernierSnapshot || !mcDernierSnapshot.length) { zone.innerHTML = ""; return; }
+
+  const p = pctChoisi / 100;
+  const pctOf = (sorted, pp) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(pp * (sorted.length - 1))))];
+  const eur = v => (v >= 0 ? "+" : "") + v.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+
+  zone.innerHTML = mcDernierSnapshot.map(s => {
+    const v = pctOf(s.sortedNets, p);
+    return `<div class="mc-pct-row">
+      <span class="mc-pct-dot" style="background:${s.color}"></span>
+      <span class="mc-pct-label">${s.label}</span>
+      <strong class="mc-pct-val ${v >= 0 ? "pos" : "neg"}">${eur(v)}</strong>
+    </div>`;
+  }).join("");
 }
 
 function runMonteCarlo() {
   const empty = $("mcEmpty"), resultats = $("mcResults");
   if (!empty || !resultats) return;
 
+  const MSG_AUCUN_PARI = "Aucun pari ne correspond actuellement aux filtres de la page « DC rétrospectif » — rien à simuler.";
+  const MSG_AUCUNE_STRAT = "Coche au moins une stratégie à comparer ci-dessus pour lancer la simulation.";
+
   const rows = btFiltered().slice().sort((a, b) => a.date.localeCompare(b.date));
   const depart = parseFloat($("bkDepart") ? $("bkDepart").value : "100") || 0;
   if ($("mcDepartAff")) $("mcDepartAff").textContent = depart.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
   if ($("mcNbParis")) $("mcNbParis").textContent = rows.length;
-
-  if (!rows.length) {
-    empty.style.display = "";
-    resultats.style.display = "none";
-    return;
-  }
-  empty.style.display = "none";
-  resultats.style.display = "";
-
-  const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
-
-  const M = parseInt($("mcN") ? $("mcN").value : "2000", 10) || 2000;
-  const strategie = $("mcStrategie") ? $("mcStrategie").value : "fixe";
-  const montantFixe = parseFloat($("mcMontantFixe") ? $("mcMontantFixe").value : "10") || 0;
-  const fracKelly = parseFloat($("mcKellyFrac") ? $("mcKellyFrac").value : "0.25") || 0.25;
 
   // Regroupement par jour, comme renderExposition() : les mises Kelly d'un
   // même jour sont calculées ensemble et réduites au prorata si leur somme
@@ -6931,113 +7011,243 @@ function runMonteCarlo() {
       cote: paris.map(r => r.cote),
     };
   });
+  const histJours = joursData.length;
+  if ($("mcNbJoursHist")) $("mcNbJoursHist").textContent = histJours;
+  if ($("mcHorizonHistNb")) $("mcHorizonHistNb").textContent = histJours;
+
+  const strategies = mcStrategiesActives();
+
+  if (!rows.length || !strategies.length) {
+    empty.textContent = !rows.length ? MSG_AUCUN_PARI : MSG_AUCUNE_STRAT;
+    empty.style.display = "";
+    resultats.style.display = "none";
+    mcDernierSnapshot = null;
+    return;
+  }
+  empty.style.display = "none";
+  resultats.style.display = "";
+
+  const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+
+  const M = parseInt($("mcN") ? $("mcN").value : "2000", 10) || 2000;
+  const S = strategies.length;
+
+  // Horizon : "hist" (ou une valeur ≤ à l'historique réel) rejoue un préfixe
+  // chronologique réel, identique à chaque trajectoire — exactement le
+  // comportement d'avant cet ajout. Une valeur supérieure prolonge au-delà
+  // en piochant des journées entières au hasard, AVEC REMISE, parmi celles
+  // déjà observées : chaque trajectoire tire sa propre suite, mais les
+  // `histJours` premiers jours restent le vécu réel pour ancrer la courbe.
+  const horizonSel = $("mcHorizon") ? $("mcHorizon").value : "hist";
+  const horizonJours = horizonSel === "hist" ? histJours : Math.max(1, parseInt(horizonSel, 10) || histJours);
+  const extrapole = horizonJours > histJours;
+  const nReel = Math.min(horizonJours, histJours);
+
+  if ($("mcHorizonAff")) {
+    $("mcHorizonAff").textContent = extrapole
+      ? `Horizon étendu à ${horizonJours} jours : les ${horizonJours - histJours} jours au-delà de l'historique réel sont tirés au hasard parmi les ${histJours} jours déjà observés (avec remise).`
+      : (horizonJours < histJours ? `Simulation limitée aux ${horizonJours} premiers jours de l'historique filtré.` : "");
+  }
+  if ($("mcFanHint")) {
+    $("mcFanHint").textContent = extrapole
+      ? "— historique réel puis jours tirés au hasard au-delà, résultats tirés au hasard"
+      : "— même historique, résultats tirés au hasard";
+  }
+
+  function construireSequenceJours() {
+    const seq = new Array(horizonJours);
+    for (let i = 0; i < nReel; i++) seq[i] = i;
+    for (let i = nReel; i < horizonJours; i++) seq[i] = Math.floor(Math.random() * histJours);
+    return seq;
+  }
 
   // Points de contrôle pour le graphique en fourchette : un point par jour
-  // si l'historique en compte peu, sinon un échantillonnage régulier borné
-  // (évite de stocker M × nb_jours valeurs en mémoire sur un long historique).
+  // si l'horizon en compte peu, sinon un échantillonnage régulier borné
+  // (évite de stocker M × horizon × S valeurs en mémoire sur un long horizon).
   const NB_CP_MAX = 120;
-  const step = Math.max(1, Math.ceil(joursData.length / NB_CP_MAX));
+  const step = Math.max(1, Math.ceil(horizonJours / NB_CP_MAX));
   const cpIdx = [];
-  for (let i = step - 1; i < joursData.length; i += step) cpIdx.push(i);
-  if (!cpIdx.length || cpIdx[cpIdx.length - 1] !== joursData.length - 1) cpIdx.push(joursData.length - 1);
+  for (let i = step - 1; i < horizonJours; i += step) cpIdx.push(i);
+  if (!cpIdx.length || cpIdx[cpIdx.length - 1] !== horizonJours - 1) cpIdx.push(horizonJours - 1);
 
-  const finales = new Float64Array(M);
-  const maxDDs = new Float64Array(M);
-  let nRuines = 0;
-  const cpValeurs = cpIdx.map(() => new Float64Array(M));
+  const finales = strategies.map(() => new Float64Array(M));
+  const maxDDs = strategies.map(() => new Float64Array(M));
+  const nRuines = new Array(S).fill(0);
+  const miseTotales = strategies.map(() => new Float64Array(M));
+  const cpValeurs = strategies.map(() => cpIdx.map(() => new Float64Array(M)));
 
   for (let m = 0; m < M; m++) {
-    let bankroll = depart, peak = depart, maxDD = 0, ruine = false;
+    const seq = construireSequenceJours();
+    const bankrolls = new Array(S).fill(depart);
+    const peaks = new Array(S).fill(depart);
+    const maxDDlocal = new Array(S).fill(0);
+    const ruines = new Array(S).fill(false);
+    const miseTot = new Array(S).fill(0);
     let cpPtr = 0;
-    for (let d = 0; d < joursData.length; d++) {
-      const jour = joursData[d];
-      const k = jour.p.length;
-      let mises;
-      if (ruine) {
-        mises = new Array(k).fill(0);
-      } else if (strategie === "kelly") {
-        const brutes = new Array(k);
-        let totalBrut = 0;
-        for (let i = 0; i < k; i++) {
-          const f = kellyFraction(jour.p[i], jour.cote[i], fracKelly) * bankroll;
-          brutes[i] = f; totalBrut += f;
-        }
-        const echelle = (totalBrut > bankroll && totalBrut > 0) ? bankroll / totalBrut : 1;
-        mises = brutes.map(x => x * echelle);
-      } else {
-        mises = new Array(k).fill(montantFixe);
-      }
-      let resultatJour = 0;
-      for (let i = 0; i < k; i++) {
-        const gagne = Math.random() < jour.p[i];
-        const profitUnite = gagne ? (jour.cote[i] - 1) : -1;
-        resultatJour += profitUnite * mises[i];
-      }
-      bankroll += resultatJour;
-      if (bankroll < 0) bankroll = 0;
-      if (bankroll > peak) peak = bankroll;
-      else if (peak > 0) {
-        const dd = (peak - bankroll) / peak;
-        if (dd > maxDD) maxDD = dd;
-      }
-      if (bankroll <= 0) ruine = true;
 
-      if (cpPtr < cpIdx.length && cpIdx[cpPtr] === d) { cpValeurs[cpPtr][m] = bankroll; cpPtr++; }
+    for (let d = 0; d < seq.length; d++) {
+      const jour = joursData[seq[d]];
+      const k = jour.p.length;
+      // Un seul tirage gagné/perdu par pari de la journée, PARTAGÉ par
+      // toutes les stratégies : c'est ce qui isole la mise comme seule
+      // variable d'une stratégie à l'autre, à trajectoire égale.
+      const gagneArr = new Array(k);
+      for (let i = 0; i < k; i++) gagneArr[i] = Math.random() < jour.p[i];
+
+      for (let s = 0; s < S; s++) {
+        if (ruines[s]) continue;
+        const strat = strategies[s];
+        let mises;
+        if (strat.type === "kelly") {
+          const brutes = new Array(k);
+          let totalBrut = 0;
+          for (let i = 0; i < k; i++) {
+            const f = kellyFraction(jour.p[i], jour.cote[i], strat.frac) * bankrolls[s];
+            brutes[i] = f; totalBrut += f;
+          }
+          const echelle = (totalBrut > bankrolls[s] && totalBrut > 0) ? bankrolls[s] / totalBrut : 1;
+          mises = brutes.map(x => x * echelle);
+        } else {
+          mises = new Array(k).fill(strat.montant);
+        }
+        let resultatJour = 0, miseJour = 0;
+        for (let i = 0; i < k; i++) {
+          const profitUnite = gagneArr[i] ? (jour.cote[i] - 1) : -1;
+          resultatJour += profitUnite * mises[i];
+          miseJour += mises[i];
+        }
+        bankrolls[s] += resultatJour;
+        if (bankrolls[s] < 0) bankrolls[s] = 0;
+        if (bankrolls[s] > peaks[s]) peaks[s] = bankrolls[s];
+        else if (peaks[s] > 0) {
+          const dd = (peaks[s] - bankrolls[s]) / peaks[s];
+          if (dd > maxDDlocal[s]) maxDDlocal[s] = dd;
+        }
+        if (bankrolls[s] <= 0) ruines[s] = true;
+        miseTot[s] += miseJour;
+      }
+
+      if (cpPtr < cpIdx.length && cpIdx[cpPtr] === d) {
+        for (let s = 0; s < S; s++) cpValeurs[s][cpPtr][m] = bankrolls[s];
+        cpPtr++;
+      }
     }
-    finales[m] = bankroll;
-    maxDDs[m] = maxDD;
-    if (ruine) nRuines++;
+
+    for (let s = 0; s < S; s++) {
+      finales[s][m] = bankrolls[s];
+      maxDDs[s][m] = maxDDlocal[s];
+      miseTotales[s][m] = miseTot[s];
+      if (ruines[s]) nRuines[s]++;
+    }
   }
 
   const pctOf = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(p * (sorted.length - 1))))];
-  const finalesSorted = Float64Array.from(finales).sort();
-  const mediane = pctOf(finalesSorted, 0.50);
-  const p5 = pctOf(finalesSorted, 0.05);
-  const p95 = pctOf(finalesSorted, 0.95);
-  let nPerte = 0; finales.forEach(v => { if (v < depart) nPerte++; });
-  const probaPerte = nPerte / M;
-  const probaRuine = nRuines / M;
-  const ddSorted = Float64Array.from(maxDDs).sort();
-  const ddMediane = pctOf(ddSorted, 0.50);
-
   const eur = v => v.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+  const pct = v => (v * 100).toFixed(1) + " %";
 
-  $("mcNTraj").textContent = M.toLocaleString("fr-FR");
-  $("mcMediane").textContent = eur(mediane);
-  $("mcMediane").className = "st-value " + (mediane >= depart ? "pos" : "neg");
-  $("mcP5").textContent = eur(p5);
-  $("mcP5").className = "st-value " + (p5 >= depart ? "pos" : "neg");
-  $("mcP95").textContent = eur(p95);
-  $("mcP95").className = "st-value " + (p95 >= depart ? "pos" : "neg");
-  $("mcProbaPerte").textContent = (probaPerte*100).toFixed(1) + " %";
-  $("mcProbaPerte").className = "st-value " + (probaPerte > 0.5 ? "neg" : "pos");
-  $("mcProbaRuine").textContent = (probaRuine*100).toFixed(1) + " %";
-  $("mcProbaRuine").className = "st-value " + (probaRuine > 0 ? "neg" : "pos");
-  $("mcDrawdown").textContent = "-" + (ddMediane*100).toFixed(1) + " %";
-
-  // --- Fourchette (fan chart) ---
-  const pts = [{date: "Départ", p5: depart, p25: depart, p50: depart, p75: depart, p95: depart}];
-  cpIdx.forEach((idxJour, c) => {
-    const sorted = Float64Array.from(cpValeurs[c]).sort();
-    pts.push({
-      date: joursData[idxJour].date,
-      p5: pctOf(sorted, 0.05), p25: pctOf(sorted, 0.25),
-      p50: pctOf(sorted, 0.50), p75: pctOf(sorted, 0.75), p95: pctOf(sorted, 0.95),
-    });
+  const resultatsStrat = strategies.map((strat, s) => {
+    const finalesSorted = Float64Array.from(finales[s]).sort();
+    const mediane = pctOf(finalesSorted, 0.50);
+    const p5 = pctOf(finalesSorted, 0.05);
+    const p95 = pctOf(finalesSorted, 0.95);
+    let nPerte = 0; finales[s].forEach(v => { if (v < depart) nPerte++; });
+    const probaPerte = nPerte / M;
+    const probaRuine = nRuines[s] / M;
+    const ddSorted = Float64Array.from(maxDDs[s]).sort();
+    const ddMediane = pctOf(ddSorted, 0.50);
+    let sommeMise = 0; miseTotales[s].forEach(v => sommeMise += v);
+    const miseMoyenne = sommeMise / M;
+    return { strat, mediane, p5, p95, probaPerte, probaRuine, ddMediane, miseMoyenne, nets: Array.from(finales[s], v => v - depart) };
   });
-  drawFanChart(pts, "mcFanWrap");
-  drawHistogram(finales, depart, "mcHistWrap");
+
+  // Snapshot pour le curseur de percentile (voir sa déclaration plus haut) :
+  // trié une seule fois ici, pas à chaque déplacement du curseur.
+  mcDernierSnapshot = resultatsStrat.map(r => ({
+    label: r.strat.label, color: r.strat.color,
+    sortedNets: Float64Array.from(r.nets).sort((a, b) => a - b),
+  }));
+  majExplorateurPercentile();
+
+  if ($("mcNTraj")) $("mcNTraj").textContent = M.toLocaleString("fr-FR");
+
+  // --- Tableau comparatif ---
+  const body = $("mcCmpBody");
+  if (body) {
+    body.innerHTML = resultatsStrat.map(r => `
+      <tr>
+        <td><span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${r.strat.color}; margin-right:.45rem"></span>${r.strat.label}${r.strat.type === "fixe" ? ` (${r.strat.montant} €)` : ""}</td>
+        <td class="num">${eur(r.miseMoyenne)}</td>
+        <td class="num ${r.mediane >= depart ? "pos" : "neg"}">${eur(r.mediane)}</td>
+        <td class="num ${r.p5 >= depart ? "pos" : "neg"}">${eur(r.p5)}</td>
+        <td class="num ${r.p95 >= depart ? "pos" : "neg"}">${eur(r.p95)}</td>
+        <td class="num ${r.probaPerte > 0.5 ? "neg" : ""}">${pct(r.probaPerte)}</td>
+        <td class="num ${r.probaRuine > 0 ? "neg" : "pos"}">${pct(r.probaRuine)}</td>
+        <td class="num">-${pct(r.ddMediane)}</td>
+      </tr>`).join("");
+  }
+
+  // --- Courbes superposées (médiane par stratégie) ---
+  // Les points de contrôle au-delà de l'historique réel n'ont pas de date
+  // réelle unique (chaque trajectoire a pioché une journée différente pour
+  // ce rang) — on affiche la date réelle tant que l'index est dans
+  // l'historique, "Jour N" sinon.
+  const serieParStrat = strategies.map((strat, s) => {
+    const pts = [{date: "Départ", p50: depart}];
+    cpIdx.forEach((idxJour, c) => {
+      const sorted = Float64Array.from(cpValeurs[s][c]).sort();
+      const date = (extrapole && idxJour >= histJours) ? `Jour ${idxJour + 1}` : joursData[idxJour % histJours].date;
+      pts.push({ date, p50: pctOf(sorted, 0.50) });
+    });
+    return { label: strat.label, color: strat.color, pts };
+  });
+  drawFanChartMulti(serieParStrat, "mcFanWrap");
+
+  // --- Histogrammes côte à côte ---
+  // Chaque histogramme est cadré sur SA PROPRE plage P1-P99 (voir
+  // calculerPlagePercentile()), pas sur un min/max partagé entre
+  // stratégies : une stratégie Kelly qui compose peut produire une poignée
+  // de trajectoires extrêmes qui, avec un axe commun, écraseraient les
+  // barres de TOUTES les colonnes dans le premier bin — illisible partout
+  // à la fois. Le prix à payer : la largeur d'une barre ne se compare plus
+  // directement d'une colonne à l'autre (le tableau plus haut sert à ça) ;
+  // ce que ces histogrammes montrent, c'est la FORME propre à chaque
+  // stratégie (symétrique, étalée à droite...), et la légende sous chacun
+  // signale combien de trajectoires sortent de la plage affichée plutôt
+  // que de les cacher.
+  const grid = $("mcHistGrid");
+  if (grid) {
+    grid.innerHTML = resultatsStrat.map((r, i) => `
+      <div class="mc-hist-cell">
+        <div class="mc-hist-cell-label"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${r.strat.color}; margin-right:.4rem"></span>${r.strat.label}</div>
+        <div class="mc-hist-cell-chart" id="mcHistCell${i}"></div>
+      </div>`).join("");
+    resultatsStrat.forEach((r, i) => {
+      const plage = calculerPlagePercentile(r.nets, 0.01, 0.99);
+      drawHistogramDans($("mcHistCell" + i), r.nets, plage, r.strat.color);
+    });
+  }
 
   // --- Verdict ---
-  let phraseRuine;
-  if (probaRuine > 0.01) phraseRuine = `un risque de ruine à ne pas ignorer : la bankroll tombe à zéro dans ${(probaRuine*100).toFixed(1)} % des trajectoires`;
-  else if (probaRuine > 0) phraseRuine = `un risque de ruine marginal mais réel (${(probaRuine*100).toFixed(1)} % des trajectoires)`;
-  else phraseRuine = `aucune trajectoire simulée ne tombe à zéro`;
   if ($("mcVerdict")) {
-    $("mcVerdict").textContent =
-      `Sur ${M.toLocaleString("fr-FR")} trajectoires, la bankroll finale médiane est de ${eur(mediane)} `
-      + `(départ : ${eur(depart)}), ${(probaPerte*100).toFixed(1)} % des trajectoires finissent sous le montant de départ, et il existe ${phraseRuine}. `
-      + `Le creux temporaire le plus profond, sur une trajectoire médiane, atteint ${(ddMediane*100).toFixed(1)} % de la bankroll — à garder en tête au moment de choisir sa mise, même quand le modèle a raison en moyenne.`;
+    const meilleure = resultatsStrat.reduce((a, b) => (b.mediane > a.mediane ? b : a));
+    const plusSure = resultatsStrat.reduce((a, b) => (b.probaRuine < a.probaRuine ? b : a));
+    let phrase = `Sur ${M.toLocaleString("fr-FR")} trajectoires simulées (départ : ${eur(depart)})`;
+    phrase += extrapole ? `, sur un horizon étendu à ${horizonJours} jours, ` : `, sur les ${horizonJours} jours de l'historique filtré, `;
+    phrase += `« ${meilleure.strat.label} » donne la bankroll médiane la plus haute (${eur(meilleure.mediane)})`;
+    // "plus prudente" seulement si une AUTRE stratégie a un risque de ruine
+    // strictement plus faible — sinon (ex-aequo à 0 %, comme c'est souvent
+    // le cas quand plusieurs fractions de Kelly cochées ne ruinent jamais
+    // sur l'historique filtré), comparer deux pourcentages identiques
+    // n'apporte rien et sonne faux ("0,0 % contre 0,0 %").
+    if (plusSure.strat.id !== meilleure.strat.id && plusSure.probaRuine < meilleure.probaRuine) {
+      phrase += `, mais « ${plusSure.strat.label} » limite mieux le risque de ruine (${pct(plusSure.probaRuine)} contre ${pct(meilleure.probaRuine)} pour la première).`;
+    } else if (meilleure.probaRuine > 0) {
+      phrase += `, avec ${pct(meilleure.probaRuine)} de risque de ruine.`;
+    } else {
+      phrase += ` et aucune trajectoire simulée ne tombe à zéro avec cette stratégie.`;
+    }
+    phrase += ` Le tableau ci-dessus donne la fourchette complète de chaque stratégie — la médiane seule ne montre pas le risque pris pour l'atteindre.`;
+    $("mcVerdict").textContent = phrase;
   }
 
   const duree = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
@@ -7048,16 +7258,8 @@ function runMonteCarlo() {
   }
 }
 
-if ($("mcStrategie")) {
-  const majVisibiliteMc = () => {
-    const val = $("mcStrategie").value;
-    if ($("mcFixeWrap")) $("mcFixeWrap").style.display = val === "fixe" ? "" : "none";
-    if ($("mcKellyWrap")) $("mcKellyWrap").style.display = val === "kelly" ? "" : "none";
-    if ($("mcKellyNote")) $("mcKellyNote").style.display = val === "kelly" ? "" : "none";
-  };
-  majVisibiliteMc();
-  $("mcStrategie").addEventListener("change", () => { majVisibiliteMc(); runMonteCarlo(); });
-  ["mcN", "mcMontantFixe", "mcKellyFrac"].forEach(id => {
+if ($("mcHorizon") || $("mcCmpFixe")) {
+  ["mcN", "mcHorizon", "mcCmpFixe", "mcCmpFixeMontant", "mcCmpK8", "mcCmpK4", "mcCmpK2", "mcCmpK1"].forEach(id => {
     if ($(id)) $(id).addEventListener("change", runMonteCarlo);
   });
   // "change" seulement (pas "input") : contrairement à renderExposition (une
@@ -7065,7 +7267,20 @@ if ($("mcStrategie")) {
   // milliers de trajectoires — le relancer à chaque frappe au clavier sur le
   // montant de départ le rendrait perceptiblement saccadé.
   if ($("bkDepart")) $("bkDepart").addEventListener("change", runMonteCarlo);
+  // Bankroll éditable directement sur cette page, sans repasser par la page
+  // Bankroll : lierFiltres() synchronise mcBkDepart <-> bkDepart dans les
+  // deux sens (même mécanisme que les filtres bt/u ailleurs dans l'app). La
+  // synchro initiale avant lierFiltres() évite un écart si bkDepart avait
+  // déjà une valeur différente de "100" au moment où cette page se charge.
+  if ($("mcBkDepart") && $("bkDepart")) {
+    $("mcBkDepart").value = $("bkDepart").value;
+    lierFiltres("mcBkDepart", "bkDepart");
+  }
   if ($("mcRelancer")) $("mcRelancer").addEventListener("click", runMonteCarlo);
+  // "input" (pas "change") : contrairement aux réglages ci-dessus, bouger ce
+  // curseur ne relance rien — majExplorateurPercentile() relit juste le
+  // dernier snapshot déjà trié, donc peut suivre le curseur en direct.
+  if ($("mcPctSlider")) $("mcPctSlider").addEventListener("input", majExplorateurPercentile);
 }
 
 /* ---------- Init ---------- */
