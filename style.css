@@ -1771,6 +1771,20 @@ header { padding-top: 1rem; padding-bottom: .6rem; }
 .score-tile + .score-tile { border-left: 1px solid rgba(168, 181, 199, .14); }
 .score-tile .st-label { letter-spacing: .09em; }
 .score-tile .st-sub { color: #9aa9bd; }
+/* Les libellés n'ont pas tous la même longueur ("Pire creux typique" vs
+   "Probabilité de finir en perte") : sans hauteur réservée, celui qui
+   passe sur 2 lignes pousse sa valeur plus bas que ses voisins à 1 ligne,
+   et les gros chiffres ne s'alignent plus horizontalement entre tuiles
+   (repéré sur la page Simulation Monte Carlo, 6 tuiles, 30/09-03/10/2026).
+   min-height réserve toujours la place de 2 lignes, que le libellé en
+   occupe une ou deux, pour que la valeur démarre à la même hauteur dans
+   toutes les tuiles d'une même rangée. */
+.score-tile .st-label {
+  min-height: 2.6em;
+  line-height: 1.3;
+  display: flex;
+  align-items: flex-start;
+}
 
 .controls { gap: .9rem 1rem; }
 .field label { color: #93a2b6; letter-spacing: .065em; }
@@ -2402,3 +2416,118 @@ details.panel-foldable[open] > summary::before {
   .bt-impact-reading > strong { font-size: .82rem; }
 }
 
+/* ========================================================================
+   PAGE — MONTE CARLO : comparaison multi-stratégies + horizon étendu
+   (ajouté le 03/10/2026 ; voir mcStrategiesActives()/runMonteCarlo() dans
+   app.js). Ajouté en fin de fichier pour gagner le cascade face aux
+   redéfinitions répétées de .panel/.score-tile/table plus haut dans ce
+   fichier — même raison que le correctif .score-tile .st-label au-dessus.
+   ======================================================================== */
+
+/* Libellé "Sur N trajectoires simulées" au-dessus du tableau comparatif :
+   même look que .scoreboard-head .eyebrow, repris ici en version générique
+   puisque ce panneau n'est pas un .scoreboard. */
+.panel h2 .eyebrow {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--violet); font-weight: 700;
+}
+
+/* Liste de cases "stratégies à comparer", sous les contrôles numériques de
+   la page. .mc-strat-field hérite de .field pour l'espacement label/contenu
+   habituel du formulaire ; .mc-strat-list est le cadre qui regroupe les
+   lignes, comme un mini-groupe de filtres plutôt qu'un simple empilement. */
+.mc-strat-field { margin-top: .9rem; }
+.mc-strat-list {
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+  margin-top: .5rem;
+  padding: .7rem .85rem;
+  border: 1px solid rgba(119,134,154,.15);
+  border-radius: 9px;
+  background: rgba(10,16,26,.3);
+}
+.mc-strat-row { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.mc-strat-check {
+  display: inline-flex; align-items: center; gap: .5rem;
+  cursor: pointer; font-size: .88rem; color: var(--ink);
+}
+.mc-strat-check input[type="checkbox"] { accent-color: var(--violet); width: 16px; height: 16px; flex: none; }
+.mc-strat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.mc-strat-dot[data-c="gold"]   { background: var(--gold); }
+.mc-strat-dot[data-c="dim"]    { background: var(--ink-dim); }
+.mc-strat-dot[data-c="violet"] { background: var(--violet); }
+.mc-strat-dot[data-c="cyan"]   { background: var(--cyan); }
+.mc-strat-dot[data-c="coral"]  { background: var(--coral); }
+.mc-strat-param { width: 72px; padding: .3rem .5rem; font-size: .85rem; font-family: var(--font-mono); }
+.mc-strat-unit { color: var(--ink-faint); font-size: .8rem; }
+
+/* Tableau comparatif des stratégies : réutilise .tablewrap/.table-scroll et
+   les classes .num déjà définies pour le reste du site. Seul ajout propre à
+   cette page : le sous-libellé ("moyenne", "P5"...) sous chaque en-tête,
+   et la 1ère colonne (nom de stratégie + pastille) qui ne doit pas casser. */
+.mc-cmp-table th .hint { font-weight: 400; color: var(--ink-faint); font-size: .72rem; letter-spacing: 0; display: block; margin-top: .1rem; }
+.mc-cmp-table td:first-child, .mc-cmp-table th:first-child { white-space: nowrap; }
+
+/* Grille d'histogrammes "une stratégie par colonne" sous les courbes
+   superposées, même principe que les autres grilles de petites cartes du
+   site (.score-tiles etc.) mais en cartes bordées pour bien séparer les
+   stratégies les unes des autres à l'œil. */
+.mc-hist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .9rem; margin-top: .3rem; }
+.mc-hist-cell { border: 1px solid rgba(119,134,154,.13); border-radius: 9px; padding: .6rem .7rem .4rem; background: rgba(10,16,26,.3); }
+.mc-hist-cell-label { display: flex; align-items: center; font-size: .82rem; color: var(--ink-dim); margin-bottom: .3rem; }
+.mc-hist-cell-chart svg { display: block; width: 100%; height: auto; }
+
+@media (max-width: 560px) {
+  .mc-strat-row { gap: .4rem; }
+  .mc-strat-param { width: 60px; }
+  .mc-hist-grid { grid-template-columns: 1fr; }
+}
+
+/* Curseur "explorer un percentile précis" (une seule poignée) — même
+   langage visuel que .mvt-range (poignée ronde cerclée de violet) mais sans
+   son positionnement absolu, pensé pour une paire de curseurs superposés
+   qui ne s'applique pas ici (un seul curseur, un seul résultat par ligne). */
+.mc-pct-slider-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: .3rem; }
+.mc-pct-slider {
+  flex: 1 1 240px; min-width: 180px; height: 18px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+.mc-pct-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(var(--line), var(--line)) no-repeat center / 100% 4px;
+  width: 100%; height: 18px; border: none;
+}
+.mc-pct-slider::-moz-range-track {
+  background: linear-gradient(var(--line), var(--line)) no-repeat center / 100% 4px;
+  width: 100%; height: 18px; border: none;
+}
+.mc-pct-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ink); border: 3px solid var(--violet);
+  margin-top: 0; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  transition: transform .12s;
+}
+.mc-pct-slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
+.mc-pct-slider::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ink); border: 3px solid var(--violet);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+.mc-pct-readout { font-size: .9rem; color: var(--ink-dim); white-space: nowrap; }
+.mc-pct-readout strong { color: var(--violet); font-family: var(--font-mono); font-size: 1.05rem; }
+.mc-pct-rows { display: flex; flex-direction: column; gap: .4rem; margin-top: .8rem; }
+.mc-pct-row {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .45rem .7rem; border-radius: 8px;
+  background: rgba(10,16,26,.3); border: 1px solid rgba(119,134,154,.13);
+}
+.mc-pct-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.mc-pct-label { color: var(--ink-dim); font-size: .85rem; flex: 1 1 auto; }
+.mc-pct-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 560px) {
+  .mc-pct-slider-row { flex-direction: column; align-items: stretch; gap: .5rem; }
+}
