@@ -1562,6 +1562,14 @@ function renderUpcoming() {
   const nbActif = $("uLoi") && $("uLoi").value === "nbinom" && modeXg === "sans";
   let source = appliquerXg(appliquerNb(calibrer(UPCOMING, calibActif), nbActif), modeXg);
 
+  // Filtre "historique" de la matrice (DC rétrospectif) — voir
+  // BT_HIST_SELECTION / propagerFiltreHistorique(). Le champ
+  // (n_hist_dom/n_hist_ext) n'existe sur les paris à venir que depuis le
+  // 03/10/2026 : un jeu de données collecté avant cette date ne l'a pas
+  // encore, auquel cas on ignore le filtre ici plutôt que de vider la
+  // liste à tort — voir uHistNote plus bas, qui l'explique à l'écran.
+  const histDispo = UPCOMING.some(v => v.n_hist_dom != null);
+
   // Chaque pari reçoit ses valeurs recalculées selon le mode choisi, pour
   // que l'affichage (edge, espérance) corresponde bien au filtre appliqué.
   let rows = source.map(v => {
@@ -1640,6 +1648,14 @@ function renderUpcoming() {
     // mvtBornesActives/passeMvt) — synchronisé avec la page "DC rétrospectif".
     const bornesMvtU = mvtBornesActives("u");
     if (!passeMvt(bornesMvtU, v)) return false;
+    // Filtre "historique" de la matrice (voir histDispo ci-dessus) : même
+    // bucketing que la page DC rétrospectif (HIST_BUCKETS/histBucketKey),
+    // ignoré tant que le champ n'est pas encore présent dans ce jeu de
+    // données.
+    if (BT_HIST_SELECTION && histDispo) {
+      if (histBucketKey(v.n_hist_dom) !== BT_HIST_SELECTION.dom) return false;
+      if (histBucketKey(v.n_hist_ext) !== BT_HIST_SELECTION.ext) return false;
+    }
     return true;
   });
 
@@ -1750,6 +1766,37 @@ function renderUpcoming() {
           + `parmi ${avecXg} paris à xG sur ${UPCOMING.length} au total. Les `
           + `${UPCOMING.length - avecXg} autres sont écartés faute d'historique xG `
           + `suffisant des deux côtés.`;
+    }
+  }
+
+  // Note "historique" — reflète le filtre de la matrice (DC rétrospectif),
+  // dans les mêmes 3 états que son équivalent côté rétrospectif
+  // (#btHistActive) : filtre inactif (rien affiché), filtre actif mais
+  // champ pas encore présent dans ce jeu de données (explique pourquoi la
+  // liste ne bouge pas), ou filtre actif et bien appliqué (bandeau actif +
+  // lien de réinitialisation, qui propage aussi aux 2 autres pages via
+  // propagerFiltreHistorique()).
+  const uHistNote = $("uHistNote");
+  if (uHistNote) {
+    if (!BT_HIST_SELECTION) {
+      uHistNote.style.display = "none";
+      uHistNote.innerHTML = "";
+    } else if (!histDispo) {
+      uHistNote.style.display = "";
+      uHistNote.innerHTML = `<strong>Filtre « historique » actif sur la matrice (DC rétrospectif)</strong> — `
+        + `pas encore applicable ici : ce jeu de données ne contient pas encore le nombre de matchs `
+        + `d'historique des paris à venir. Relance la collecte pour qu'il s'applique aussi sur cette page.`;
+    } else {
+      uHistNote.style.display = "";
+      uHistNote.innerHTML = `Filtre « historique » actif sur toute la page : domicile
+        <strong>${BT_HIST_SELECTION.dom}</strong> · extérieur <strong>${BT_HIST_SELECTION.ext}</strong>
+        — <a href="#" id="uHistClear">réinitialiser</a>`;
+      const clearLink = $("uHistClear");
+      if (clearLink) clearLink.addEventListener("click", ev => {
+        ev.preventDefault();
+        BT_HIST_SELECTION = null;
+        propagerFiltreHistorique();
+      });
     }
   }
 
@@ -4922,6 +4969,19 @@ let HIST_MATRIX_DATA = {};
 // ouverte, exactement comme les valeurs des champs de filtre du DOM.
 let BT_HIST_SELECTION = null;
 
+// Le filtre "historique" (BT_HIST_SELECTION) alimente 3 pages à la fois
+// (DC rétrospectif, Simulation, Paris à venir) : chaque point où il change
+// doit rafraîchir les 3, pas seulement la page où le clic a eu lieu —
+// sinon les deux autres restent périmées jusqu'à un changement de leurs
+// propres filtres ou un changement d'onglet (cas de Simulation, voir
+// activerOnglet). Centralisé ici pour ne pas le répéter à chaque point de
+// mutation (clic sur une case, lien "réinitialiser").
+function propagerFiltreHistorique() {
+  renderBacktest();
+  if (typeof renderUpcoming === "function") renderUpcoming();
+  if (typeof runMonteCarlo === "function") runMonteCarlo();
+}
+
 function renderHistMatrix(rowsSansHist) {
   const wrap = $("btHistMatrixWrap");
   const empty = $("btHistEmpty");
@@ -5041,7 +5101,7 @@ function renderHistMatrix(rowsSansHist) {
       if (clearLink) clearLink.addEventListener("click", ev => {
         ev.preventDefault();
         BT_HIST_SELECTION = null;
-        renderBacktest();
+        propagerFiltreHistorique();
       });
     } else {
       actifEl.style.display = "none";
@@ -5068,7 +5128,7 @@ function renderHistMatrix(rowsSansHist) {
     const [dom, ext] = key.split("|");
     BT_HIST_SELECTION = (BT_HIST_SELECTION && BT_HIST_SELECTION.dom === dom && BT_HIST_SELECTION.ext === ext)
       ? null : {dom, ext};
-    renderBacktest();
+    propagerFiltreHistorique();
   });
 })();
 
