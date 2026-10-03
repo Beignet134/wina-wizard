@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261003172151">
+<link rel="stylesheet" href="style.css?v=20261003175830">
 </head>
 <body>
 <div class="topbar">
@@ -1040,6 +1040,10 @@
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Paramètres de la simulation</h2>
       <div class="controls">
         <div class="field">
+          <label for="mcBkDepart">Bankroll de départ (€)</label>
+          <input type="number" id="mcBkDepart" value="100" min="0" step="10">
+        </div>
+        <div class="field">
           <label for="mcN">Nombre de trajectoires simulées</label>
           <select id="mcN">
             <option value="500">500 (rapide)</option>
@@ -1049,37 +1053,53 @@
           </select>
         </div>
         <div class="field">
-          <label for="mcStrategie">Stratégie de mise</label>
-          <select id="mcStrategie">
-            <option value="fixe" selected>Montant fixe par pari</option>
-            <option value="kelly">Kelly (fraction de bankroll, compose)</option>
-          </select>
-        </div>
-        <div class="field" id="mcFixeWrap">
-          <label for="mcMontantFixe">Montant fixe (€)</label>
-          <input type="number" id="mcMontantFixe" value="10" min="0" step="1">
-        </div>
-        <div class="field" id="mcKellyWrap" style="display:none">
-          <label for="mcKellyFrac">Fraction de Kelly</label>
-          <select id="mcKellyFrac">
-            <option value="0.125">Kelly 1/8 (très prudent)</option>
-            <option value="0.25" selected>Kelly 1/4 (recommandé)</option>
-            <option value="0.5">Kelly 1/2 (agressif)</option>
-            <option value="1">Kelly entier (déconseillé)</option>
+          <label for="mcHorizon">Horizon de la simulation</label>
+          <select id="mcHorizon">
+            <option value="hist" selected>Historique actuel (<span id="mcHorizonHistNb">—</span> jours)</option>
+            <option value="30">30 jours</option>
+            <option value="60">60 jours</option>
+            <option value="90">90 jours (≈ 3 mois)</option>
+            <option value="180">180 jours (≈ 6 mois)</option>
           </select>
         </div>
       </div>
-      <p class="muted" id="mcKellyNote" style="display:none; margin:0 0 .4rem; font-size:.82rem">
-        La bankroll compose réellement d'un pari au suivant, dans l'ordre chronologique de
-        l'historique — comme la simulation d'exposition de la page Bankroll, mais rejouée des
-        milliers de fois avec un résultat différent à chaque fois plutôt qu'une seule fois avec le
-        résultat réel.
-      </p>
-      <p class="muted" style="margin:0 0 .9rem; font-size:.82rem">
-        Bankroll de départ : <strong id="mcDepartAff">—</strong> (réglage partagé avec la page
-        Bankroll) · Paris rejoués à chaque trajectoire : <strong id="mcNbParis">—</strong>, ceux qui
-        correspondent actuellement aux filtres de la page « DC rétrospectif » — change-les là-bas
-        pour restreindre la simulation à une catégorie, une période ou un edge minimum précis.
+
+      <div class="field mc-strat-field">
+        <label id="mcStratLabel">Stratégies à comparer <span class="hint">— cochées = superposées sur le même graphique</span></label>
+        <div class="mc-strat-list" role="group" aria-labelledby="mcStratLabel">
+          <div class="mc-strat-row">
+            <label class="mc-strat-check"><input type="checkbox" id="mcCmpFixe" checked><span class="mc-strat-dot" data-c="gold"></span>Montant fixe</label>
+            <input type="number" id="mcCmpFixeMontant" value="10" min="0" step="1" class="mc-strat-param" aria-label="Montant fixe en euros"><span class="mc-strat-unit">€/pari</span>
+          </div>
+          <div class="mc-strat-row">
+            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK8"><span class="mc-strat-dot" data-c="dim"></span>Kelly 1/8 <span class="muted">(très prudent)</span></label>
+          </div>
+          <div class="mc-strat-row">
+            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK4" checked><span class="mc-strat-dot" data-c="violet"></span>Kelly 1/4 <span class="muted">(recommandé)</span></label>
+          </div>
+          <div class="mc-strat-row">
+            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK2" checked><span class="mc-strat-dot" data-c="cyan"></span>Kelly 1/2 <span class="muted">(agressif)</span></label>
+          </div>
+          <div class="mc-strat-row">
+            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK1"><span class="mc-strat-dot" data-c="coral"></span>Kelly entier <span class="muted">(déconseillé)</span></label>
+          </div>
+        </div>
+        <p class="muted" style="margin:.5rem 0 0; font-size:.82rem">
+          Chaque stratégie Kelly compose réellement d'un pari au suivant (fraction de la bankroll
+          du moment), comme la simulation d'exposition de la page Bankroll — mais toutes les
+          stratégies cochées rejouent <strong>exactement le même monde simulé</strong> à chaque
+          trajectoire (mêmes journées, mêmes résultats gagné/perdu tirés au sort) : seule la mise
+          change d'une stratégie à l'autre, pour que les écarts observés viennent du réglage de
+          mise, pas d'un hasard de tirage différent.
+        </p>
+      </div>
+
+      <p class="muted" style="margin:.7rem 0 .9rem; font-size:.82rem">
+        Bankroll de départ : <strong id="mcDepartAff">—</strong> (champ ci-dessus, synchronisé avec
+        la page Bankroll) · Paris observés dans l'historique filtré : <strong id="mcNbParis">—</strong>
+        sur <strong id="mcNbJoursHist">—</strong> jours, ceux qui correspondent actuellement aux
+        filtres de la page « DC rétrospectif » — change-les là-bas pour restreindre la simulation à
+        une catégorie, une période ou un edge minimum précis. <span id="mcHorizonAff"></span>
       </p>
       <button type="button" id="mcRelancer" class="btn btn-primary">🎲 Relancer la simulation</button>
       <span class="muted" id="mcCalcTime" style="margin-left:.7rem; font-size:.8rem"></span>
@@ -1091,70 +1111,72 @@
     </p>
 
     <div id="mcResults">
-      <div class="scoreboard">
-        <div class="scoreboard-head">
-          <span class="eyebrow">Sur <span id="mcNTraj">—</span> trajectoires simulées</span>
-        </div>
-        <div class="score-tiles">
-          <div class="score-tile">
-            <div class="st-label">Bankroll finale médiane</div>
-            <div class="st-value" id="mcMediane">—</div>
-            <div class="st-sub">50ᵉ percentile</div>
-          </div>
-          <div class="score-tile">
-            <div class="st-label">Pire cas plausible</div>
-            <div class="st-value" id="mcP5">—</div>
-            <div class="st-sub">5ᵉ percentile — 1 trajectoire sur 20 fait pire</div>
-          </div>
-          <div class="score-tile">
-            <div class="st-label">Meilleur cas plausible</div>
-            <div class="st-value" id="mcP95">—</div>
-            <div class="st-sub">95ᵉ percentile — 1 trajectoire sur 20 fait mieux</div>
-          </div>
-          <div class="score-tile">
-            <div class="st-label">Probabilité de finir en perte</div>
-            <div class="st-value" id="mcProbaPerte">—</div>
-            <div class="st-sub">bankroll finale &lt; bankroll de départ</div>
-          </div>
-          <div class="score-tile">
-            <div class="st-label">Probabilité de ruine</div>
-            <div class="st-value" id="mcProbaRuine">—</div>
-            <div class="st-sub" id="mcRuineSub">bankroll tombée à 0 à un moment</div>
-          </div>
-          <div class="score-tile">
-            <div class="st-label">Pire creux typique</div>
-            <div class="st-value" id="mcDrawdown">—</div>
-            <div class="st-sub">perte temporaire médiane depuis un sommet</div>
-          </div>
+      <div class="panel" id="mcCmpPanel">
+        <h2><span class="eyebrow">Sur <span id="mcNTraj">—</span> trajectoires simulées</span></h2>
+        <div class="tablewrap table-scroll">
+          <table class="mc-cmp-table">
+            <thead>
+              <tr>
+                <th scope="col">Stratégie</th>
+                <th scope="col" class="num">Mise totale <span class="hint">moyenne</span></th>
+                <th scope="col" class="num">Bankroll médiane</th>
+                <th scope="col" class="num">Pire cas <span class="hint">P5</span></th>
+                <th scope="col" class="num">Meilleur cas <span class="hint">P95</span></th>
+                <th scope="col" class="num">P(perte)</th>
+                <th scope="col" class="num">P(ruine)</th>
+                <th scope="col" class="num">Creux typique</th>
+              </tr>
+            </thead>
+            <tbody id="mcCmpBody"></tbody>
+          </table>
         </div>
       </div>
 
+      <div class="panel" id="mcPctPanel">
+        <h2>Explorer un percentile précis <span class="hint">— au-delà de P5 / médiane / P95 seulement</span></h2>
+        <div class="mc-pct-slider-row">
+          <input type="range" id="mcPctSlider" class="mc-pct-slider" min="1" max="99" value="50" step="1" aria-label="Percentile à explorer">
+          <div class="mc-pct-readout">Au <strong id="mcPctVal">50</strong><sup>e</sup> percentile</div>
+        </div>
+        <div id="mcPctResult" class="mc-pct-rows"></div>
+        <p class="muted" style="margin:.6rem 0 0; font-size:.8rem">
+          Lecture : au 10ᵉ percentile, 90 % des trajectoires simulées ont fait mieux que le chiffre
+          affiché pour cette stratégie — utile pour voir « le mauvais scénario mais pas le pire »
+          plutôt que seulement le P5 du tableau ci-dessus, ou pour comparer deux stratégies à un
+          même rang de la distribution plutôt qu'à un rang fixe arbitraire.
+        </p>
+      </div>
+
       <div class="panel">
-        <h2>Fourchette des trajectoires possibles <span class="hint">— même historique, résultats tirés au hasard</span></h2>
+        <h2>Fourchette des trajectoires possibles <span class="hint" id="mcFanHint">— même historique, résultats tirés au hasard</span></h2>
         <details class="chart-help" style="margin:-.3rem 0 .9rem">
           <summary class="muted" style="cursor:pointer; font-size:.85rem">Comment lire ce graphique ?</summary>
           <p class="muted" style="margin:.5rem 0 0; font-size:.85rem">
-            Chaque trajectoire simulée rejoue les mêmes paris, dans le même ordre, mais avec un
-            résultat gagné/perdu tiré au hasard à chaque fois selon la probabilité du modèle. La
-            bande large (claire) couvre 90 % des trajectoires simulées, entre le 5ᵉ et le 95ᵉ
-            percentile ; la bande centrale (plus soutenue) couvre 50 % d'entre elles, entre le 25ᵉ
-            et le 75ᵉ percentile. La ligne pleine est la trajectoire médiane. Plus la bande est
-            large à un point donné, plus le résultat à ce stade est incertain — elle s'élargit
-            presque toujours avec le nombre de paris joués, ce qui est normal : le hasard s'accumule
-            avec le temps, même quand le modèle a un vrai avantage.
+            Chaque trajectoire simulée tire un résultat gagné/perdu au hasard pour chaque pari selon
+            la probabilité du modèle — et, si l'horizon dépasse l'historique réel, pioche aussi des
+            journées entières au hasard parmi celles déjà observées (avec remise) pour prolonger la
+            série. Une ligne par stratégie cochée ci-dessus : c'est la trajectoire <strong>médiane</strong>
+            (50ᵉ percentile) de cette stratégie, toutes calculées sur les mêmes journées et les mêmes
+            résultats tirés au sort à chaque trajectoire — seule la mise diffère d'une ligne à
+            l'autre. Le tableau au-dessus donne la fourchette complète (P5 à P95) que la courbe seule
+            ne montre pas.
           </p>
         </details>
         <div id="mcFanWrap"></div>
       </div>
 
       <div class="panel">
-        <h2>Distribution des résultats finaux <span class="hint">— où retombent les 2 000 trajectoires ?</span></h2>
+        <h2>Distribution des résultats finaux <span class="hint">— une stratégie par colonne</span></h2>
         <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
           Répartition du gain net final (bankroll finale − bankroll de départ) sur l'ensemble des
-          trajectoires simulées, en tranches égales. La hauteur d'une barre est le nombre de
-          trajectoires tombées dans cette tranche.
+          trajectoires simulées, en tranches égales. Chaque colonne a sa propre échelle horizontale
+          (1ᵉʳ au 99ᵉ percentile de sa propre distribution) : une stratégie qui compose peut avoir
+          une poignée de trajectoires extrêmes des ordres de grandeur au-dessus des autres — avec
+          une échelle commune, elles écraseraient toutes les barres dans la première tranche. Le
+          nombre de trajectoires hors du cadre affiché est indiqué sous chaque histogramme plutôt
+          que masqué ; pour comparer les stratégies entre elles, voir le tableau ci-dessus.
         </p>
-        <div id="mcHistWrap"></div>
+        <div id="mcHistGrid" class="mc-hist-grid"></div>
       </div>
 
       <p class="muted" id="mcVerdict" style="margin:.2rem 0 1.5rem; font-size:.9rem"></p>
@@ -1715,8 +1737,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261003172212"></script>
-<script src="app.js?v=20261003172151"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261003175847"></script>
+<script src="app.js?v=20261003175830"></script>
 </body>
 </html>
-
