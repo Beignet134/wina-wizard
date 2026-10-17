@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261017173333">
+<link rel="stylesheet" href="style.css?v=20261017184752">
 </head>
 <body>
 <div class="topbar">
@@ -509,6 +509,12 @@
               </div>
               <div class="msel-options" id="btLigueOptions"><!-- peuplé en JS, voir initMeta() --></div>
             </div>
+          </div>
+        </div>
+        <div class="field">
+          <label id="btExclSelLabel">Sélections nationales</label>
+          <div class="chk-group" title="Ligue des Nations, qualifications, amicaux internationaux… Peu de matchs d'historique par équipe : le modèle y est moins fiable. Réglage commun avec « Paris à venir ».">
+            <label class="chk-cat"><input type="checkbox" id="btExclSel" aria-label="Exclure les sélections nationales" checked><span>Exclure les sélections</span></label>
           </div>
         </div>
         <div class="slider-pair-row">
@@ -1249,6 +1255,12 @@
             </div>
           </div>
         </div>
+        <div class="field">
+          <label id="uExclSelLabel">Sélections nationales</label>
+          <div class="chk-group" title="Ligue des Nations, qualifications, amicaux internationaux… Peu de matchs d'historique par équipe : le modèle y est moins fiable. Réglage commun avec « DC rétrospectif ».">
+            <label class="chk-cat"><input type="checkbox" id="uExclSel" aria-label="Exclure les sélections nationales" checked><span>Exclure les sélections</span></label>
+          </div>
+        </div>
         <div class="slider-pair-row">
           <div class="field field-wide">
             <label for="uCoteMin">Plage de cotes</label>
@@ -1743,7 +1755,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261017173401"></script>
-<script src="app.js?v=20261017173333"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261017184812"></script>
+<script src="app.js?v=20261017184752"></script>
 </body>
 </html>
