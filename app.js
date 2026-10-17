@@ -4049,6 +4049,51 @@ function initBacktestSectionNav() {
   measureOffsets();
 }
 
+// Pourquoi une catégorie demandée n'affiche-t-elle aucun pari ? Deux causes
+// très différentes que l'écran confondait jusqu'ici (le tableau « Par
+// catégorie » ne listait que les catégories ayant au moins une ligne APRÈS
+// filtres, et le message de page vide parlait seulement de collecte) :
+//   - aucune ligne dans le test DC lui-même : sur les matchs testés, le
+//     modèle n'a retenu aucun pari de ce marché (historique insuffisant,
+//     écart avec le marché trop faible, cotes non collectées...) ;
+//   - des lignes existent mais les filtres actifs les écartent toutes.
+// Ajouté le 17/10/2026 après un cas réel (« Les 2 équipes marquent » :
+// 143 paris dans l'onglet Rétrospectif, aucun visible ici, sans moyen de
+// savoir lequel des deux cas s'appliquait). Renvoie un élément par catégorie
+// demandée (cochée, ou toutes si rien n'est coché) sans aucune ligne dans
+// rowsFiltrees.
+function categoriesSansPari(rowsFiltrees) {
+  const demandees = categoriesCochees("bt") || CATEGORIES_DC;
+  const presentes = new Set(rowsFiltrees.map(r => r.categorie));
+  const bornesMvt = mvtBornesActives("bt");
+  return demandees.filter(c => !presentes.has(c)).map(c => {
+    const lignes = BT_ROWS.filter(r => r.categorie === c);
+    return {
+      cat: c,
+      total: lignes.length,
+      // Le filtre « Mouvement de la cote » écarte SILENCIEUSEMENT toute
+      // ligne dont le mouvement n'a pas pu être mesuré (voir passeMvt) —
+      // cause plausible pour un marché récemment ajouté à la collecte, dont
+      // la première capture d'un match peut précéder l'ajout du marché.
+      sansMvt: bornesMvt.actif ? lignes.filter(r => r.raccourcit === undefined).length : 0,
+    };
+  });
+}
+function texteCategorieSansPari(x) {
+  if (!x.total) {
+    return `aucune ligne dans le test DC : sur les matchs testés, le modèle n'a retenu `
+      + `aucun pari de ce marché (historique d'équipe insuffisant, écart avec le marché `
+      + `inférieur à ${(MIN_EDGE * 100).toFixed(0)} %, ou cotes non collectées). `
+      + `Vos filtres n'y sont pour rien.`;
+  }
+  let t = `${x.total} ligne(s) dans le test DC, toutes écartées par les filtres actifs`;
+  if (x.sansMvt) {
+    t += ` — dont ${x.sansMvt} sans mouvement de cote mesuré (filtre « Mouvement de la cote » `
+      + `actif : élargissez-le à ±20 pour les inclure)`;
+  }
+  return t + ".";
+}
+
 function renderBacktest() {
   // Les agrégats sont recalculés sur l'ensemble filtré : la déduplication
   // change n, ROI, réussite... on ne peut donc pas réutiliser les totaux
@@ -4136,13 +4181,26 @@ function renderBacktest() {
     $("btMatches").textContent = "—";
     $("btNbSub").textContent = "—";
     $("btClvSub").textContent = "—";
-    $("btCatBody").innerHTML = '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>';
+    // Données présentes mais tout est filtré (≠ test réellement vide) : on
+    // explique catégorie par catégorie ce qui se passe, au lieu d'annoncer
+    // « se remplira au fil de la collecte » qui est faux dans ce cas.
+    const sansPariVide = BT_ROWS.length ? categoriesSansPari(rowsFiltrees) : [];
+    const ligneSansPari = x => `<tr><td colspan="7" class="muted"><strong>${x.cat}</strong> — 0 pari : ${texteCategorieSansPari(x)}</td></tr>`;
+    $("btCatBody").innerHTML = sansPariVide.length
+      ? sansPariVide.map(ligneSansPari).join("")
+      : '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>';
     $("btBody").innerHTML = '<tr><td colspan="9" class="muted">Pas encore de données.</td></tr>';
     empty.style.display = "block";
-    empty.textContent = "Aucun match récent ne dispose à la fois de cotes capturées, d'un résultat connu et d'un historique suffisant. Ce test se remplira au fil de la collecte quotidienne.";
+    if (BT_ROWS.length) {
+      empty.innerHTML = "<strong>Aucun pari ne correspond aux filtres actuels.</strong>"
+        + sansPariVide.map(x => `<br>• ${x.cat} : ${texteCategorieSansPari(x)}`).join("");
+    } else {
+      empty.textContent = "Aucun match récent ne dispose à la fois de cotes capturées, d'un résultat connu et d'un historique suffisant. Ce test se remplira au fil de la collecte quotidienne.";
+    }
     // Vide aussi les graphiques : mieux vaut un message clair qu'un reste
     // d'affichage qui laisserait croire à des données disponibles.
-    ["btCalibWrap", "btCoteWrap", "btEvoWrap"].forEach(id => {
+    parJourDernier = null;
+    ["btCalibWrap", "btCoteWrap", "btEvoWrap", "btJourWrap"].forEach(id => {
       const w = $(id);
       if (w) w.innerHTML = '<p class="muted">En attente de données.</p>';
     });
@@ -4304,7 +4362,14 @@ function renderBacktest() {
       <td data-label="Net" class="num ${cnet>=0?'pos':'neg'}">${fmtEur(cnet)}</td>
       <td data-label="Verdict">${catBadgeHtml(c, verdictsFiltres, "filtres DC du tableau")}</td>
     </tr>`;
-  }).join("") || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
+  }).join("")
+    // Catégories demandées mais sans aucune ligne après filtres : listées
+    // en fin de tableau avec la raison, plutôt que d'être absentes sans un
+    // mot (voir categoriesSansPari).
+    + categoriesSansPari(rowsFiltrees)
+        .map(x => `<tr><td colspan="7" class="muted"><strong>${x.cat}</strong> — 0 pari : ${texteCategorieSansPari(x)}</td></tr>`)
+        .join("")
+    || '<tr><td colspan="7" class="muted">Aucune catégorie.</td></tr>';
 
   renderLigueComparaison(rowsFiltrees);
   renderTypeMatchComparaison(rowsFiltrees);
@@ -4319,6 +4384,7 @@ function renderBacktest() {
   drawParCote();
   drawShotsAnalysis();
   drawEvolution();
+  drawParJour(rowsFiltrees);
 }
 
 // Sous ce seuil de paris, le ROI d'une ligue est trop bruité pour se
@@ -6321,6 +6387,230 @@ function drawEvolution() {
   hit.addEventListener("touchmove", onMove, {passive:true});
   hit.addEventListener("touchend", hide);
 }
+
+// ---------------------------------------------------------------------------
+// Histogramme « paris par jour » (DC rétrospectif)
+//
+// Compte les paris des lignes DÉJÀ filtrées (mêmes filtres, même
+// déduplication « Paris liés » que le KPI « Paris » : la somme des barres
+// égale ce KPI). L'axe est calendaire et continu — les jours sans aucun pari
+// restent visibles comme des creux, ils ne sont pas supprimés : un trou dans
+// la collecte ou une série de jours sans valeur se lit tout de suite.
+//
+// Barres en HTML plutôt qu'en SVG étiré : les libellés gardent leur taille
+// quel que soit l'écran, et la largeur d'une barre est plafonnée (24 px)
+// pour qu'une période courte ne donne pas de gros pavés. Au-delà de
+// 240 jours d'étendue, on regroupe par semaine (sinon les barres feraient
+// moins de 3 px) et la légende le dit.
+// ---------------------------------------------------------------------------
+let parJourDernier = null;   // dernières lignes tracées : pour redessiner si la largeur change
+let parJourLargeur = 0;
+const JOURS_FR_COURTS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+
+// 'YYYY-MM-DD' -> nombre de jours depuis 1970 (UTC : pas de décalage d'heure d'été)
+function numeroJour(dateIso) {
+  const m = String(dateIso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000) : null;
+}
+function dateDuJour(n) { return new Date(n * 86400000).toISOString().slice(0, 10); }
+function fmtJourComplet(dateIso) {
+  const n = numeroJour(dateIso);
+  const [a, m, j] = dateIso.split("-");
+  return `${JOURS_FR_COURTS[new Date(n * 86400000).getUTCDay()]} ${j}/${m}/${a}`;
+}
+
+// Pas "rond" (1, 2, 5, 10, 20, 50...) donnant au plus 4 intervalles.
+function pasGraduationEntier(max) {
+  const candidats = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+  return candidats.find(c => Math.ceil(max / c) <= 4) || Math.max(1, max);
+}
+
+function drawParJour(rows) {
+  const wrap = $("btJourWrap");
+  if (!wrap) return;
+  parJourDernier = rows;
+  parJourLargeur = wrap.clientWidth || 0;
+
+  const datees = (rows || []).filter(r => numeroJour(r.date) !== null);
+  if (!datees.length) {
+    wrap.innerHTML = '<p class="muted">Aucun pari à répartir par jour avec ces filtres.</p>';
+    return;
+  }
+
+  const nums = datees.map(r => numeroJour(r.date));
+  const dMin = arrMin(nums), dMax = arrMax(nums);
+  const etendue = dMax - dMin + 1;
+  const pas = etendue <= 240 ? 1 : 7;                 // 1 jour, ou 1 semaine si la période est très longue
+  const unite = pas === 1 ? "jour" : "semaine";
+  const nb = Math.ceil(etendue / pas);
+  const gap = nb > 120 ? 1 : 2;
+
+  const seaux = Array.from({length: nb}, () => ({n: 0, gagnes: 0, profit: 0, cats: {}}));
+  datees.forEach(r => {
+    const s = seaux[Math.floor((numeroJour(r.date) - dMin) / pas)];
+    s.n++;
+    if (r.gagne) s.gagnes++;
+    s.profit += Number(r.profit) || 0;
+    s.cats[r.categorie] = (s.cats[r.categorie] || 0) + 1;
+  });
+
+  const total = datees.length;
+  const maxN = arrMax(seaux.map(s => s.n));
+  const nbVides = seaux.filter(s => !s.n).length;
+  const iPic = seaux.findIndex(s => s.n === maxN);
+  const nbPics = seaux.filter(s => s.n === maxN).length;
+  const pasY = pasGraduationEntier(maxN);
+  const yMax = Math.max(pasY, Math.ceil(maxN / pasY) * pasY);
+
+  // Libellé d'un seau : un jour, ou « du … au … » pour une semaine.
+  const debutSeau = i => dMin + i * pas;
+  const finSeau = i => Math.min(dMin + i * pas + pas - 1, dMax);
+  const libelleSeau = i => pas === 1
+    ? fmtJourComplet(dateDuJour(debutSeau(i)))
+    : `du ${fmtChartDate(dateDuJour(debutSeau(i)))} au ${fmtChartDate(dateDuJour(finSeau(i)))}`;
+  const avecAnnee = etendue > 330;
+  const libelleCourt = i => {
+    const d = dateDuJour(debutSeau(i));
+    return avecAnnee ? `${fmtChartDate(d)}/${d.slice(2, 4)}` : fmtChartDate(d);
+  };
+
+  // Graduations horizontales (le 0 fait office de ligne de base)
+  let grille = "";
+  for (let t = 0; t <= yMax; t += pasY) {
+    grille += `<div class="jour-grid${t === 0 ? " is-base" : ""}" style="bottom:${(t / yMax * 100).toFixed(2)}%"></div>
+      <span class="jour-ytick" style="bottom:${(t / yMax * 100).toFixed(2)}%">${t}</span>`;
+  }
+
+  // Libellés de dates : espacés d'au moins ~50 px. La largeur n'est connue que
+  // si l'onglet est visible ; sinon on suppose 900 px (un ResizeObserver
+  // redessine dès que la vraie largeur apparaît).
+  const largeurPlot = Math.max(120, (wrap.clientWidth || 900) - 48);
+  const pitch = Math.min(24 + gap, (largeurPlot + gap) / nb);
+  // Période courte : les barres (plafonnées à 24 px) n'occupent que le début
+  // de la largeur. On resserre alors le cadre sur elles plutôt que de tendre
+  // la grille sur une moitié de panneau vide.
+  const largeurNaturelle = nb * (24 + gap) - gap;
+  const stepLib = Math.max(1, Math.ceil(50 / pitch));
+  const idxLib = new Set();
+  for (let i = 0; i < nb; i += stepLib) idxLib.add(i);
+  const dernier = Array.from(idxLib).pop();
+  if (dernier !== nb - 1 && (nb - 1 - dernier) >= Math.ceil(stepLib * 0.75)) idxLib.add(nb - 1);
+
+  const colonnes = seaux.map((s, i) => {
+    const h = s.n ? Math.max(1.5, s.n / yMax * 100) : 0;
+    const bar = s.n ? `<div class="jour-bar" style="height:${h.toFixed(2)}%"></div>` : "";
+    // Valeur écrite seulement sur le pic (jamais un chiffre sur chaque barre)
+    const pic = (s.n === maxN && nbPics <= 3)
+      ? `<span class="jour-peak" style="bottom:calc(${h.toFixed(2)}% + 3px)">${s.n}</span>` : "";
+    const lib = idxLib.has(i) ? `<span class="jour-xtick">${libelleCourt(i)}</span>` : "";
+    return `<div class="jour-col">${bar}${pic}${lib}</div>`;
+  }).join("");
+
+  const plur = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const resume = `${plur(total, "pari")} sur ${plur(nb, unite)} `
+    + `(du ${fmtChartDate(dateDuJour(dMin))} au ${fmtChartDate(dateDuJour(dMax))})`
+    + `${nbVides ? ` dont ${nbVides} sans aucun pari` : ""} · moyenne ${(total / nb).toFixed(1).replace(".", ",")} par ${unite}`
+    + ` · pic : ${maxN} ${pas === 1 ? "le" : "la semaine"} ${pas === 1 ? fmtChartDate(dateDuJour(debutSeau(iPic))) : libelleSeau(iPic)}`
+    + `${nbPics > 1 ? ` (et ${nbPics - 1} autre${nbPics > 2 ? "s" : ""})` : ""}`;
+
+  // Version tableau (accessibilité + lecture exacte), du plus récent au plus ancien
+  const lignesTab = seaux.map((s, i) => ({s, i})).filter(x => x.s.n).reverse().map(({s, i}) => `
+    <tr><td>${libelleSeau(i)}</td><td class="num">${s.n}</td>
+      <td class="num">${s.gagnes} / ${s.n - s.gagnes}</td>
+      <td class="num ${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</td></tr>`).join("");
+
+  wrap.innerHTML = `
+    <div class="jour-chart">
+      <div class="jour-plot" style="${largeurNaturelle < largeurPlot ? `width:${largeurNaturelle}px;max-width:calc(100% - 50px)` : ""}"
+           role="img" aria-label="Histogramme du nombre de paris par ${unite} : ${resume}">
+        ${grille}
+        <div class="jour-bars" style="gap:${gap}px">${colonnes}</div>
+      </div>
+      <div class="chart-tooltip" hidden></div>
+    </div>
+    <p class="muted" style="margin:.2rem 0 0;font-size:.8rem">${resume}.</p>
+    <p class="muted" style="margin:.3rem 0 0;font-size:.78rem">Compte les paris retenus par les filtres de la page
+      (la somme des barres égale le KPI « Paris »). Les ${unite}s sans barre sont des ${unite}s sans aucun pari.
+      ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
+      Survole une barre pour le détail par catégorie.</p>
+    <details class="chart-help" style="margin:.5rem 0 0">
+      <summary class="muted" style="cursor:pointer;font-size:.82rem">Voir les chiffres ${pas === 1 ? "jour par jour" : "semaine par semaine"}</summary>
+      <div class="jour-table-wrap"><table>
+        <thead><tr><th>${pas === 1 ? "Jour" : "Semaine"}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th><th class="num">Bilan (1 u. par pari)</th></tr></thead>
+        <tbody>${lignesTab}</tbody>
+      </table></div>
+    </details>`;
+
+  // --- Infobulle au survol (barre la plus proche, creux compris) ---
+  const chart = wrap.querySelector(".jour-chart");
+  const barres = chart.querySelector(".jour-bars");
+  const cols = barres.querySelectorAll(".jour-col");
+  const tip = chart.querySelector(".chart-tooltip");
+  let actif = -1;
+
+  function cacher() {
+    if (actif >= 0 && cols[actif]) cols[actif].classList.remove("is-active");
+    actif = -1;
+    tip.hidden = true;
+  }
+
+  function survol(ev) {
+    const rb = barres.getBoundingClientRect();
+    const w0 = cols[0].getBoundingClientRect().width;
+    if (!w0) return;
+    const x = ev.clientX - rb.left;
+    const i = Math.floor(x / (w0 + gap));
+    if (x < 0 || i < 0 || i >= nb) { cacher(); return; }
+    if (i !== actif) {
+      if (actif >= 0) cols[actif].classList.remove("is-active");
+      cols[i].classList.add("is-active");
+      actif = i;
+    }
+    const s = seaux[i];
+    let corps;
+    if (!s.n) {
+      corps = `<div class="tt-date">${libelleSeau(i)}</div><div class="tt-match">Aucun pari</div>`;
+    } else {
+      const parCat = CATEGORIES_DC.filter(c => s.cats[c])
+        .concat(Object.keys(s.cats).filter(c => !CATEGORIES_DC.includes(c)))
+        .map(c => `<div class="tt-row"><span class="muted">${c}</span><span>${s.cats[c]}</span></div>`).join("");
+      corps = `
+        <div class="tt-date">${libelleSeau(i)}</div>
+        <div class="tt-match">${plur(s.n, "pari")}</div>
+        <div class="tt-row"><span>Gagnés / perdus</span>
+          <span><span class="tt-win">${s.gagnes}</span> / <span class="tt-lose">${s.n - s.gagnes}</span></span></div>
+        ${parCat}
+        <div class="tt-cum">Bilan <strong class="${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</strong></div>`;
+    }
+    tip.innerHTML = corps;
+    tip.hidden = false;
+
+    const cr = chart.getBoundingClientRect();
+    const colR = cols[i].getBoundingClientRect();
+    const cx = colR.left - cr.left + colR.width / 2;
+    const tw = tip.offsetWidth || 190;
+    let left = cx + 16;
+    if (left + tw > cr.width) left = cx - tw - 16;
+    tip.style.left = Math.max(4, left) + "px";
+    tip.style.top = Math.max(0, rb.top - cr.top + 4) + "px";
+  }
+
+  barres.addEventListener("pointermove", survol);
+  barres.addEventListener("pointerdown", survol);
+  barres.addEventListener("pointerleave", cacher);
+}
+
+// Redessine l'histogramme si sa largeur change (rotation d'écran, onglet qui
+// devient visible après avoir été tracé à largeur nulle) : le choix des
+// libellés de dates dépend de la place disponible.
+(function () {
+  const wrap = $("btJourWrap");
+  if (!wrap || typeof ResizeObserver === "undefined") return;
+  new ResizeObserver(() => {
+    const w = wrap.clientWidth;
+    if (w && Math.abs(w - parJourLargeur) > 8 && parJourDernier) drawParJour(parJourDernier);
+  }).observe(wrap);
+})();
 
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
