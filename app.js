@@ -317,6 +317,30 @@ function liguesCochees(prefixe) {
   return choisies.length ? new Set(choisies) : null;
 }
 
+// --- Sélections nationales : case « Exclure les sélections nationales » ----
+// Cochée par défaut (17/10/2026) : sur l'export du 17/10, les 25 paris de
+// sélections nationales (Ligue des Nations, qualifications, ...) étaient tous
+// perdus (0 gagné pour ~3 attendus), sur des équipes à historique médian de
+// 8 matchs contre 35 ailleurs. Réglage COMMUN aux pages « DC rétrospectif »
+// (btExclSel) et « Paris à venir » (uExclSel), synchronisées par lierCases().
+// Case absente (ancienne page) = pas de filtre. La détection elle-même est
+// estMatchSelection() (liste de mots-clés, plus bas), mémoïsée ici : les
+// filtres tournent plusieurs fois par rendu sur plusieurs milliers de lignes.
+function selectionsExclues(prefixe) {
+  const boite = $(prefixe + "ExclSel");
+  return !!(boite && boite.checked);
+}
+const CACHE_SELECTION_NATIONALE = new Map();
+function estSelectionNationale(pays, ligue) {
+  const cle = (pays || "") + "\u0001" + (ligue || "");
+  let v = CACHE_SELECTION_NATIONALE.get(cle);
+  if (v === undefined) {
+    v = estMatchSelection(pays, ligue);
+    CACHE_SELECTION_NATIONALE.set(cle, v);
+  }
+  return v;
+}
+
 // --- "Vainqueur du match" : quelles issues pariées inclure -----------------
 // Même principe que liguesCochees ci-dessus (case vide = pas de filtre,
 // jamais d'impasse à zéro résultat), mais sur les 3 valeurs fixes homeWin/
@@ -1533,6 +1557,8 @@ function renderUpcoming() {
   const cats = categoriesCochees("u");
   const sortBy = $("uSort").value;
   const ligues = liguesCochees("u");
+  // Sélections nationales écartées (case commune avec « DC rétrospectif »).
+  const exclSel = selectionsExclues("u");
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
   const issuesVm = issuesVmCochees("u");
@@ -1582,6 +1608,7 @@ function renderUpcoming() {
   }).filter(v => {
     if (cats && !cats.includes(v.categorie)) return false;
     if (ligues && !ligues.has(ligueKey(v.pays, v.ligue))) return false;
+    if (exclSel && estSelectionNationale(v.pays, v.ligue)) return false;
     // Edge minimum et plage de cotes : réglage propre à la catégorie DE CE
     // PARI (voir CATEGORIES_DC / idCat / valCat en tête de fichier), lié à
     // son équivalent de la page DC rétrospectif (lierFiltres).
@@ -2057,7 +2084,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -2084,6 +2111,19 @@ function lierFiltres(idA, idB) {
     elA.value = elB.value;
     elA.dispatchEvent(new Event("change"));
   });
+}
+// Même principe que lierFiltres() pour deux CASES À COCHER (propriété
+// "checked" au lieu de "value") : « Exclure les sélections nationales ».
+function lierCases(idA, idB) {
+  const elA = $(idA), elB = $(idB);
+  if (!elA || !elB) return;
+  const relier = (src, dst) => src.addEventListener("change", () => {
+    if (dst.checked === src.checked) return;   // garde anti-boucle
+    dst.checked = src.checked;
+    dst.dispatchEvent(new Event("change"));
+  });
+  relier(elA, elB);
+  relier(elB, elA);
 }
 // --- Curseur double générique (Mouvement de la cote, Plage de cotes) ------
 // Deux <input type="range"> superposés (bornes basse/haute) + deux <input
@@ -2723,6 +2763,7 @@ cablerMenusDeroulants();
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
+lierCases("btExclSel", "uExclSel");
 
 // Mouvement de la cote / Plage de cotes : curseurs doubles indépendants des
 // <select> ci-dessus (deux <input type=range> par borne), synchronisés
@@ -3466,6 +3507,8 @@ function btFiltered(opts) {
   const f = !opts.prospectif && $("btFilter") ? $("btFilter").value : "";
   const cats = opts.sansCategories ? null : categoriesCochees("bt");
   const ligues = liguesCochees("bt");
+  // Sélections nationales écartées (case commune avec « Paris à venir »).
+  const exclSel = selectionsExclues("bt");
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
   const issuesVm = issuesVmCochees("bt");
@@ -3635,6 +3678,7 @@ function btFiltered(opts) {
     if (dateFin && r.date > dateFin) return false;
     if (cats && !cats.includes(r.categorie)) return false;
     if (ligues && !ligues.has(ligueKey(r.pays, r.ligue))) return false;
+    if (exclSel && estSelectionNationale(r.pays, r.ligue)) return false;
     if (f === "won" && !r.gagne) return false;
     if (f === "lost" && r.gagne) return false;
     if (pred === "accord" && r.prediction_accord !== "accord") return false;
@@ -3879,6 +3923,13 @@ function renderBtActiveFilters(rowsFiltrees) {
   if (chosenLeagues.length) {
     const names = chosenLeagues.map(box => box.closest("label")?.querySelector("span")?.textContent.trim() || box.value);
     add("Ligues", names.length <= 2 ? names.join(" · ") : `${names.length} sélectionnées`, names.join(", "));
+  }
+
+  // Actif par défaut : on l'affiche tout de même, c'est un filtre qui retire
+  // des paris sans que rien d'autre à l'écran ne le signale.
+  if (selectionsExclues("bt")) {
+    add("Sélections nationales", "exclues",
+      "Ligue des Nations, qualifications, amicaux internationaux… écartés (décochez « Exclure les sélections nationales » pour les inclure)");
   }
 
   const odds = coteBornesActives("bt");
@@ -6615,7 +6666,7 @@ function drawParJour(rows) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btPred","btCalib","btMise","btDateDebut","btDateFin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
