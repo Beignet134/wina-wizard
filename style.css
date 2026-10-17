@@ -1583,6 +1583,10 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   outline: 2px solid var(--violet);
   outline-offset: 2px;
 }
+/* « .field label » force display:block sur toute étiquette d'un champ, ce qui
+   annule le flex de .chk-cat (case collée au texte). Dans un .chk-group
+   (case « Exclure les sélections nationales »), on le rétablit. */
+.chk-group .chk-cat { display: flex; align-items: center; gap: .6rem; padding: 0; margin: 0; }
 
 /* Le groupe de cases ci-dessus, empilees sur 4 lignes, denotait au milieu
    d'une rangee de champs qui font tous la hauteur d'un seul <select> : bloc
