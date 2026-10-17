@@ -455,6 +455,33 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .chart-tooltip .tt-lose { color: var(--down); font-weight: 600; }
 .chart-tooltip .tt-cum { margin-top: .3rem; padding-top: .3rem; border-top: 1px solid var(--line-soft); font-size: .74rem; color: var(--ink-faint); font-family: var(--font-mono); }
 
+/* Histogramme « paris par jour » (DC rétrospectif).
+   Barres HTML : une colonne par jour (zone de survol pleine hauteur), barre
+   plafonnée à 24 px, arrondie en haut seulement (le pied repose sur la ligne
+   de base), 2 px d'écart entre barres (réglé en JS selon le nombre de jours).
+   Marge gauche = place des graduations ; marge basse = place des dates. */
+.jour-chart { position: relative; }
+.jour-plot { position: relative; height: 190px; margin: 16px 12px 28px 38px; }
+.jour-grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--chart-grid); pointer-events: none; }
+.jour-grid.is-base { border-top-color: var(--line); }
+.jour-ytick, .jour-xtick, .jour-peak {
+  position: absolute; font-family: var(--font-mono); font-size: 10px;
+  font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap;
+}
+.jour-ytick { right: calc(100% + 8px); transform: translateY(50%); color: var(--chart-label); }
+.jour-bars { position: absolute; inset: 0; display: flex; align-items: stretch; justify-content: flex-start; }
+.jour-col { position: relative; flex: 1 1 0; min-width: 0; max-width: 24px; display: flex; align-items: flex-end; }
+.jour-bar { width: 100%; min-height: 3px; background: var(--violet); border-radius: 4px 4px 0 0; transition: filter .12s ease; }
+.jour-col.is-active .jour-bar { filter: brightness(1.25); }
+.jour-xtick { top: calc(100% + 8px); left: 50%; transform: translateX(-50%); color: var(--chart-label); }
+.jour-peak { left: 50%; transform: translateX(-50%); color: var(--ink-dim); font-weight: 600; }
+.jour-table-wrap { max-height: 260px; overflow: auto; margin-top: .5rem; }
+.jour-table-wrap table { width: 100%; }
+.jour-table-wrap th.num, .jour-table-wrap td.num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .jour-plot { height: 150px; margin-left: 30px; }
+}
+
 /* ---------------------------------------------------------------
    Tableaux
    --------------------------------------------------------------- */
