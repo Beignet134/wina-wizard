@@ -478,8 +478,41 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .jour-table-wrap { max-height: 260px; overflow: auto; margin-top: .5rem; }
 .jour-table-wrap table { width: 100%; }
 .jour-table-wrap th.num, .jour-table-wrap td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Sélecteur d'affichage de l'histogramme : nombre de paris / gain par jour /
+   gain cumulé. Trois boutons exclusifs (aria-pressed), cibles tactiles de
+   36 px minimum, retour à la ligne sur petit écran. */
+.jour-modes {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+  margin: 0 0 .35rem; background: var(--night); border: 1px solid var(--line);
+  border-radius: 10px; max-width: 100%;
+}
+.jour-mode {
+  appearance: none; border: 0; background: transparent; color: var(--ink-dim);
+  font: inherit; font-size: .8rem; line-height: 1.2; padding: .4rem .75rem;
+  min-height: 36px; border-radius: 7px; cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.jour-mode:hover { color: var(--ink); background: rgba(128, 175, 255, .08); }
+.jour-mode.is-active {
+  color: #c8e9ff; background: rgba(84, 142, 242, .22);
+  box-shadow: inset 0 0 0 1px rgba(128, 175, 255, .36);
+}
+.jour-mode:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+
+/* Modes « gain » : barres signées autour d'une ligne de zéro. Chaque barre est
+   positionnée en absolu (bas ou haut ancré sur le zéro) ; vert = gain,
+   corail = perte ; le signe se lit aussi à la position (au-dessus / au-dessous
+   du zéro) et dans l'infobulle, jamais à la couleur seule. Marge gauche plus
+   large : les graduations portent un signe et des milliers (« −1 200 »). */
+.jour-plot.is-signed { margin-left: 52px; }
+.jour-bar.is-pos, .jour-bar.is-neg { position: absolute; left: 0; right: 0; width: auto; }
+.jour-bar.is-pos { background: var(--up); border-radius: 4px 4px 0 0; }
+.jour-bar.is-neg { background: var(--down); border-radius: 0 0 4px 4px; }
+.jour-peak.is-neg { transform: translateX(-50%); }
 @media (max-width: 640px) {
   .jour-plot { height: 150px; margin-left: 30px; }
+  .jour-plot.is-signed { margin-left: 44px; }
 }
 
 /* ---------------------------------------------------------------
