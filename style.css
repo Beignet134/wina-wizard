@@ -848,9 +848,12 @@ details.cat-filter-block > summary:hover { color: var(--cyan); }
   background: rgba(129,140,248,.12); color: #c3c8fb; border: 1px solid rgba(129,140,248,.28);
   border-radius: 6px; padding: .22rem .55rem; font-weight: 600; font-size: .84rem; font-family: var(--font-mono);
 }
-.rec .rec-metrics { margin-top: .7rem; display: grid; grid-template-columns: repeat(3,1fr); gap: .45rem; }
-.rec .rec-metric { background: var(--bg-3); border: 1px solid var(--line-soft); border-radius: 6px; padding: .38rem .45rem; text-align: center; }
-.rec .rec-metric .mk { color: var(--ink-faint); font-size: .57rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; white-space: nowrap; }
+/* minmax(0, …) : sans le 0, une valeur large (« -47.4 % » sur une carte à cote
+   saisie) élargit sa colonne et fait déborder la rangée de la carte. La 1re
+   colonne est un peu plus large pour le libellé « PROBA RETENUE ». */
+.rec .rec-metrics { margin-top: .7rem; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: .45rem; }
+.rec .rec-metric { background: var(--bg-3); border: 1px solid var(--line-soft); border-radius: 6px; padding: .38rem .3rem; text-align: center; }
+.rec .rec-metric .mk { color: var(--ink-faint); font-size: .57rem; text-transform: uppercase; letter-spacing: .02em; font-weight: 600; white-space: nowrap; }
 .rec .rec-metric .mv { font-family: var(--font-mono); font-weight: 600; font-size: .86rem; margin-top: .08rem; letter-spacing: -.03em; white-space: nowrap; }
 
 /* Case "Pari joué" : en pied de carte, pour ne pas gêner l'en-tête.
@@ -1504,6 +1507,49 @@ footer { margin-top: 3rem; color: var(--ink-faint); font-size: .76rem; text-alig
   font-size: .78rem; color: var(--ink-dim);
 }
 .rec-kelly strong { color: var(--violet); font-family: var(--font-mono); }
+
+/* Cote saisie à la main (cartes de « Paris à venir »).
+   Le crayon reste discret tant qu'on n'en a pas besoin ; une cote saisie
+   passe en or (couleur « à vérifier ») avec l'ancienne cote barrée, et une
+   carte qui ne passe plus les filtres prend la couleur des pertes. */
+.rec .cote-zone { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+.rec .cote-val { font-family: var(--font-mono); }
+.rec .cote-saisie { color: var(--gold); }
+.rec .cote-capturee { color: var(--ink-faint); font-family: var(--font-mono); font-size: .8rem; }
+.rec .cote-badge {
+  font-size: .6rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+  color: var(--gold); border: 1px solid rgba(244,192,103,.4); border-radius: 4px; padding: .06rem .3rem;
+}
+.rec .cote-btn {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: transparent; border: 1px solid var(--line); color: var(--ink-dim);
+  border-radius: 6px; font: inherit; font-size: .7rem; line-height: 1;
+  padding: .3rem .42rem; cursor: pointer; min-height: 1.6rem;
+  transition: color .15s, border-color .15s;
+}
+.rec .cote-btn:hover { color: var(--ink); border-color: var(--violet-lo); }
+.rec .cote-btn:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.rec .cote-btn svg { flex: none; }
+.rec .cote-input {
+  width: 4.6rem; background: var(--bg-3); color: var(--ink);
+  border: 1px solid var(--violet-lo); border-radius: 6px;
+  padding: .28rem .45rem; font-family: var(--font-mono); font-size: .86rem;
+}
+.rec .cote-input:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.rec .cote-input[aria-invalid="true"] { border-color: var(--coral); }
+.rec .cote-msg { flex-basis: 100%; font-size: .7rem; color: var(--ink-faint); line-height: 1.35; }
+.rec .cote-msg.erreur { color: var(--coral); }
+.rec-cotemini { margin-top: .4rem; font-size: .74rem; color: var(--ink-faint); }
+.rec-cotemini strong { color: var(--ink-dim); font-family: var(--font-mono); }
+.rec.hors-filtres { border-color: rgba(255,113,133,.55); }
+.rec.hors-filtres::before { background: var(--coral); }
+.rec.hors-filtres .cote-val { color: var(--coral); }
+.rec-alerte {
+  margin-top: .6rem; padding: .5rem .6rem; border-radius: 8px;
+  background: rgba(255,113,133,.10); border: 1px solid rgba(255,113,133,.35);
+  color: var(--ink); font-size: .78rem; line-height: 1.4;
+}
+.rec-alerte strong { color: var(--coral); display: block; }
 
 /* Type de pari : selection multiple par cases a cocher, en remplacement
    d'une liste deroulante qui n'autorisait qu'un seul choix. */
