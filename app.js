@@ -1540,6 +1540,157 @@ function renderPlacedExport() {
   ta.value = JSON.stringify(Object.fromEntries(PLACED), null, 1);
 }
 
+/* ============================================================
+   COTE SAISIE À LA MAIN (page « Paris à venir »)
+   ------------------------------------------------------------
+   Les cotes affichées datent de la dernière capture ; au moment de
+   parier, celle de Winamax a pu bouger. Une cote qui raccourcit fait
+   fondre l'edge et l'espérance, et un pari qui passait les filtres peut
+   ne plus les passer sans que rien ne l'indique.
+
+   Chaque carte permet donc de saisir la cote réelle. Tout ce qui dépend
+   de la cote est alors recalculé (avecCote) AVANT le pipeline habituel
+   (calibration, xG, binomiale négative, mélange avec le marché, filtres,
+   Kelly) : une cote saisie traverse exactement les mêmes calculs qu'une
+   cote capturée. Seule la probabilité du modèle, qui ne dépend pas de la
+   cote, reste inchangée.
+
+   Choix de conception :
+   - La probabilité du marché dévigué suppose que la MARGE du marché reste
+     la même (seule cette cote est connue, pas le reste du marché) : c'est
+     une approximation, qui n'affecte que l'edge dévigué.
+   - Une carte dont la cote saisie ne passe plus les seuils (edge,
+     espérance, plage de cotes, mouvement) n'est PAS retirée de la grille :
+     elle reste, en rouge, avec le motif — c'est justement ce qu'on veut
+     voir au moment de parier. Elle sort en revanche des totaux.
+   - Les cotes saisies sont retenues dans ce navigateur (localStorage),
+     liées à la génération des données : à la mise à jour suivante, les
+     captures sont plus récentes que la saisie, elles sont donc effacées.
+   ============================================================ */
+const COTES_MANUELLES_LS_KEY = "wina_cotes_manuelles_v1";
+const COTE_MANUELLE_MIN = 1.01;
+const COTE_MANUELLE_MAX = 1000;
+const UPCOMING_PAR_CLE = new Map(UPCOMING.map(v => [betKey(v), v]));
+const COTES_MANUELLES = new Map();   // clé du pari -> cote saisie
+
+(function chargerCotesManuelles() {
+  try {
+    const brut = localStorage.getItem(COTES_MANUELLES_LS_KEY);
+    if (!brut) return;
+    const o = JSON.parse(brut);
+    // Nouvelle génération des données : captures plus récentes que la saisie.
+    if (!o || o.gen !== (WIZARD_DATA.generated_iso || "")) {
+      localStorage.removeItem(COTES_MANUELLES_LS_KEY);
+      return;
+    }
+    Object.entries(o.items || {}).forEach(([cle, it]) => {
+      const v = UPCOMING_PAR_CLE.get(cle);
+      if (!v || !it || !isFinite(it.cote) || !isFinite(it.orig)) return;
+      if (Math.abs(v.cote - it.orig) > 0.005) return;            // cote capturée différente : périmé
+      if (it.cote < COTE_MANUELLE_MIN || it.cote > COTE_MANUELLE_MAX) return;
+      if (Math.abs(it.cote - v.cote) < 0.005) return;            // identique à la capture : rien à retenir
+      COTES_MANUELLES.set(cle, it.cote);
+    });
+  } catch (e) {
+    // storage indisponible ou JSON invalide : on repart sans cote saisie.
+  }
+})();
+
+function sauverCotesManuelles() {
+  try {
+    if (!COTES_MANUELLES.size) { localStorage.removeItem(COTES_MANUELLES_LS_KEY); return; }
+    const items = {};
+    COTES_MANUELLES.forEach((cote, cle) => {
+      const v = UPCOMING_PAR_CLE.get(cle);
+      if (v) items[cle] = {cote, orig: v.cote};
+    });
+    localStorage.setItem(COTES_MANUELLES_LS_KEY,
+      JSON.stringify({gen: WIZARD_DATA.generated_iso || "", items}));
+  } catch (e) {
+    // navigation privée, quota… la saisie reste valable pour la session.
+  }
+}
+
+// Lit une cote tapée à la main : « 2,10 » ou « 2.1 », 1,01 à 1000.
+// Renvoie un nombre (2 décimales), null si vide, NaN si invalide.
+function lireCoteSaisie(texte) {
+  const t = String(texte == null ? "" : texte).trim();
+  if (t === "") return null;
+  if (!/^\d+(?:[.,]\d{1,3})?$/.test(t)) return NaN;
+  const n = Math.round(parseFloat(t.replace(",", ".")) * 100) / 100;
+  return (n >= COTE_MANUELLE_MIN && n <= COTE_MANUELLE_MAX) ? n : NaN;
+}
+
+// Recalcule TOUT ce qui dépend de la cote, pour les trois lectures du
+// modèle (buts, xG, binomiale négative). Les formules sont celles de
+// build_value_bets (Python) : edge = p − 1/cote, edge dévigué = p − p_marché,
+// espérance = p·(cote−1) − (1−p). La pénalité d'absences ne porte que sur
+// l'espérance « buts », comme côté Python.
+function avecCote(v, cote) {
+  const o = Object.assign({}, v);
+  const pImp = 1 / cote;
+  const facteurDevig = (v.p_implied_devig != null && v.p_implied)
+    ? v.p_implied_devig / v.p_implied : 1;
+  const pDev = pImp * facteurDevig;
+  o.cote_capturee = v.cote;
+  o.cote = cote;
+  o.p_implied = pImp;
+  o.p_implied_devig = pDev;
+  [["p_model", "edge", "edge_devig", "ev"],
+   ["p_model_xg", "edge_xg", "edge_devig_xg", "ev_xg"],
+   ["p_model_nb", "edge_nb", "edge_devig_nb", "ev_nb"]].forEach(([p, e, ed, ev]) => {
+    if (v[p] == null) return;
+    o[e] = v[p] - pImp;
+    o[ed] = v[p] - pDev;
+    o[ev] = v[p] * (cote - 1) - (1 - v[p]);
+  });
+  if (v.penalite_absences) {
+    o.ev_brut = o.ev;
+    o.ev = o.ev * (1 - v.penalite_absences);
+  }
+  // Mouvement depuis l'ouverture : mesuré avec la cote saisie comme dernière cote.
+  if (v.cote_ouverture != null && v.cote_ouverture > 1) {
+    o.variation_proba = pImp - 1 / v.cote_ouverture;
+    o.raccourcit = cote < v.cote_ouverture;
+  }
+  if (v.marche_mediane) o.marche_ecart_pct = (cote - v.marche_mediane) / v.marche_mediane * 100;
+  return o;
+}
+
+// Les paris à venir, avec les cotes saisies appliquées. Les lignes sans
+// saisie sont renvoyées telles quelles (même objet) : aucun coût sans saisie.
+function upcomingAvecCotesManuelles() {
+  if (!COTES_MANUELLES.size) return UPCOMING;
+  return UPCOMING.map(v => {
+    const c = COTES_MANUELLES.get(betKey(v));
+    return c == null ? v : Object.assign(avecCote(v, c), {cote_manuelle: c});
+  });
+}
+
+function estHorsFiltres(v) {
+  return !!(v.motifs_manuel && v.motifs_manuel.length);
+}
+
+function definirCoteManuelle(cle, cote) {
+  const v = UPCOMING_PAR_CLE.get(cle);
+  if (!v) return;
+  if (cote == null || Math.abs(cote - v.cote) < 0.005) COTES_MANUELLES.delete(cle);
+  else COTES_MANUELLES.set(cle, cote);
+  sauverCotesManuelles();
+  renderUpcoming();
+  // Le rendu reconstruit toute la grille : on rend le focus au crayon de la
+  // carte modifiée (navigation clavier), sans quoi il retombe sur <body>.
+  const carte = [...document.querySelectorAll("#recGrid .rec")].find(el => el.dataset.key === cle);
+  const crayon = carte && carte.querySelector(".cote-edit-btn");
+  if (crayon) crayon.focus();
+}
+
+function reinitialiserCotesManuelles() {
+  COTES_MANUELLES.clear();
+  sauverCotesManuelles();
+  renderUpcoming();
+}
+
 function fmtKickoff(iso) {
   // "2026-03-05T20:00:00" -> "05/03 à 20:00"
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})[T ]?(\d{2})?:?(\d{2})?/);
@@ -1586,7 +1737,9 @@ function renderUpcoming() {
   // Binomiale négative : même bascule et même exclusivité avec l'xG que
   // sur "DC rétrospectif" (voir btFiltered/appliquerNb).
   const nbActif = $("uLoi") && $("uLoi").value === "nbinom" && modeXg === "sans";
-  let source = appliquerXg(appliquerNb(calibrer(UPCOMING, calibActif), nbActif), modeXg);
+  // Cotes saisies à la main (voir « COTE SAISIE À LA MAIN ») : appliquées en
+  // tout premier, pour que calibration, xG, NB et mélange partent de la bonne cote.
+  let source = appliquerXg(appliquerNb(calibrer(upcomingAvecCotesManuelles(), calibActif), nbActif), modeXg);
 
   // Filtre "historique" de la matrice (DC rétrospectif) — voir
   // BT_HIST_SELECTION / propagerFiltreHistorique(). Le champ
@@ -1598,58 +1751,162 @@ function renderUpcoming() {
 
   // Chaque pari reçoit ses valeurs recalculées selon le mode choisi, pour
   // que l'affichage (edge, espérance) corresponde bien au filtre appliqué.
-  let rows = source.map(v => {
+  const calculerAff = v => {
     if (alpha < 1) {
       const bl = blended(v, alpha);
       return Object.assign({}, v, {edge_aff: bl.edge, ev_aff: bl.ev, p_aff: bl.p});
     }
     const e = devig ? (v.edge_devig ?? v.edge) : v.edge;
     return Object.assign({}, v, {edge_aff: e, ev_aff: v.ev, p_aff: v.p_model});
-  }).filter(v => {
+  };
+
+  // --- Critères du filtre qui DÉPENDENT DE LA COTE ----------------------
+  // Edge minimum, espérance minimum / maximum, plafond d'edge dévigué des
+  // marchés de queue, plage de cotes, mouvement de la cote. Réunis ici pour
+  // servir à la fois au filtre (ci-dessous) et au calcul de la plage de cotes
+  // acceptées affichée sur chaque carte — une seule définition, donc la plage
+  // annoncée est exactement celle que le filtre applique.
+  //
+  // Chaque échec porte un SENS : "bas" = cote trop basse (elle doit monter
+  // pour passer), "haut" = trop haute, "fixe" = ne dépend pas de la cote.
+  // Chaque critère est monotone en fonction de la cote, donc la plage
+  // acceptée est un intervalle [mini, maxi] que deux bissections retrouvent.
+  const bornesMvtU = mvtBornesActives("u");
+  const memoSeuils = new Map();
+  const seuilsCat = cat => {
+    let s = memoSeuils.get(cat);
+    if (!s) {
+      // Réglages propres à la catégorie DE CE PARI (voir CATEGORIES_DC / idCat /
+      // valCat en tête de fichier), liés à leur équivalent de « DC rétrospectif ».
+      s = {
+        edge: parseFloat(valCat("uEdge", cat, String(MIN_EDGE))),
+        // Espérance : un edge dévigué positif ne garantit PAS une espérance
+        // positive — sur une cote très basse, la marge du bookmaker peut
+        // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
+        // mais espérance -6,3 %). -999 = pas de filtre, 0 = strictement
+        // positive, puis des paliers (0.02 = au moins +2 % de la mise).
+        ev: parseFloat(valCat("uEvPos", cat, "-999")),
+        // Plafond d'espérance : au-delà, l'espérance affichée n'est presque
+        // jamais une vraie opportunité mais une erreur du modèle (voir
+        // seuilEvMax dans btFiltered). 999 = pas de plafond.
+        evMax: parseFloat(valCat("uEvMax", cat, "999")),
+        edgeDevigMax: parseFloat(valCat("uEdgeDevigMax", cat, "999")),
+      };
+      memoSeuils.set(cat, s);
+    }
+    return s;
+  };
+  const controlesCote = v => {
+    const s = seuilsCat(v.categorie);
+    const echecs = [];
+    const ev = v.ev_aff ?? v.ev;
+    if (v.edge_aff < s.edge) {
+      echecs.push({sens: "bas", texte: `edge ${fmtPct(v.edge_aff)}, sous le minimum de ${fmtPct(s.edge)}`});
+    }
+    if (bornesCoteU.actif && v.cote != null) {
+      if (bornesCoteU.lo > COTE_SLIDER_MIN && v.cote < bornesCoteU.lo) {
+        echecs.push({sens: "bas", texte: `cote sous le minimum de votre plage de cotes (${bornesCoteU.lo})`});
+      }
+      if (bornesCoteU.hi < COTE_SLIDER_MAX && v.cote > bornesCoteU.hi) {
+        echecs.push({sens: "haut", texte: `cote au-dessus du maximum de votre plage de cotes (${bornesCoteU.hi})`});
+      }
+    }
+    if (s.ev > -900) {
+      if (ev == null) echecs.push({sens: "fixe", texte: "espérance indisponible"});
+      // "Positive" exclut le zéro ; les paliers sont inclusifs.
+      else if (s.ev === 0 ? ev <= 0 : ev < s.ev) {
+        echecs.push({sens: "bas", texte: s.ev === 0
+          ? `espérance ${fmtPct(ev)}, elle doit être positive`
+          : `espérance ${fmtPct(ev)}, sous le minimum de ${fmtPct(s.ev)}`});
+      }
+    }
+    // Une espérance manquante n'est jamais exclue par le plafond.
+    if (s.evMax < 900 && ev != null && ev > s.evMax) {
+      echecs.push({sens: "haut", texte: `espérance ${fmtPct(ev)}, au-dessus du plafond de ${fmtPct(s.evMax)}`});
+    }
+    // Plafond d'edge dévigué : marchés de queue (Intervalle de buts / Plus-Moins
+    // de buts) uniquement — voir MARCHES_QUEUE en tête de fichier.
+    if (CATEGORIES_FILTRE_QUEUE.has(v.categorie) && s.edgeDevigMax < 900
+        && v.edge_aff != null && v.edge_aff > s.edgeDevigMax) {
+      echecs.push({sens: "haut", texte: `edge ${fmtPct(v.edge_aff)}, au-dessus du plafond de ${fmtPct(s.edgeDevigMax)}`});
+    }
+    // Mouvement de la cote depuis l'ouverture (curseur double, voir
+    // mvtBornesActives / passeMvt) — synchronisé avec « DC rétrospectif ».
+    if (bornesMvtU.actif) {
+      if (v.raccourcit === undefined) {
+        echecs.push({sens: "fixe", texte: "mouvement de la cote non mesuré"});
+      } else {
+        const pts = (v.variation_proba || 0) * 100;
+        if (bornesMvtU.lo > MVT_SLIDER_MIN && pts < bornesMvtU.lo) {
+          echecs.push({sens: "haut", texte: `la cote s'est allongée depuis l'ouverture (${pts.toFixed(1)} pt de probabilité, votre réglage : de ${bornesMvtU.lo} à ${bornesMvtU.hi})`});
+        }
+        if (bornesMvtU.hi < MVT_SLIDER_MAX && pts > bornesMvtU.hi) {
+          echecs.push({sens: "bas", texte: `la cote a raccourci de ${pts.toFixed(1)} pt de probabilité depuis l'ouverture, au-delà de votre réglage (maximum ${bornesMvtU.hi} pt)`});
+        }
+      }
+    }
+    return echecs;
+  };
+
+  // Plage de cotes à laquelle ce pari passe TOUS les critères ci-dessus, avec
+  // tous les réglages actifs (calibration, xG, NB, poids du modèle, dévigage).
+  // {min, max} au centime ; null d'un côté = pas de limite de ce côté ; null
+  // au total = pas de plage lisible (critère indépendant de la cote, ou
+  // aucune cote ne convient).
+  const plageCotePour = (v0, evConcurrents = null) => {
+    const echecsA = c => {
+      const r = appliquerXg(appliquerNb(calibrer([avecCote(v0, c)], calibActif), nbActif), modeXg)[0];
+      if (!r) return null;
+      const a = calculerAff(r);
+      const echecs = controlesCote(a);
+      // Un seul par match et par catégorie : il faut aussi battre le meilleur concurrent.
+      if (evConcurrents != null && (a.ev_aff ?? a.ev) < evConcurrents) {
+        echecs.push({sens: "bas", texte: "un autre pari de ce match a une meilleure espérance"});
+      }
+      return echecs;
+    };
+    const okBas = c => { const e = echecsA(c); return !!e && !e.some(x => x.sens === "bas"); };
+    const okHaut = c => { const e = echecsA(c); return !!e && !e.some(x => x.sens === "haut"); };
+    const ref = echecsA(v0.cote);
+    if (!ref || ref.some(x => x.sens === "fixe")) return null;
+    let min = null, max = null;
+    if (!okBas(COTE_MANUELLE_MIN)) {
+      if (!okBas(COTE_MANUELLE_MAX)) return null;
+      let lo = COTE_MANUELLE_MIN, hi = COTE_MANUELLE_MAX;
+      while (hi - lo > 0.0005) { const mid = (lo + hi) / 2; if (okBas(mid)) hi = mid; else lo = mid; }
+      // La frontière exacte est entre lo et hi (écart < 0,0005) : on la ramène
+      // au centime, en vérifiant des deux côtés pour ne pas dépendre d'un arrondi.
+      min = Math.round(hi * 100) / 100;
+      for (let i = 0; i < 4 && okBas(Math.round((min - 0.01) * 100) / 100); i++) min = Math.round((min - 0.01) * 100) / 100;
+      for (let i = 0; i < 4 && !okBas(min); i++) min = Math.round((min + 0.01) * 100) / 100;
+    }
+    if (!okHaut(COTE_MANUELLE_MAX)) {
+      if (!okHaut(COTE_MANUELLE_MIN)) return null;
+      let lo = COTE_MANUELLE_MIN, hi = COTE_MANUELLE_MAX;
+      while (hi - lo > 0.0005) { const mid = (lo + hi) / 2; if (okHaut(mid)) lo = mid; else hi = mid; }
+      max = Math.round(lo * 100) / 100;
+      for (let i = 0; i < 4 && okHaut(Math.round((max + 0.01) * 100) / 100); i++) max = Math.round((max + 0.01) * 100) / 100;
+      for (let i = 0; i < 4 && !okHaut(max); i++) max = Math.round((max - 0.01) * 100) / 100;
+    }
+    return {min, max};
+  };
+
+  let rows = source.map(calculerAff).filter(v => {
+    // Une carte à cote SAISIE ne disparaît jamais sur un critère qui dépend de
+    // la cote : elle reste affichée avec le motif (voir controlesCote). Les
+    // critères qui n'en dépendent pas (catégorie, ligue, issue...) la filtrent
+    // comme n'importe quelle autre.
     if (cats && !cats.includes(v.categorie)) return false;
     if (ligues && !ligues.has(ligueKey(v.pays, v.ligue))) return false;
     if (exclSel && estSelectionNationale(v.pays, v.ligue)) return false;
-    // Edge minimum et plage de cotes : réglage propre à la catégorie DE CE
-    // PARI (voir CATEGORIES_DC / idCat / valCat en tête de fichier), lié à
-    // son équivalent de la page DC rétrospectif (lierFiltres).
-    const edge = parseFloat(valCat("uEdge", v.categorie, String(MIN_EDGE)));
-    if (v.edge_aff < edge) return false;
-    if (!passeCote(bornesCoteU, v.cote)) return false;
-    // Espérance : un edge dévigué positif ne garantit PAS une espérance
-    // positive — sur une cote très basse, la marge du bookmaker peut
-    // dépasser l'avantage du modèle (ex. cote 1.03 à 91 % : edge +2,5 %
-    // mais espérance -6,3 %). ev_aff porte déjà la valeur du mode actif
-    // (mélangée si α < 1), donc le filtre suit ce qui est affiché. Réglé
-    // PAR CATÉGORIE depuis le 27/09/2026 (voir optionsEvPosCat côté bt) —
-    // seuil : -999 = pas de filtre, 0 = strictement positive, puis des
-    // paliers (0.02 = au moins +2 % de la mise).
-    const seuilEv = parseFloat(valCat("uEvPos", v.categorie, "-999"));
-    if (seuilEv > -900) {
-      const ev = v.ev_aff ?? v.ev;
-      if (ev == null) return false;
-      // "Positive" exclut le zero ; les paliers sont inclusifs.
-      if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) return false;
-    }
-    // Plafond d'espérance : au-delà, l'espérance affichée n'est presque
-    // jamais une vraie opportunité mais une erreur du modèle (voir le
-    // commentaire détaillé sur seuilEvMax dans btFiltered, page DC
-    // rétrospectif — même mesure empirique, même seuil par défaut).
-    // 999 = pas de plafond ; une espérance manquante n'est jamais exclue.
-    const seuilEvMax = parseFloat(valCat("uEvMax", v.categorie, "999"));
-    if (seuilEvMax < 900) {
-      const ev = v.ev_aff ?? v.ev;
-      if (ev != null && ev > seuilEvMax) return false;
-    }
-    // Marchés de queue / plafond d'edge dévigué — même logique et même
-    // portée (Intervalle de buts / Plus-Moins de buts uniquement) que sur
-    // la page DC rétrospectif (btFiltered), lus depuis le bloc de CETTE
-    // catégorie ; voir le commentaire détaillé sur MARCHES_QUEUE en tête de
-    // fichier.
+    const echecs = controlesCote(v);
+    if (echecs.length && v.cote_manuelle == null) return false;   // cote capturée : on écarte, comme avant
+    // Marchés de queue — même portée (Intervalle de buts / Plus-Moins de
+    // buts uniquement) que sur la page DC rétrospectif (btFiltered), lus
+    // depuis le bloc de CETTE catégorie ; voir MARCHES_QUEUE en tête de fichier.
     if (CATEGORIES_FILTRE_QUEUE.has(v.categorie)) {
       const filtreQueue = valCat("uFiltreQueue", v.categorie, "0") === "1";
-      const seuilEdgeDevigMax = parseFloat(valCat("uEdgeDevigMax", v.categorie, "999"));
       if (filtreQueue && MARCHES_QUEUE.has(v.colonne)) return false;
-      if (seuilEdgeDevigMax < 900 && v.edge_aff != null && v.edge_aff > seuilEdgeDevigMax) return false;
     }
     // "Issue pariée" — ne concerne que "Vainqueur du match" (homeWin/draw/
     // awayWin) ; les autres catégories ne sont jamais filtrées ici.
@@ -1669,12 +1926,7 @@ function renderUpcoming() {
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
-    // Même logique que la page DC rétrospectif (btFiltered) : les six
-    // niveaux de mouvement de cote, pas seulement les deux premiers.
-    // Filtre sur le MOUVEMENT DE LA COTE (curseur double, voir
-    // mvtBornesActives/passeMvt) — synchronisé avec la page "DC rétrospectif".
-    const bornesMvtU = mvtBornesActives("u");
-    if (!passeMvt(bornesMvtU, v)) return false;
+    // (Le filtre sur le MOUVEMENT DE LA COTE est dans controlesCote, plus haut.)
     // Filtre "historique" de la matrice (voir histDispo ci-dessus) : même
     // bucketing que la page DC rétrospectif (HIST_BUCKETS/histBucketKey),
     // ignoré tant que le champ n'est pas encore présent dans ce jeu de
@@ -1683,6 +1935,8 @@ function renderUpcoming() {
       if (histBucketKey(v.n_hist_dom) !== BT_HIST_SELECTION.dom) return false;
       if (histBucketKey(v.n_hist_ext) !== BT_HIST_SELECTION.ext) return false;
     }
+    // Vide sauf cote saisie qui ne passe plus un critère : la carte reste alors affichée, en rouge.
+    v.motifs_manuel = v.cote_manuelle != null ? echecs.map(e => e.texte) : [];
     return true;
   });
 
@@ -1697,6 +1951,9 @@ function renderUpcoming() {
   // réellement affiché, pas l'ensemble avant dédoublonnage.
   const groupes = {};
   rows.forEach(v => {
+    // Une carte à cote saisie qui ne passe plus les filtres n'est plus une
+    // recommandation : elle ne compte pas dans les groupes de paris liés.
+    if (estHorsFiltres(v)) return;
     const k = `${v.match}|${v.categorie}`;
     (groupes[k] = groupes[k] || []).push(v);
   });
@@ -1709,8 +1966,18 @@ function renderUpcoming() {
   const dedupActif = $("uDedup") ? $("uDedup").value === "1" : false;
   if (dedupActif) {
     rows = rows.filter(v => {
+      if (estHorsFiltres(v)) return true;     // reste affichée, en rouge
       const k = `${v.match}|${v.categorie}`;
-      return (groupes[k] || []).length <= 1 || meilleurDuGroupe[k] === v;
+      if ((groupes[k] || []).length <= 1 || meilleurDuGroupe[k] === v) return true;
+      // Cote saisie qui n'est plus la meilleure de son groupe : la carte reste
+      // (l'utilisateur vient de la modifier), signalée en rouge, plutôt que de
+      // disparaître sans explication.
+      if (v.cote_manuelle != null) {
+        const m = meilleurDuGroupe[k];
+        v.motifs_manuel = [`un autre pari de ce match a une meilleure espérance (${m.colonne} à ${m.cote.toFixed(2)}, ${fmtPct(m.ev_aff ?? m.ev)}) — réglage « Un seul par match et par catégorie »`];
+        return true;
+      }
+      return false;
     });
   }
 
@@ -1722,14 +1989,18 @@ function renderUpcoming() {
     if (sortBy==="edge") return b.edge_aff - a.edge_aff;
     return b[sortBy]-a[sortBy];
   });
-  CURRENT_UPCOMING_ROWS = rows.slice();
+  // `rows` = ce que la grille affiche (cartes rouges comprises) ; `rowsReco` =
+  // les vraies recommandations, seules à entrer dans les totaux, le compteur
+  // et la Vue d'ensemble.
+  const rowsReco = rows.filter(v => !estHorsFiltres(v));
+  CURRENT_UPCOMING_ROWS = rowsReco.slice();
   // Les badges des paris à venir sont calculés sur le backtest historique
   // passé par les filtres communs sélectionnés. Les filtres propres au
   // rétrospectif (dates, gagné/perdu, garantie et cellule d'historique) ne
   // peuvent pas qualifier une recommandation future.
   CURRENT_UPCOMING_VERDICTS = verdictsFiltresAvenir();
   mettreAJourBadgesCategorie("u", CURRENT_UPCOMING_VERDICTS, "filtres communs actifs");
-  const n = rows.length;
+  const n = rowsReco.length;
   // Mise reellement engagee par pari : la mise fixe saisie, ou la mise
   // conseillee par Kelly (variable selon l'edge et la cote de CHAQUE pari).
   // Avant ce calcul, "Total a miser"/"Esperance totale" restaient bases sur
@@ -1738,11 +2009,11 @@ function renderUpcoming() {
   // chaque carte, facile a manquer. Les deux totaux suivent desormais
   // vraiment la strategie choisie.
   const miseParPari = strategieMise === "fixe"
-    ? rows.map(() => stake)
-    : rows.map(v => miseConseillee(v, "uMise2", stake, bankrollRef));
+    ? rowsReco.map(() => stake)
+    : rowsReco.map(v => miseConseillee(v, "uMise2", stake, bankrollRef));
   const mise = miseParPari.reduce((s,m) => s+m, 0);
-  const evTotal = rows.reduce((s,v,i) => s+(v.ev_aff ?? v.ev)*miseParPari[i], 0);
-  const matches = new Set(rows.map(v=>v.match)).size;
+  const evTotal = rowsReco.reduce((s,v,i) => s+(v.ev_aff ?? v.ev)*miseParPari[i], 0);
+  const matches = new Set(rowsReco.map(v=>v.match)).size;
   $("uNb").textContent = n;
   // Même chiffre que "uNb" ci-dessus, dupliqué sur le badge de l'onglet :
   // toujours égal au nombre de cartes réellement affichées dans la grille
@@ -1829,8 +2100,34 @@ function renderUpcoming() {
 
   majLoiNote("u");
 
+  // Bandeau des cotes saisies à la main : combien, et combien ne passent plus
+  // les filtres. Caché tant qu'aucune cote n'a été saisie.
+  const uCotesNote = $("uCotesNote");
+  if (uCotesNote) {
+    if (!COTES_MANUELLES.size) {
+      uCotesNote.style.display = "none";
+      uCotesNote.innerHTML = "";
+    } else {
+      const nHors = rows.filter(estHorsFiltres).length;
+      const nm = COTES_MANUELLES.size;
+      uCotesNote.style.display = "";
+      uCotesNote.innerHTML = `<strong>${nm} cote${nm > 1 ? "s" : ""} saisie${nm > 1 ? "s" : ""} à la main</strong>`
+        + (nHors
+          ? ` — <strong class="neg">${nHors} pari${nHors > 1 ? "s ne passent" : " ne passe"} plus vos filtres</strong>`
+            + ` (cartes rouges, exclues des totaux ci-dessous)`
+          : ` — tous les paris concernés passent encore vos filtres`)
+        + ` · <a href="#" id="uCotesReset">tout réinitialiser</a>. `
+        + `Ces saisies sont effacées à la prochaine mise à jour des données.`;
+      const lienReset = $("uCotesReset");
+      if (lienReset) lienReset.addEventListener("click", ev => {
+        ev.preventDefault();
+        reinitialiserCotesManuelles();
+      });
+    }
+  }
+
   const grid = $("recGrid"), empty = $("uEmpty");
-  if (n===0) {
+  if (rows.length===0) {
     grid.innerHTML = "";
     empty.style.display = "block";
     empty.textContent = UPCOMING.length===0
@@ -1844,7 +2141,10 @@ function renderUpcoming() {
   grid.innerHTML = rows.map(v => {
     const groupeKey = `${v.match}|${v.categorie}`;
     const groupeTaille = (groupes[groupeKey] || []).length;
-    const estLie = groupeTaille > 1;
+    // Une carte rouge (cote saisie qui ne passe plus) n'est plus une
+    // recommandation : pas de badge « paris liés » dessus.
+    const horsF = estHorsFiltres(v);
+    const estLie = groupeTaille > 1 && !horsF;
     const estMeilleur = estLie && meilleurDuGroupe[groupeKey] === v;
     // Bloc absences : n'apparaît que si l'enrichissement API-Football a
     // fourni des données pour ce match.
@@ -1922,11 +2222,52 @@ function renderUpcoming() {
           <span><strong>${libelleM}</strong> <span class="muted">(${ecart>=0?"+":""}${ecart.toFixed(1)}% vs ${v.marche_n_bookmakers} bookmakers)</span></span>
         </div>`;
     }
+    // Cote saisie à la main : une carte qui ne passe plus les filtres n'est
+    // plus une recommandation, donc pas de mise conseillée — à la place, un
+    // bandeau rouge avec le motif (horsF, défini plus haut).
     // Mise conseillee : null en mode "Montant fixe", puisque la valeur
     // serait la meme pour tous les paris et n'apporterait rien.
-    const miseKelly = (strategieMise !== "fixe")
+    const miseKelly = (strategieMise !== "fixe" && !horsF)
       ? miseConseillee(v, "uMise2", stake, bankrollRef) : null;
     const key = betKey(v);
+    const v0 = UPCOMING_PAR_CLE.get(key) || v;        // ligne telle que capturée
+    // Avec « Un seul par match et par catégorie », la carte affichée est la
+    // meilleure espérance de son groupe : elle ne l'est plus si sa cote baisse
+    // sous celle d'un concurrent. On en tient compte dans la plage annoncée.
+    const concurrents = dedupActif
+      ? (groupes[groupeKey] || []).filter(r => r.colonne !== v.colonne) : [];
+    const evConcurrents = concurrents.length
+      ? Math.max(...concurrents.map(r => r.ev_aff ?? r.ev)) : null;
+    const plage = plageCotePour(v0, evConcurrents);
+    const iconeCrayon = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true">`
+      + `<path d="M11.2 2.3l2.5 2.5-8 8-3.2.7.7-3.2 8-8z" stroke="currentColor" stroke-width="1.4" `
+      + `stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+    const coteZone = v.cote_manuelle != null
+      ? `<strong class="cote-val cote-saisie">${v.cote.toFixed(2)}</strong>
+         <s class="cote-capturee" title="Cote capturée à la dernière mise à jour">${v.cote_capturee.toFixed(2)}</s>
+         <span class="cote-badge">saisie</span>
+         <button type="button" class="cote-btn cote-reset" title="Revenir à la cote capturée" aria-label="Revenir à la cote capturée">↺</button>
+         <button type="button" class="cote-btn cote-edit-btn" title="Modifier la cote" aria-label="Modifier la cote">${iconeCrayon}</button>`
+      : `<strong class="cote-val">${v.cote.toFixed(2)}</strong>
+         <button type="button" class="cote-btn cote-edit-btn" title="La cote a changé sur Winamax ? Saisissez-la pour recalculer edge et espérance" aria-label="Modifier la cote">${iconeCrayon}<span>modifier</span></button>`;
+    const alerteHors = horsF
+      ? `<div class="rec-alerte" role="alert"><strong>Ne plus parier à cette cote.</strong>
+           À ${v.cote.toFixed(2)}, ce pari ne passe plus vos filtres : ${v.motifs_manuel.map(m => m.trim()).join(" ; ")}.</div>`
+      : "";
+    // Plage de cotes acceptées avec VOS filtres actuels. Avec un réglage de
+    // mouvement resserré (ex. 0 à +0,5 pt), elle peut être étroite : c'est
+    // voulu, c'est ce que le filtre applique.
+    let coteMiniHtml = "";
+    if (plage && (plage.min != null || plage.max != null)) {
+      const [libelle, valeur, suite] = (plage.min != null && plage.max != null)
+        ? ["Cotes acceptées", `${plage.min.toFixed(2)} – ${plage.max.toFixed(2)}`, "hors de cette plage, ne plus parier"]
+        : plage.min != null
+          ? ["Cote mini", plage.min.toFixed(2), "en dessous, ne plus parier"]
+          : ["Cote maxi", plage.max.toFixed(2), "au-dessus, ne plus parier"];
+      coteMiniHtml = `<div class="rec-cotemini" title="Cotes pour lesquelles ce pari passe encore TOUS vos filtres actuels `
+        + `(edge, espérance, mouvement de la cote…). Elles dépendent de vos réglages.">`
+        + `${libelle} <strong>${valeur}</strong> <span>— ${suite}</span></div>`;
+    }
     const isPlaced = PLACED.has(key);
     const miseActuelle = PLACED.get(key)?.mise;
     const classesLien = estLie ? (estMeilleur ? " lie-best" : " lie-alt") : "";
@@ -1943,7 +2284,7 @@ function renderUpcoming() {
          </div>`;
     }
     return `
-    <div class="rec${isPlaced ? ' placed' : ''}${classesLien}" data-key="${key.replace(/"/g, '&quot;')}">
+    <div class="rec${isPlaced ? ' placed' : ''}${classesLien}${horsF ? ' hors-filtres' : ''}" data-key="${key.replace(/"/g, '&quot;')}">
       ${badgeLien}
       <div class="rec-top">
         <div class="rec-match">${v.match}${v.match_id ? ` <a href="https://www.winamax.fr/paris-sportifs/match/${v.match_id}" target="_blank" rel="noopener" class="rec-winamax-link" title="Parier sur ce match (Winamax)">↗</a>` : ""}</div>
@@ -1953,11 +2294,14 @@ function renderUpcoming() {
         ${catBadgeHtml(v.categorie, CURRENT_UPCOMING_VERDICTS, "filtres communs actifs")}</div>
       <div class="rec-bet">
         <span class="rec-pill">${v.colonne}</span>
-        <span class="muted">à la cote</span> <strong style="font-family:var(--mono)">${v.cote.toFixed(2)}</strong>
+        <span class="muted">à la cote</span>
+        <span class="cote-zone">${coteZone}</span>
       </div>
+      ${coteMiniHtml}
+      ${alerteHors}
       <div class="rec-metrics">
         <div class="rec-metric"><div class="mk">Proba retenue</div><div class="mv">${((v.p_aff ?? v.p_model)*100).toFixed(0)} %</div></div>
-        <div class="rec-metric"><div class="mk">Edge</div><div class="mv pos">${fmtPct(v.edge_aff ?? v.edge)}</div></div>
+        <div class="rec-metric"><div class="mk">Edge</div><div class="mv ${(v.edge_aff ?? v.edge)>=0?'pos':'neg'}">${fmtPct(v.edge_aff ?? v.edge)}</div></div>
         <div class="rec-metric"><div class="mk">Espérance</div><div class="mv ${(v.ev_aff ?? v.ev)>=0?'pos':'neg'}">${fmtPct(v.ev_aff ?? v.ev)}</div></div>
       </div>
       ${miseKelly != null ? `<div class="rec-kelly">Mise conseillée <strong>${miseKelly.toFixed(2)} €</strong>
@@ -2029,6 +2373,96 @@ function renderUpcoming() {
   attachPredTooltips();
   renderOverviewUpcoming(CURRENT_UPCOMING_ROWS, CURRENT_UPCOMING_VERDICTS);
 }
+
+/* Éditeur de la cote saisie à la main (cartes de « Paris à venir »).
+   Écouteurs DÉLÉGUÉS sur la grille, posés une seule fois : renderUpcoming()
+   reconstruit toutes les cartes, des écouteurs posés sur elles seraient
+   perdus (ou empilés) à chaque rendu. L'éditeur lui-même est local à la
+   carte (aucun rendu tant qu'on n'a pas validé). Entrée / OK valident,
+   Échap / ✕ annulent, un champ vide revient à la cote capturée. */
+(function initEditeurCote() {
+  const grid = $("recGrid");
+  if (!grid) return;
+
+  function ouvrir(carte, cle) {
+    const zone = carte.querySelector(".cote-zone");
+    const v0 = UPCOMING_PAR_CLE.get(cle);
+    if (!zone || !v0) return;
+    const actuelle = COTES_MANUELLES.get(cle) ?? v0.cote;
+    zone.innerHTML = `<input type="text" inputmode="decimal" class="cote-input" autocomplete="off"
+        aria-label="Cote actuelle sur Winamax" value="${actuelle.toFixed(2).replace(".", ",")}">
+      <button type="button" class="cote-btn cote-ok" aria-label="Valider la cote">OK</button>
+      <button type="button" class="cote-btn cote-cancel" aria-label="Annuler">✕</button>
+      <span class="cote-msg" data-aide="Cote capturée : ${v0.cote.toFixed(2).replace(".", ",")}">Cote capturée : ${v0.cote.toFixed(2).replace(".", ",")}</span>`;
+    const champ = zone.querySelector(".cote-input");
+    champ.focus();
+    champ.select();
+  }
+
+  function valider(carte, cle) {
+    const champ = carte.querySelector(".cote-input");
+    if (!champ) return;
+    const c = lireCoteSaisie(champ.value);
+    if (Number.isNaN(c)) {
+      champ.setAttribute("aria-invalid", "true");
+      const msg = carte.querySelector(".cote-msg");
+      if (msg) {
+        msg.classList.add("erreur");
+        msg.setAttribute("role", "alert");
+        msg.textContent = `Cote invalide : tapez un nombre entre ${COTE_MANUELLE_MIN.toFixed(2).replace(".", ",")} et ${COTE_MANUELLE_MAX} (ex. 2,10).`;
+      }
+      champ.focus();
+      return;
+    }
+    definirCoteManuelle(cle, c);     // null (champ vide) = retour à la cote capturée
+  }
+
+  grid.addEventListener("click", ev => {
+    const btn = ev.target.closest("button.cote-btn");
+    if (!btn) return;
+    const carte = btn.closest(".rec");
+    const cle = carte && carte.dataset.key;
+    if (!cle) return;
+    if (btn.classList.contains("cote-edit-btn")) ouvrir(carte, cle);
+    else if (btn.classList.contains("cote-reset")) definirCoteManuelle(cle, null);
+    else if (btn.classList.contains("cote-ok")) valider(carte, cle);
+    else if (btn.classList.contains("cote-cancel")) {
+      renderUpcoming();
+      const c2 = [...grid.querySelectorAll(".rec")].find(el => el.dataset.key === cle);
+      const crayon = c2 && c2.querySelector(".cote-edit-btn");
+      if (crayon) crayon.focus();
+    }
+  });
+
+  grid.addEventListener("keydown", ev => {
+    const champ = ev.target.closest && ev.target.closest(".cote-input");
+    if (!champ) return;
+    const carte = champ.closest(".rec");
+    const cle = carte && carte.dataset.key;
+    if (!cle) return;
+    if (ev.key === "Enter") { ev.preventDefault(); valider(carte, cle); }
+    else if (ev.key === "Escape") {
+      ev.preventDefault();
+      renderUpcoming();
+      const c2 = [...grid.querySelectorAll(".rec")].find(el => el.dataset.key === cle);
+      const crayon = c2 && c2.querySelector(".cote-edit-btn");
+      if (crayon) crayon.focus();
+    }
+  });
+
+  // Une frappe après une erreur efface l'état d'erreur.
+  grid.addEventListener("input", ev => {
+    const champ = ev.target.closest && ev.target.closest(".cote-input");
+    if (!champ || champ.getAttribute("aria-invalid") !== "true") return;
+    champ.removeAttribute("aria-invalid");
+    const msg = champ.closest(".cote-zone").querySelector(".cote-msg");
+    if (msg) {
+      msg.classList.remove("erreur");
+      msg.removeAttribute("role");
+      msg.textContent = msg.dataset.aide || "";
+    }
+  });
+})();
 
 /* Infobulle de la prévision indépendante d'API-Football sur la page
    « Paris à venir » — même mécanisme que attachDcTooltips (élément
