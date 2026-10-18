@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261018082704">
+<link rel="stylesheet" href="style.css?v=20261018104546">
 </head>
 <body>
 <div class="topbar">
@@ -1391,6 +1391,7 @@
       <p class="muted" id="uEnrichiNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uCotesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
 
       <div class="kpis">
         <div class="kpi"><div class="k">Paris recommandés</div><div class="v" id="uNb">0</div></div>
@@ -1422,6 +1423,13 @@
       </details>
     </div>
 
+    <p class="muted" id="uCoteAide" style="margin:1rem 0 0; font-size:.82rem">
+      La cote a bougé sur Winamax depuis la dernière mise à jour ? Cliquez sur le crayon à côté de la
+      cote d'une carte et saisissez la cote réelle : l'edge, l'espérance et la mise conseillée sont
+      recalculés, et la carte passe en rouge si le pari ne respecte plus vos filtres. La ligne
+      « Cotes acceptées » indique d'avance entre quelles cotes le pari passe encore vos filtres (elle
+      dépend de vos réglages, notamment de celui du mouvement de la cote).
+    </p>
     <div id="recGrid" class="rec-grid"></div>
     <p id="uEmpty" class="muted" style="text-align:center;margin-top:2rem;display:none"></p>
   </section>
@@ -1755,7 +1763,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261018082733"></script>
-<script src="app.js?v=20261018082704"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261018104615"></script>
+<script src="app.js?v=20261018104546"></script>
 </body>
 </html>
