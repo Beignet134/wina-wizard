@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261018172748">
+<link rel="stylesheet" href="style.css?v=20261018182551">
 </head>
 <body>
 <div class="topbar">
@@ -719,7 +719,12 @@
     </div>
 
     <div class="panel filter-graph-panel" id="btJourPanel">
-      <h2>Paris par jour <span class="hint">— combien de paris le modèle retient chaque jour</span></h2>
+      <h2><span id="btJourTitre">Paris par jour</span> <span class="hint" id="btJourHint">— combien de paris le modèle retient chaque jour</span></h2>
+      <div class="jour-modes" id="btJourModes" role="group" aria-label="Affichage de l'histogramme">
+        <button type="button" class="jour-mode is-active" data-mode="n" aria-pressed="true">Nombre de paris</button>
+        <button type="button" class="jour-mode" data-mode="jour" aria-pressed="false">Gain / perte par jour</button>
+        <button type="button" class="jour-mode" data-mode="cumul" aria-pressed="false">Gain / perte cumulé</button>
+      </div>
       <div id="btJourWrap"></div>
     </div>
 
@@ -1763,7 +1768,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261018172808"></script>
-<script src="app.js?v=20261018172748"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261018182613"></script>
+<script src="app.js?v=20261018182551"></script>
 </body>
 </html>
