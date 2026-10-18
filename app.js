@@ -6910,11 +6910,58 @@ function pasGraduationEntier(max) {
   return candidats.find(c => Math.ceil(max / c) <= 4) || Math.max(1, max);
 }
 
+// Trois affichages de la même série de jours :
+//   "n"     nombre de paris retenus (l'histogramme d'origine)
+//   "jour"  résultat net de chaque jour (barres vertes au-dessus du zéro pour
+//           un gain, corail au-dessous pour une perte)
+//   "cumul" résultat net accumulé depuis le premier jour (même échelle de
+//           lecture : une barre par jour, qui repart de la valeur de la veille
+//           quand aucun pari n'a été joué)
+// Le net est celui du KPI « Net » : profit × mise de CHAQUE pari
+// (btStakeFor : mise fixe ou Kelly), donc la somme des barres « jour » et la
+// dernière barre « cumul » égalent ce KPI. Un seul axe vertical par mode —
+// jamais de double échelle (nombre de paris et euros n'ont pas la même unité).
+// Le choix du mode est mémorisé dans localStorage (simple confort : si le
+// stockage est indisponible, on reste sur « nombre de paris »).
+const PARJOUR_MODES = {
+  n:     {titre: "Paris par jour",        hint: "— combien de paris le modèle retient chaque jour"},
+  jour:  {titre: "Gain / perte par jour", hint: "— résultat net de chaque jour, selon la mise choisie"},
+  cumul: {titre: "Gain / perte cumulé",   hint: "— résultat net accumulé jour après jour"},
+};
+const PARJOUR_LS_KEY = "wina_parjour_mode_v1";
+let parJourMode = "n";
+try {
+  const m = localStorage.getItem(PARJOUR_LS_KEY);
+  if (m && Object.prototype.hasOwnProperty.call(PARJOUR_MODES, m)) parJourMode = m;
+} catch (e) { /* stockage indisponible : on garde « nombre de paris » */ }
+
+// Pas "rond" (1, 2, 5, 10, 20, 50... et ses sous-multiples) pour un axe qui
+// passe par zéro : au plus 6 intervalles au total. vMin <= 0 <= vMax.
+// Renvoie le pas et le nombre de pas au-dessus (kMax) / au-dessous (kMin) du zéro.
+function pasGraduationSigne(vMin, vMax) {
+  if (vMax - vMin <= 0) return {pas: 1, kMax: 1, kMin: 0};   // tout à zéro : une graduation, pas de 0,01
+  const candidats = [];
+  for (let e = -2; e <= 7; e++) [1, 2, 5].forEach(m => candidats.push(m * Math.pow(10, e)));
+  let choix = candidats[candidats.length - 1];
+  for (const c of candidats) {
+    if (Math.ceil(vMax / c - 1e-9) + Math.ceil(-vMin / c - 1e-9) <= 6) { choix = c; break; }
+  }
+  const kMax = Math.max(0, Math.ceil(vMax / choix - 1e-9));
+  const kMin = Math.max(0, Math.ceil(-vMin / choix - 1e-9));
+  return {pas: choix, kMax, kMin};
+}
+
 function drawParJour(rows) {
   const wrap = $("btJourWrap");
   if (!wrap) return;
   parJourDernier = rows;
   parJourLargeur = wrap.clientWidth || 0;
+
+  const mode = parJourMode;
+  const signe = mode !== "n";
+  const titreEl = $("btJourTitre"), hintEl = $("btJourHint");
+  if (titreEl) titreEl.textContent = PARJOUR_MODES[mode].titre;
+  if (hintEl) hintEl.textContent = PARJOUR_MODES[mode].hint;
 
   const datees = (rows || []).filter(r => numeroJour(r.date) !== null);
   if (!datees.length) {
@@ -6930,22 +6977,59 @@ function drawParJour(rows) {
   const nb = Math.ceil(etendue / pas);
   const gap = nb > 120 ? 1 : 2;
 
-  const seaux = Array.from({length: nb}, () => ({n: 0, gagnes: 0, profit: 0, cats: {}}));
+  const seaux = Array.from({length: nb}, () => ({n: 0, gagnes: 0, profit: 0, net: 0, cumul: 0, cats: {}}));
   datees.forEach(r => {
     const s = seaux[Math.floor((numeroJour(r.date) - dMin) / pas)];
     s.n++;
     if (r.gagne) s.gagnes++;
     s.profit += Number(r.profit) || 0;
+    const mise = btStakeFor(r);
+    s.net += (Number(r.profit) || 0) * (isFinite(mise) ? mise : 0);
     s.cats[r.categorie] = (s.cats[r.categorie] || 0) + 1;
   });
+  let cumulCourant = 0;
+  seaux.forEach(s => { cumulCourant += s.net; s.cumul = cumulCourant; });
+  const netTotal = cumulCourant;
 
   const total = datees.length;
   const maxN = arrMax(seaux.map(s => s.n));
   const nbVides = seaux.filter(s => !s.n).length;
   const iPic = seaux.findIndex(s => s.n === maxN);
   const nbPics = seaux.filter(s => s.n === maxN).length;
-  const pasY = pasGraduationEntier(maxN);
-  const yMax = Math.max(pasY, Math.ceil(maxN / pasY) * pasY);
+
+  // Valeur tracée par seau, selon le mode
+  const vals = seaux.map(s => mode === "n" ? s.n : (mode === "jour" ? s.net : s.cumul));
+
+  // Échelle verticale : de 0 à yMax pour le comptage ; de yMin (<= 0) à yMax
+  // (>= 0) pour les modes « gain », avec 12 % de marge pour loger l'étiquette
+  // de la plus grande barre sans qu'elle déborde du cadre.
+  let yMin = 0, yMax, pasY;
+  const graduations = [];
+  if (!signe) {
+    pasY = pasGraduationEntier(maxN);
+    yMax = Math.max(pasY, Math.ceil(maxN / pasY) * pasY);
+    for (let t = 0; t <= yMax; t += pasY) graduations.push(t);
+  } else {
+    const vMax0 = Math.max(0, arrMax(vals)), vMin0 = Math.min(0, arrMin(vals));
+    const marge = ((vMax0 - vMin0) || 1) * 0.12;
+    const g = pasGraduationSigne(vMin0 < 0 ? vMin0 - marge : 0, vMax0 > 0 ? vMax0 + marge : 0);
+    pasY = g.pas; yMax = g.kMax * pasY; yMin = -g.kMin * pasY;
+    for (let k = -g.kMin; k <= g.kMax; k++) graduations.push(Math.round(k * pasY * 1e6) / 1e6);
+  }
+  const hauteurY = yMax - yMin;
+  const pct = v => (v - yMin) / hauteurY * 100;   // position depuis le bas du cadre
+  const zeroPct = pct(0);
+  const fmtGrad = t => {
+    const a = Math.abs(t).toLocaleString("fr-FR", {maximumFractionDigits: 2});
+    return t < 0 ? "−" + a : a;
+  };
+  // Marge gauche des modes « gain » : assez large pour la plus longue graduation
+  // (« −20 000 » : ~6 px par caractère en police 10 px + 8 px d'écart + 6 px
+  // de sécurité), jamais moins que la marge de base du CSS.
+  const margeGauche = signe
+    ? Math.max(window.matchMedia("(max-width: 640px)").matches ? 44 : 52,
+               Math.ceil(Math.max(...graduations.map(t => fmtGrad(t).length)) * 6.1) + 14)
+    : 0;
 
   // Libellé d'un seau : un jour, ou « du … au … » pour une semaine.
   const debutSeau = i => dMin + i * pas;
@@ -6958,18 +7042,20 @@ function drawParJour(rows) {
     const d = dateDuJour(debutSeau(i));
     return avecAnnee ? `${fmtChartDate(d)}/${d.slice(2, 4)}` : fmtChartDate(d);
   };
+  const libelleResume = i => pas === 1 ? fmtChartDate(dateDuJour(debutSeau(i))) : libelleSeau(i);
 
   // Graduations horizontales (le 0 fait office de ligne de base)
   let grille = "";
-  for (let t = 0; t <= yMax; t += pasY) {
-    grille += `<div class="jour-grid${t === 0 ? " is-base" : ""}" style="bottom:${(t / yMax * 100).toFixed(2)}%"></div>
-      <span class="jour-ytick" style="bottom:${(t / yMax * 100).toFixed(2)}%">${t}</span>`;
-  }
+  graduations.forEach(t => {
+    const p = pct(t).toFixed(2);
+    grille += `<div class="jour-grid${t === 0 ? " is-base" : ""}" style="bottom:${p}%"></div>
+      <span class="jour-ytick" style="bottom:${p}%">${signe ? fmtGrad(t) : t}</span>`;
+  });
 
   // Libellés de dates : espacés d'au moins ~50 px. La largeur n'est connue que
   // si l'onglet est visible ; sinon on suppose 900 px (un ResizeObserver
   // redessine dès que la vraie largeur apparaît).
-  const largeurPlot = Math.max(120, (wrap.clientWidth || 900) - 48);
+  const largeurPlot = Math.max(120, (wrap.clientWidth || 900) - (signe ? margeGauche + 12 : 48));
   const pitch = Math.min(24 + gap, (largeurPlot + gap) / nb);
   // Période courte : les barres (plafonnées à 24 px) n'occupent que le début
   // de la largeur. On resserre alors le cadre sur elles plutôt que de tendre
@@ -6981,47 +7067,112 @@ function drawParJour(rows) {
   const dernier = Array.from(idxLib).pop();
   if (dernier !== nb - 1 && (nb - 1 - dernier) >= Math.ceil(stepLib * 0.75)) idxLib.add(nb - 1);
 
+  // Barres dont la valeur est écrite (jamais un chiffre sur chaque barre) :
+  // le pic en mode comptage ; la meilleure et la pire période en mode « jour » ;
+  // la valeur finale (= KPI « Net ») en mode « cumul ».
+  const iMeilleur = vals.indexOf(arrMax(vals)), iPire = vals.indexOf(arrMin(vals));
+  const etiquetees = new Set();
+  if (mode === "jour") {
+    if (vals[iMeilleur] > 0) etiquetees.add(iMeilleur);
+    if (vals[iPire] < 0) etiquetees.add(iPire);
+  } else if (mode === "cumul" && vals[nb - 1] !== 0) {
+    etiquetees.add(nb - 1);
+  }
+
   const colonnes = seaux.map((s, i) => {
-    const h = s.n ? Math.max(1.5, s.n / yMax * 100) : 0;
-    const bar = s.n ? `<div class="jour-bar" style="height:${h.toFixed(2)}%"></div>` : "";
-    // Valeur écrite seulement sur le pic (jamais un chiffre sur chaque barre)
-    const pic = (s.n === maxN && nbPics <= 3)
-      ? `<span class="jour-peak" style="bottom:calc(${h.toFixed(2)}% + 3px)">${s.n}</span>` : "";
     const lib = idxLib.has(i) ? `<span class="jour-xtick">${libelleCourt(i)}</span>` : "";
-    return `<div class="jour-col">${bar}${pic}${lib}</div>`;
+    if (!signe) {
+      const h = s.n ? Math.max(1.5, s.n / yMax * 100) : 0;
+      const bar = s.n ? `<div class="jour-bar" style="height:${h.toFixed(2)}%"></div>` : "";
+      // Valeur écrite seulement sur le pic (jamais un chiffre sur chaque barre)
+      const pic = (s.n === maxN && nbPics <= 3)
+        ? `<span class="jour-peak" style="bottom:calc(${h.toFixed(2)}% + 3px)">${s.n}</span>` : "";
+      return `<div class="jour-col">${bar}${pic}${lib}</div>`;
+    }
+    const v = vals[i];
+    let bar = "", etiquette = "";
+    // Étiquette de valeur : centrée sur sa barre, mais alignée sur le bord du
+    // cadre pour les deux premières / dernières colonnes (sinon elle déborde).
+    const calage = nb > 4 && i >= nb - 2 ? "right:0;left:auto;transform:none;"
+      : (nb > 4 && i <= 1 ? "left:0;transform:none;" : "");
+    if (v > 0) {
+      const h = Math.max(1.5, pct(v) - zeroPct);
+      bar = `<div class="jour-bar is-pos" style="bottom:${zeroPct.toFixed(2)}%;height:${h.toFixed(2)}%"></div>`;
+      if (etiquetees.has(i)) etiquette = `<span class="jour-peak" style="${calage}bottom:calc(${(zeroPct + h).toFixed(2)}% + 3px)">${fmtEur(v)}</span>`;
+    } else if (v < 0) {
+      const h = Math.max(1.5, zeroPct - pct(v));
+      bar = `<div class="jour-bar is-neg" style="top:${(100 - zeroPct).toFixed(2)}%;height:${h.toFixed(2)}%"></div>`;
+      if (etiquetees.has(i)) etiquette = `<span class="jour-peak is-neg" style="${calage}top:calc(${(100 - zeroPct + h).toFixed(2)}% + 3px)">${fmtEur(v)}</span>`;
+    }
+    return `<div class="jour-col">${bar}${etiquette}${lib}</div>`;
   }).join("");
 
   const plur = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
-  const resume = `${plur(total, "pari")} sur ${plur(nb, unite)} `
-    + `(du ${fmtChartDate(dateDuJour(dMin))} au ${fmtChartDate(dateDuJour(dMax))})`
-    + `${nbVides ? ` dont ${nbVides} sans aucun pari` : ""} · moyenne ${(total / nb).toFixed(1).replace(".", ",")} par ${unite}`
-    + ` · pic : ${maxN} ${pas === 1 ? "le" : "la semaine"} ${pas === 1 ? fmtChartDate(dateDuJour(debutSeau(iPic))) : libelleSeau(iPic)}`
-    + `${nbPics > 1 ? ` (et ${nbPics - 1} autre${nbPics > 2 ? "s" : ""})` : ""}`;
+  const accord = (n, m, f) => (pas === 1 ? m : f) + (n > 1 ? "s" : "");
+  const periode = `du ${fmtChartDate(dateDuJour(dMin))} au ${fmtChartDate(dateDuJour(dMax))}`;
+  let resume, aria, note;
+  if (mode === "n") {
+    resume = `${plur(total, "pari")} sur ${plur(nb, unite)} (${periode})`
+      + `${nbVides ? ` dont ${nbVides} sans aucun pari` : ""} · moyenne ${(total / nb).toFixed(1).replace(".", ",")} par ${unite}`
+      + ` · pic : ${maxN} ${pas === 1 ? "le" : "la semaine"} ${pas === 1 ? fmtChartDate(dateDuJour(debutSeau(iPic))) : libelleSeau(iPic)}`
+      + `${nbPics > 1 ? ` (et ${nbPics - 1} autre${nbPics > 2 ? "s" : ""})` : ""}`;
+    aria = `Histogramme du nombre de paris par ${unite}`;
+    note = `Compte les paris retenus par les filtres de la page
+      (la somme des barres égale le KPI « Paris »). Les ${unite}s sans barre sont des ${unite}s sans aucun pari.
+      ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
+      Survole une barre pour le détail par catégorie.`;
+  } else {
+    const nbGagn = seaux.filter(s => s.n && s.net > 0).length;
+    const nbPerd = seaux.filter(s => s.n && s.net < 0).length;
+    const cle = `<span class="pos">■</span> gain · <span class="neg">■</span> perte`;
+    if (mode === "jour") {
+      resume = `Net ${fmtEur(netTotal)} sur ${plur(nb, unite)} (${periode})`
+        + ` · ${plur(nbGagn, unite)} ${accord(nbGagn, "gagnant", "gagnante")}, ${nbPerd} ${accord(nbPerd, "perdant", "perdante")}`
+        + `${nbVides ? `, ${nbVides} sans pari` : ""}`
+        + `${vals[iMeilleur] > 0 ? ` · meilleur : ${fmtEur(vals[iMeilleur])} (${libelleResume(iMeilleur)})` : ""}`
+        + `${vals[iPire] < 0 ? ` · pire : ${fmtEur(vals[iPire])} (${libelleResume(iPire)})` : ""}`;
+      aria = `Histogramme du gain ou de la perte nette par ${unite}`;
+      note = `${cle}. Résultat net de chaque ${unite} : somme de profit × mise des paris retenus par les filtres,
+        avec la stratégie de mise choisie (la somme des barres égale le KPI « Net »). La date retenue
+        est celle du match. ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
+        Survole une barre pour le détail.`;
+    } else {
+      const iHaut = iMeilleur, iBas = iPire;
+      resume = `Cumul final ${fmtEur(netTotal)} sur ${plur(nb, unite)} (${periode})`
+        + `${vals[iHaut] > 0 ? ` · point haut : ${fmtEur(vals[iHaut])} (${libelleResume(iHaut)})` : ""}`
+        + `${vals[iBas] < 0 ? ` · point bas : ${fmtEur(vals[iBas])} (${libelleResume(iBas)})` : ""}`;
+      aria = `Histogramme du gain net cumulé par ${unite}`;
+      note = `${cle}. Chaque barre est le résultat net accumulé depuis le premier ${unite} du graphique
+        (un ${unite} sans pari reprend la valeur de la veille). La dernière barre égale le KPI « Net ».
+        ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
+        Survole une barre pour le détail.`;
+    }
+  }
 
   // Version tableau (accessibilité + lecture exacte), du plus récent au plus ancien
+  const classeSigne = v => (v >= 0 ? "pos" : "neg");
   const lignesTab = seaux.map((s, i) => ({s, i})).filter(x => x.s.n).reverse().map(({s, i}) => `
     <tr><td>${libelleSeau(i)}</td><td class="num">${s.n}</td>
       <td class="num">${s.gagnes} / ${s.n - s.gagnes}</td>
-      <td class="num ${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</td></tr>`).join("");
+      <td class="num ${classeSigne(s.profit)}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</td>
+      <td class="num ${classeSigne(s.net)}">${fmtEur(s.net)}</td>
+      <td class="num ${classeSigne(s.cumul)}">${fmtEur(s.cumul)}</td></tr>`).join("");
 
   wrap.innerHTML = `
     <div class="jour-chart">
-      <div class="jour-plot" style="${largeurNaturelle < largeurPlot ? `width:${largeurNaturelle}px;max-width:calc(100% - 50px)` : ""}"
-           role="img" aria-label="Histogramme du nombre de paris par ${unite} : ${resume}">
+      <div class="jour-plot${signe ? " is-signed" : ""}" style="${signe ? `margin-left:${margeGauche}px;` : ""}${largeurNaturelle < largeurPlot ? `width:${largeurNaturelle}px;max-width:calc(100% - ${signe ? margeGauche + 14 : 50}px)` : ""}"
+           role="img" aria-label="${aria} : ${resume}">
         ${grille}
         <div class="jour-bars" style="gap:${gap}px">${colonnes}</div>
       </div>
       <div class="chart-tooltip" hidden></div>
     </div>
     <p class="muted" style="margin:.2rem 0 0;font-size:.8rem">${resume}.</p>
-    <p class="muted" style="margin:.3rem 0 0;font-size:.78rem">Compte les paris retenus par les filtres de la page
-      (la somme des barres égale le KPI « Paris »). Les ${unite}s sans barre sont des ${unite}s sans aucun pari.
-      ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
-      Survole une barre pour le détail par catégorie.</p>
+    <p class="muted" style="margin:.3rem 0 0;font-size:.78rem">${note}</p>
     <details class="chart-help" style="margin:.5rem 0 0">
       <summary class="muted" style="cursor:pointer;font-size:.82rem">Voir les chiffres ${pas === 1 ? "jour par jour" : "semaine par semaine"}</summary>
       <div class="jour-table-wrap"><table>
-        <thead><tr><th>${pas === 1 ? "Jour" : "Semaine"}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th><th class="num">Bilan (1 u. par pari)</th></tr></thead>
+        <thead><tr><th>${pas === 1 ? "Jour" : "Semaine"}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th><th class="num">Bilan (1 u. par pari)</th><th class="num">Net (€)</th><th class="num">Cumul (€)</th></tr></thead>
         <tbody>${lignesTab}</tbody>
       </table></div>
     </details>`;
@@ -7052,20 +7203,39 @@ function drawParJour(rows) {
       actif = i;
     }
     const s = seaux[i];
+    const gras = v => `<strong class="${classeSigne(v)}">${fmtEur(v)}</strong>`;
     let corps;
     if (!s.n) {
-      corps = `<div class="tt-date">${libelleSeau(i)}</div><div class="tt-match">Aucun pari</div>`;
+      corps = `<div class="tt-date">${libelleSeau(i)}</div><div class="tt-match">Aucun pari</div>`
+        + (mode === "cumul" ? `<div class="tt-cum">Cumul inchangé : ${gras(s.cumul)}</div>` : "");
     } else {
       const parCat = CATEGORIES_DC.filter(c => s.cats[c])
         .concat(Object.keys(s.cats).filter(c => !CATEGORIES_DC.includes(c)))
         .map(c => `<div class="tt-row"><span class="muted">${c}</span><span>${s.cats[c]}</span></div>`).join("");
-      corps = `
+      const gp = `<div class="tt-row"><span>Gagnés / perdus</span>
+          <span><span class="tt-win">${s.gagnes}</span> / <span class="tt-lose">${s.n - s.gagnes}</span></span></div>`;
+      if (mode === "n") {
+        corps = `
         <div class="tt-date">${libelleSeau(i)}</div>
         <div class="tt-match">${plur(s.n, "pari")}</div>
-        <div class="tt-row"><span>Gagnés / perdus</span>
-          <span><span class="tt-win">${s.gagnes}</span> / <span class="tt-lose">${s.n - s.gagnes}</span></span></div>
+        ${gp}
         ${parCat}
         <div class="tt-cum">Bilan <strong class="${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</strong></div>`;
+      } else if (mode === "jour") {
+        corps = `
+        <div class="tt-date">${libelleSeau(i)}</div>
+        <div class="tt-match">Net ${gras(s.net)}</div>
+        <div class="tt-row"><span>Paris</span><span>${s.n}</span></div>
+        ${gp}
+        <div class="tt-cum">Cumul ${gras(s.cumul)}</div>`;
+      } else {
+        corps = `
+        <div class="tt-date">${libelleSeau(i)}</div>
+        <div class="tt-match">Cumul ${gras(s.cumul)}</div>
+        <div class="tt-row"><span>${pas === 1 ? "Ce jour" : "Cette semaine"}</span><span>${gras(s.net)}</span></div>
+        <div class="tt-row"><span>Paris</span><span>${s.n}</span></div>
+        ${gp}`;
+      }
     }
     tip.innerHTML = corps;
     tip.hidden = false;
@@ -7084,6 +7254,28 @@ function drawParJour(rows) {
   barres.addEventListener("pointerdown", survol);
   barres.addEventListener("pointerleave", cacher);
 }
+
+// Sélecteur de mode (nombre de paris / gain par jour / gain cumulé)
+(function () {
+  const groupe = $("btJourModes");
+  if (!groupe) return;
+  const boutons = Array.from(groupe.querySelectorAll(".jour-mode"));
+  function marquer() {
+    boutons.forEach(b => {
+      const actif = b.dataset.mode === parJourMode;
+      b.classList.toggle("is-active", actif);
+      b.setAttribute("aria-pressed", actif ? "true" : "false");
+    });
+  }
+  marquer();
+  boutons.forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.mode === parJourMode) return;
+    parJourMode = b.dataset.mode;
+    try { localStorage.setItem(PARJOUR_LS_KEY, parJourMode); } catch (e) { /* confort seulement */ }
+    marquer();
+    if (parJourDernier) drawParJour(parJourDernier);
+  }));
+})();
 
 // Redessine l'histogramme si sa largeur change (rotation d'écran, onglet qui
 // devient visible après avoir été tracé à largeur nulle) : le choix des
