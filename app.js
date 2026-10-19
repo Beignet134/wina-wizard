@@ -1414,10 +1414,23 @@ let CURRENT_UPCOMING_VERDICT_SIGNATURE = null;
    (fichier paris_joues.json relu par wina_wizard.py à chaque génération),
    ce qui les fait survivre aux regénérations quotidiennes.
 
-   PLACED est une Map clé -> {mise}, pas un simple Set : sans la mise
+   PLACED est une Map clé -> {mise, ...}, pas un simple Set : sans la mise
    réellement engagée, impossible de calculer une vraie évolution de
    bankroll (page "Bankroll" plus bas) — on ne saurait que QUELS paris ont
-   été joués, pas COMBIEN. */
+   été joués, pas COMBIEN.
+
+   Depuis le 18/10/2026, chaque entrée porte aussi la COTE RÉELLEMENT OBTENUE :
+     mise            montant engagé (€)
+     cote            cote obtenue sur Winamax (null si non renseignée)
+     cote_confirmee  true si vous l'avez saisie / validée vous-même (crayon de
+                     la carte ou champ « cote obtenue »), false si c'est
+                     simplement la cote affichée, reprise par défaut
+     cote_capturee   cote de la dernière capture au moment du clic
+     ts              heure de la prise du pari (heure locale, sans fuseau)
+     kickoff         coup d'envoi du match (même format que ts)
+     capture_iso     heure de génération des données affichées à ce moment
+   Les anciennes entrées ({mise} seul) restent valides : pas de cote jouée, le
+   résultat est alors calculé à la cote de clôture. */
 // Object.entries suffit pour le format normal {"clé": {"mise": N}}, mais
 // d'anciens fichiers peuvent contenir deux formes dégradées :
 //   - une LISTE de paires [clé, {"mise": N}] (bouton « Télécharger »
@@ -1429,7 +1442,12 @@ let CURRENT_UPCOMING_VERDICT_SIGNATURE = null;
 function reparerClePlacee(cle, valeur) {
   const mise = (valeur && valeur.mise != null) ? valeur.mise : null;
   const s = String(cle);
-  if (!(s.startsWith("[") && s.endsWith("]"))) return [s, {mise}];
+  // Clé normale : on garde TOUS les champs du pari joué (cote obtenue, cote
+  // capturée, heure de la prise, coup d'envoi…), pas seulement la mise.
+  if (!(s.startsWith("[") && s.endsWith("]"))) {
+    const autres = (valeur && typeof valeur === "object" && !Array.isArray(valeur)) ? valeur : {};
+    return [s, Object.assign({}, autres, {mise})];
+  }
   // Représentation Python : guillemets simples, et rien d'autre à exécuter.
   // On extrait la vraie clé et la mise par lecture directe, sans eval.
   const mCle = s.match(/^\['([^']*)'/);
@@ -1499,9 +1517,14 @@ function betKey(v) {
   return `${v.date}|${v.match}|${v.colonne}`;
 }
 
-function togglePlaced(key, on, mise) {
-  if (on) PLACED.set(key, {mise: mise != null ? mise : (PLACED.get(key)?.mise ?? null)});
-  else PLACED.delete(key);
+function togglePlaced(key, on, mise, extra) {
+  if (on) {
+    // Fusion : une correction de mise ne doit pas effacer la cote déjà saisie
+    // (et inversement) ; `extra` n'écrase que les champs qu'il fournit.
+    const avant = PLACED.get(key) || {};
+    PLACED.set(key, Object.assign({}, avant, extra || {},
+      {mise: mise != null ? mise : (avant.mise ?? null)}));
+  } else PLACED.delete(key);
   // Trace locale : {mise} si coché, `null` si décoché (tombstone) — voir
   // le commentaire au-dessus de LOCAL_OVERRIDES. Persisté immédiatement,
   // pas seulement au rechargement, pour survivre à un crash/fermeture
@@ -1532,6 +1555,68 @@ function updatePlacedSummary() {
   if (box) box.style.display = n > 0 ? "" : "none";
   const tot = $("uPlacedTotal");
   if (tot) tot.textContent = total.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+}
+
+// --- Cote réellement obtenue au moment du pari -------------------------------
+const fmtCoteFr = c => c.toFixed(2).replace(".", ",");
+
+// Heure locale SANS fuseau (« 2026-10-18T17:42:05 ») : même convention que le
+// coup d'envoi et que generated_iso, donc directement comparable.
+function isoLocalNaif(d) {
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T`
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// Écart entre la cote obtenue et la cote affichée sur la carte (capturée),
+// en points de probabilité implicite : positif = meilleur prix que celui
+// affiché (même orientation que le CLV : positif = bon pour vous).
+const ecartPrixPt = (coteRef, coteJouee) => (1 / coteRef - 1 / coteJouee) * 100;
+const fmtPt = x => (x >= 0 ? "+" : "") + x.toFixed(2).replace(".", ",") + " pt";
+
+// Petite phrase sous le champ « cote obtenue » : « affichée 2,10 → obtenue
+// 2,05 (−1,16 pt) ». Le signe est écrit : la couleur ne porte pas seule le sens.
+function texteCoteJouee(coteCapturee, coteJouee) {
+  if (coteJouee == null || coteCapturee == null) return "";
+  const e = ecartPrixPt(coteCapturee, coteJouee);
+  if (Math.abs(e) < 0.005) return `identique à la cote affichée (${fmtCoteFr(coteCapturee)})`;
+  return `affichée ${fmtCoteFr(coteCapturee)} → obtenue ${fmtCoteFr(coteJouee)} `
+    + `<strong class="${e > 0 ? "pos" : "neg"}">(${fmtPt(e)} ${e > 0 ? "· meilleur prix" : "· moins bon prix"})</strong>`;
+}
+
+// Lit le champ « cote obtenue » d'une carte : {cote, valide}. Un champ vide est
+// valide (cote inconnue) ; un texte incorrect ne l'est pas.
+function lireChampCoteJouee(carte) {
+  const champ = carte.querySelector(".cote-jouee");
+  if (!champ) return {champ: null, cote: null, valide: true};
+  const c = lireCoteSaisie(champ.value);
+  return {champ, cote: Number.isNaN(c) ? null : c, valide: !Number.isNaN(c)};
+}
+
+// Réécrit la phrase « affichée … → obtenue … » sous le champ d'une carte.
+function majInfoCoteJouee(carte, key) {
+  const info = carte.querySelector(".jouee-info");
+  if (!info) return;
+  const {cote, valide} = lireChampCoteJouee(carte);
+  const v0 = UPCOMING_PAR_CLE.get(key);
+  info.innerHTML = valide ? texteCoteJouee(v0 ? v0.cote : null, cote)
+                          : "Cote invalide (entre 1,01 et 1000).";
+}
+
+// Informations enregistrées à la prise du pari (au moment de cocher).
+function infosPrisePari(carte, key) {
+  const {champ, cote, valide} = lireChampCoteJouee(carte);
+  const v0 = UPCOMING_PAR_CLE.get(key);
+  const manuelle = champ && champ.dataset.manuelle === "1";
+  const touche = champ && champ.dataset.touche === "1";
+  return {
+    cote: valide ? cote : null,
+    cote_confirmee: !!(valide && cote != null && (manuelle || touche)),
+    cote_capturee: v0 ? v0.cote : null,
+    ts: isoLocalNaif(new Date()),
+    kickoff: v0 ? (v0.kickoff || null) : null,
+    capture_iso: WIZARD_DATA.generated_iso || null,
+  };
 }
 
 function renderPlacedExport() {
@@ -2269,7 +2354,15 @@ function renderUpcoming() {
         + `${libelle} <strong>${valeur}</strong> <span>— ${suite}</span></div>`;
     }
     const isPlaced = PLACED.has(key);
-    const miseActuelle = PLACED.get(key)?.mise;
+    const infoPlacee = PLACED.get(key);
+    const miseActuelle = infoPlacee?.mise;
+    // Champ « cote obtenue » : la valeur enregistrée si le pari est déjà joué ;
+    // sinon la cote affichée sur la carte (saisie à la main ou capturée), à
+    // corriger si besoin. Un ancien pari joué sans cote reste vide : on ne
+    // devine pas une cote qu'on ne connaît pas.
+    const coteJoueeNum = isPlaced ? (infoPlacee.cote ?? null) : v.cote;
+    const coteJoueeVal = coteJoueeNum != null ? fmtCoteFr(coteJoueeNum) : "";
+    const coteCaptureeCarte = (UPCOMING_PAR_CLE.get(key) || v).cote;
     const classesLien = estLie ? (estMeilleur ? " lie-best" : " lie-alt") : "";
     // Une fois le pari joué, ce statut prime : le conseil sur les seuils
     // liés n'a plus d'utilité, on affiche le marqueur "joué" à la place.
@@ -2329,6 +2422,16 @@ function renderUpcoming() {
                  title="Montant réellement misé sur ce pari (€)">€
         </span>
       </label>
+      <div class="rec-jouee" style="${isPlaced ? "" : "display:none"}">
+        <label class="rec-jouee-lbl">Cote obtenue
+          <input type="text" inputmode="decimal" class="cote-jouee" autocomplete="off" placeholder="2,05"
+                 value="${coteJoueeVal}" data-manuelle="${v.cote_manuelle != null ? 1 : 0}"
+                 data-touche="${infoPlacee && infoPlacee.cote_confirmee ? 1 : 0}"
+                 aria-label="Cote réellement obtenue sur Winamax"
+                 title="Cote réellement obtenue sur Winamax au moment du pari. Corrigez-la si elle a bougé : elle sert au calcul du résultat réel et du CLV (page Bankroll).">
+        </label>
+        <span class="jouee-info muted">${texteCoteJouee(coteCaptureeCarte, coteJoueeNum)}</span>
+      </div>
     </div>`;
   }).join("");
 
@@ -2340,7 +2443,13 @@ function renderUpcoming() {
       const miseWrap = e.target.closest("label").querySelector(".mise-placee-wrap");
       const miseInput = miseWrap ? miseWrap.querySelector(".mise-placee") : null;
       miseWrap.style.display = e.target.checked ? "" : "none";
-      togglePlaced(key, e.target.checked, miseInput ? parseFloat(miseInput.value) || 0 : null);
+      const ligneJouee = card.querySelector(".rec-jouee");
+      if (ligneJouee) ligneJouee.style.display = e.target.checked ? "" : "none";
+      // À la coche : on enregistre aussi la cote obtenue (champ de la carte,
+      // préremplie avec la cote affichée), la cote capturée et l'heure.
+      togglePlaced(key, e.target.checked, miseInput ? parseFloat(miseInput.value) || 0 : null,
+                   e.target.checked ? infosPrisePari(card, key) : null);
+      if (e.target.checked) majInfoCoteJouee(card, key);
       card.classList.toggle("placed", e.target.checked);
       const lbl = e.target.nextElementSibling;
       if (lbl) lbl.textContent = e.target.checked ? "Pari joué" : "Marquer comme joué";
@@ -2366,6 +2475,27 @@ function renderUpcoming() {
       const card = e.target.closest(".rec");
       const key = card.dataset.key;
       if (PLACED.has(key)) togglePlaced(key, true, parseFloat(e.target.value) || 0);
+    });
+  });
+  // Champ « cote obtenue » : une frappe suffit à le marquer « saisi par vous »
+  // (c'est ce qui distingue une vraie cote d'une cote affichée reprise par
+  // défaut) ; la valeur est enregistrée à la validation du champ.
+  grid.querySelectorAll(".cote-jouee").forEach(inp => {
+    inp.addEventListener("input", e => {
+      e.target.dataset.touche = "1";
+      e.target.removeAttribute("aria-invalid");
+    });
+    inp.addEventListener("change", e => {
+      const card = e.target.closest(".rec");
+      const key = card.dataset.key;
+      const {cote, valide} = lireChampCoteJouee(card);
+      if (!valide) { e.target.setAttribute("aria-invalid", "true"); return; }
+      e.target.removeAttribute("aria-invalid");
+      if (cote != null) e.target.value = fmtCoteFr(cote);
+      if (PLACED.has(key)) {
+        togglePlaced(key, true, null, {cote, cote_confirmee: cote != null});
+      }
+      majInfoCoteJouee(card, key);
     });
   });
   updatePlacedSummary();
@@ -7420,27 +7550,96 @@ function renderMargeLigues() {
 });
 
 /* ================= PAGE — BANKROLL ================= */
-// Construit un index (date|match|pari) -> ligne du backtest, pour retrouver
-// le résultat RÉEL d'un pari coché "joué" une fois son match terminé. Un
-// pari joué qui n'apparaît dans AUCUNE ligne du backtest (match pas encore
-// joué, ou edge sous le seuil retenu par le modèle ce jour-là) reste "en
-// attente" plutôt que de fausser le calcul avec une estimation.
+// Rapproche chaque pari coché « joué » du RÉSULTAT RÉEL du match, puis calcule
+// le gain avec la cote que vous avez réellement obtenue.
+//
+// Résultat : on le cherche parmi TOUS les paris évalués (BETS : chaque marché
+// de chaque match dont le score est connu), pas parmi les seules lignes du
+// backtest DC. Avant le 18/10/2026 on utilisait BT_ROWS : un pari joué dont
+// l'edge était retombé sous le seuil à la dernière capture (cote qui s'allonge
+// ou raccourcit après coup) n'y figurait pas et restait « en attente » pour
+// toujours — alors que ce sont justement les paris qui sortent des filtres
+// après coup (ROI bien plus bas que ceux qui restent) : le résultat affiché
+// était flatteur. La cote de BETS est la dernière cote capturée avant le
+// coup d'envoi : c'est la « cote de clôture » du CLV.
+//
+// Gain : si la cote obtenue est connue, gain = mise × (cote − 1) ou − mise ;
+// sinon (anciens paris, avant ce suivi) à la cote de clôture, comme avant.
+// Un pari dont le match est terminé mais absent de BETS (marché remboursé :
+// « Plus de 2 » avec exactement 2 buts…) est « Remboursé », résultat nul.
+function resolutionParisJoues() {
+  const cles = new Set(PLACED.keys());
+  const matchs = new Set([...cles].map(k => k.split("|").slice(0, 2).join("|")));
+  const parCle = new Map(), matchsFinis = new Set();
+  if (cles.size) {
+    BETS.forEach(b => {
+      const km = b.date + "|" + b.match;
+      if (!matchs.has(km)) return;
+      matchsFinis.add(km);
+      const k = km + "|" + b.col;
+      if (cles.has(k)) parCle.set(k, b);
+    });
+  }
+  return {parCle, matchsFinis};
+}
+
+// Qualité d'exécution des paris joués : seuls comptent ceux dont la cote a été
+// saisie ou validée par vous (cote_confirmee) — une cote simplement reprise de
+// l'écran ne mesure rien d'autre que l'écran lui-même.
+//   CLV réel    = (1/clôture − 1/cote obtenue) × 100, en points de probabilité
+//                 implicite. Positif = le marché a ensuite raccourci : vous avez
+//                 pris un meilleur prix que celui de la clôture.
+//   Écart écran = (1/cote affichée − 1/cote obtenue) × 100. Positif = meilleur
+//                 prix que celui affiché au dernier relevé.
+function statsExecution(lignes) {
+  const conf = lignes.filter(l => l.coteJouee != null && l.confirmee);
+  const avecClo = conf.filter(l => l.coteCloture != null);
+  const avecCap = conf.filter(l => l.coteCapturee != null);
+  const moy = (arr, f) => arr.length ? arr.reduce((t, x) => t + f(x), 0) / arr.length : null;
+  const delais = lignes.map(l => {
+    const t = Date.parse(l.ts), k = Date.parse(l.kickoff);
+    return (isFinite(t) && isFinite(k)) ? (k - t) / 3600000 : null;
+  }).filter(h => h != null && h >= 0);   // une coche après le coup d'envoi n'est pas un délai exploitable
+  return {
+    nConf: conf.length,
+    nClo: avecClo.length,
+    clv: moy(avecClo, l => ecartPrixPt(l.coteCloture, l.coteJouee)),
+    pctBat: avecClo.length ? avecClo.filter(l => l.coteJouee > l.coteCloture).length / avecClo.length : null,
+    nCap: avecCap.length,
+    ecranMoy: moy(avecCap, l => ecartPrixPt(l.coteCapturee, l.coteJouee)),
+    delaiMoy: delais.length ? delais.reduce((t, h) => t + h, 0) / delais.length : null,
+    nDelai: delais.length,
+  };
+}
+
+function fmtDelaiH(h) {
+  if (h == null) return "—";
+  const sgn = h < 0 ? "−" : "";
+  const m = Math.round(Math.abs(h) * 60);
+  return `${sgn}${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+}
+
 function renderBankroll() {
   const departEl = $("bkDepart");
   const evoWrap = $("bkEvoWrap"), body = $("bkBody");
   if (!departEl || !evoWrap || !body) return;
   const depart = parseFloat(departEl.value) || 0;
 
-  const backtestParCle = {};
-  BT_ROWS.forEach(r => { backtestParCle[`${r.date}|${r.match}|${r.colonne}`] = r; });
+  const {parCle, matchsFinis} = resolutionParisJoues();
 
   const paris = [...PLACED.entries()].map(([cle, info]) => {
     const [date, match, pari] = cle.split("|");
-    const bt = backtestParCle[cle];
+    const ref = parCle.get(cle) || null;
+    const fini = matchsFinis.has(date + "|" + match);
+    const coteJouee = (info.cote != null && isFinite(info.cote)) ? Number(info.cote) : null;
     return {
       cle, date, match, pari, mise: info.mise || 0,
-      cote: bt ? bt.cote : null, resolu: !!bt,
-      gagne: bt ? bt.gagne : null, profitUnites: bt ? bt.profit : null,
+      coteJouee, confirmee: !!info.cote_confirmee,
+      coteCapturee: info.cote_capturee != null ? Number(info.cote_capturee) : null,
+      coteCloture: ref ? ref.cote : null,
+      ts: info.ts || null, kickoff: info.kickoff || null,
+      resolu: !!ref, rembourse: !ref && fini,
+      gagne: ref ? ref.won : null,
     };
   }).sort((a, b) => a.date.localeCompare(b.date) || a.cle.localeCompare(b.cle));
 
@@ -7448,12 +7647,14 @@ function renderBankroll() {
   const pts = [{date: "Départ", y: depart}];
   const lignes = paris.map(p => {
     let resultatEuros = null, statut = "En attente", bankrollApres = null;
-    if (p.resolu) {
-      resultatEuros = p.profitUnites * p.mise;
+    if (p.resolu || p.rembourse) {
+      // Cote de calcul : celle obtenue si on la connaît, sinon la clôture.
+      const coteCalc = p.coteJouee ?? p.coteCloture;
+      resultatEuros = p.rembourse ? 0 : (p.gagne ? p.mise * (coteCalc - 1) : -p.mise);
       bankroll += resultatEuros;
       net += resultatEuros;
       resolus++;
-      statut = p.gagne ? "Gagné" : "Perdu";
+      statut = p.rembourse ? "Remboursé" : (p.gagne ? "Gagné" : "Perdu");
       bankrollApres = bankroll;
       pts.push({date: p.date, y: bankroll, match: p.match, pari: p.pari,
                mise: p.mise, statut, resultatEuros, gagne: p.gagne});
@@ -7470,19 +7671,57 @@ function renderBankroll() {
   $("bkResolus").textContent = resolus;
   $("bkAttente").textContent = attente;
 
+  // Qualité d'exécution (CLV réel, écart avec l'écran, délai avant le match)
+  const ex = statsExecution(lignes);
+  const posNeg = (el, v) => { if (el) el.className = "v" + (v == null ? "" : (v >= 0 ? " pos" : " neg")); };
+  const clvEl = $("bkClv"), clvSub = $("bkClvSub");
+  if (clvEl) {
+    clvEl.textContent = ex.clv != null ? fmtPt(ex.clv) : "—";
+    posNeg(clvEl, ex.clv);
+    if (clvSub) clvSub.textContent = ex.nClo
+      ? `${ex.nClo} pari(s) mesuré(s) · ${Math.round(ex.pctBat * 100)} % pris au-dessus de la clôture`
+      : (ex.nConf ? "en attente de la clôture (match pas terminé)" : "aucune cote saisie pour l'instant");
+  }
+  const ecEl = $("bkEcran"), ecSub = $("bkEcranSub");
+  if (ecEl) {
+    ecEl.textContent = ex.ecranMoy != null ? fmtPt(ex.ecranMoy) : "—";
+    posNeg(ecEl, ex.ecranMoy);
+    if (ecSub) ecSub.textContent = ex.nCap
+      ? `${ex.nCap} pari(s) · cote obtenue vs cote affichée`
+      : "aucune cote saisie pour l'instant";
+  }
+  const dlEl = $("bkDelai"), dlSub = $("bkDelaiSub");
+  if (dlEl) {
+    dlEl.textContent = fmtDelaiH(ex.delaiMoy);
+    if (dlSub) dlSub.textContent = ex.nDelai ? `${ex.nDelai} pari(s) · à l'heure où vous avez coché « joué »` : "pas encore de pari enregistré avec l'heure";
+  }
+
   drawBankrollChart(pts, "bkEvoWrap");
 
+  const cellCote = l => {
+    if (l.coteJouee == null) return `<span class="muted" title="Cote obtenue non renseignée : le résultat est calculé à la cote de clôture">—</span>`;
+    return l.confirmee
+      ? l.coteJouee.toFixed(2)
+      : `<span class="muted" title="Cote affichée sur la carte, non saisie par vous : n'entre pas dans le CLV">${l.coteJouee.toFixed(2)}*</span>`;
+  };
+  const cellClv = l => {
+    if (l.coteJouee == null || !l.confirmee || l.coteCloture == null) return "—";
+    const e = ecartPrixPt(l.coteCloture, l.coteJouee);
+    return `<span class="${e >= 0 ? "pos" : "neg"}">${fmtPt(e)}</span>`;
+  };
   body.innerHTML = lignes.map(l => `
     <tr>
       <td data-label="Date">${l.date}</td>
       <td data-label="Match">${l.match}</td>
       <td data-label="Pari">${l.pari}</td>
-      <td data-label="Cote" class="num">${l.cote != null ? l.cote.toFixed(2) : "—"}</td>
+      <td data-label="Cote jouée" class="num">${cellCote(l)}</td>
+      <td data-label="Clôture" class="num">${l.coteCloture != null ? l.coteCloture.toFixed(2) : "—"}</td>
+      <td data-label="CLV" class="num">${cellClv(l)}</td>
       <td data-label="Mise" class="num">${l.mise.toFixed(2)} €</td>
       <td data-label="Statut">${l.statut}</td>
       <td data-label="Résultat" class="num ${l.resultatEuros == null ? "" : (l.resultatEuros >= 0 ? "pos" : "neg")}">${l.resultatEuros != null ? fmtEur(l.resultatEuros) : "—"}</td>
       <td data-label="Bankroll" class="num">${l.bankrollApres != null ? l.bankrollApres.toLocaleString("fr-FR",{maximumFractionDigits:2}) + " €" : "—"}</td>
-    </tr>`).join("") || `<tr><td colspan="8" class="muted">Aucun pari marqué comme joué pour l'instant — cochez "Marquer comme joué" sur la page Paris à venir.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="10" class="muted">Aucun pari marqué comme joué pour l'instant — cochez "Marquer comme joué" sur la page Paris à venir.</td></tr>`;
 }
 
 // Graphique en escalier : un point par pari RÉSOLU (pas par jour), la
