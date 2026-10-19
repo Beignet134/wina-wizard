@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261019052813">
+<link rel="stylesheet" href="style.css?v=20261019212243">
 </head>
 <body>
 <div class="topbar">
@@ -1409,7 +1409,9 @@
     <div id="placedBox" class="panel placed-panel" style="display:none">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10.2l2 2 4-4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Mes paris joués <span class="hint">— <span id="uPlacedCount">0</span> pari(s) coché(s), <span id="uPlacedTotal">0 €</span> engagé(s)</span></h2>
       <p class="muted" style="margin:-.4rem 0 .9rem; font-size:.85rem">
-        Coche « Pari joué » sur une carte pour garder la trace de ce que tu as réellement misé.
+        Coche « Pari joué » sur une carte pour garder la trace de ce que tu as réellement misé,
+        et de la cote réellement obtenue (champ « Cote obtenue » sous la case : corrige-la si elle a
+        bougé, elle sert au CLV réel de la page Bankroll).
         Ce navigateur retient déjà tes coches tout seul (filet de sécurité local), mais ça reste
         propre à cet appareil et ce navigateur : pour que ces coches survivent à une nouvelle
         génération lancée d'ailleurs, ou changent d'appareil, télécharge le fichier
@@ -1475,12 +1477,31 @@
         <div class="kpi"><div class="k">Paris en attente</div><div class="v" id="bkAttente">0</div></div>
       </div>
 
+      <h3 class="section-divider" style="margin-top:1.2rem">Qualité d'exécution <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">— la cote que vous obtenez vraiment</span></h3>
+      <div class="kpis">
+        <div class="kpi"><div class="k">CLV réel</div><div class="v" id="bkClv">—</div><div class="kpi-sub" id="bkClvSub"></div></div>
+        <div class="kpi"><div class="k">Écart avec la cote affichée</div><div class="v" id="bkEcran">—</div><div class="kpi-sub" id="bkEcranSub"></div></div>
+        <div class="kpi"><div class="k">Coché avant le match (moy.)</div><div class="v" id="bkDelai">—</div><div class="kpi-sub" id="bkDelaiSub"></div></div>
+      </div>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.8rem">
+        Sur la page <strong>Paris à venir</strong>, quand vous cochez « Marquer comme joué », le champ
+        <em>Cote obtenue</em> garde la cote réellement prise sur Winamax (corrigez-la si elle a bougé).
+        <strong>CLV réel</strong> : écart, en points de probabilité implicite, entre cette cote et la dernière
+        cote capturée avant le match (la « clôture ») ; positif = le marché a ensuite raccourci, vous avez pris
+        un meilleur prix. <strong>Écart avec la cote affichée</strong> : même mesure par rapport à la cote que la
+        carte affichait ; négatif = la cote a baissé entre le dernier relevé et votre pari. Seules les cotes
+        saisies ou validées par vous comptent ; une cote reprise telle quelle de l'écran est marquée d'un
+        astérisque. Les résultats ci-dessous viennent du score réel du match, même quand le pari ne passerait
+        plus vos filtres à la clôture.
+      </p>
+
       <div id="bkEvoWrap" style="margin-top:1rem"></div>
 
       <div class="tablewrap" style="margin-top:1rem">
         <table id="bkTable" class="cardify">
           <thead><tr>
-            <th>Date</th><th>Match</th><th>Pari</th><th class="num">Cote</th>
+            <th>Date</th><th>Match</th><th>Pari</th><th class="num">Cote jouée</th>
+            <th class="num">Clôture</th><th class="num">CLV</th>
             <th class="num">Mise</th><th>Statut</th><th class="num">Résultat</th>
             <th class="num">Bankroll</th>
           </tr></thead>
@@ -1768,7 +1789,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261019052837"></script>
-<script src="app.js?v=20261019052813"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261019212304"></script>
+<script src="app.js?v=20261019212243"></script>
 </body>
 </html>
