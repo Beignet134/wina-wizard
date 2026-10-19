@@ -916,6 +916,30 @@ details.cat-filter-block > summary:hover { color: var(--cyan); }
 }
 .mise-placee:focus { outline: none; border-color: var(--violet); }
 
+/* Cote réellement obtenue (carte « Paris à venir », une fois « Pari joué »
+   coché) : une ligne sous la case, champ court + phrase d'écart. */
+.rec-jouee {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .6rem;
+  padding-top: .45rem; font-size: .72rem;
+}
+.rec-jouee-lbl {
+  display: inline-flex; align-items: center; gap: .4rem; color: var(--ink-faint);
+  text-transform: uppercase; letter-spacing: .05em; font-weight: 600; font-size: .68rem;
+}
+.cote-jouee {
+  width: 4.1rem; background: var(--night-3); border: 1px solid var(--line-soft);
+  border-radius: 5px; color: var(--ink); font-family: var(--font-mono);
+  font-weight: 600; font-size: .8rem; padding: .22rem .35rem; text-align: right;
+  min-height: 30px;
+}
+.cote-jouee:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.cote-jouee[aria-invalid="true"] { border-color: var(--coral); }
+.jouee-info { flex: 1 1 10rem; line-height: 1.35; font-size: .7rem; }
+.jouee-info strong { font-weight: 600; }
+
+/* Bankroll : sous-texte des cartes de chiffres */
+.kpi .kpi-sub { font-size: .7rem; color: var(--ink-faint); margin-top: .3rem; line-height: 1.35; }
+
 /* Panneau de suivi des paris joués */
 .placed-panel { border-color: rgba(52,211,153,.28); }
 .placed-export {
