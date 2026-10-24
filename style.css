@@ -505,6 +505,35 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .bk-periode-note { margin: .3rem 0 .9rem; font-size: .8rem; }
 .bk-periode-note:empty { display: none; }
 
+/* Comparaison paris réels / DC rétrospectif (page Bankroll) */
+.cmp-filtres { margin: 0 0 .9rem; }
+.cmp-filtres .cmp-filtres-titre { display: block; margin: 0 0 .35rem; font-size: .76rem; color: var(--ink-faint); }
+.cmp-sous-titre { margin: 1.1rem 0 .4rem; font-size: .8rem; font-weight: 600; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .06em; }
+.cmp-table { width: 100%; border-collapse: collapse; }
+.cmp-table th, .cmp-table td { padding: .42rem .6rem; text-align: left; border-bottom: 1px solid var(--line-soft); font-size: .84rem; }
+.cmp-table th { color: var(--ink-faint); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
+.cmp-table th.num, .cmp-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-table tr.cmp-total td { font-weight: 600; border-top: 1px solid var(--line); }
+.cmp-table td.cmp-sous { padding-left: 1.4rem; color: var(--ink-dim); }
+.cmp-note { margin: .45rem 0 0; font-size: .78rem; }
+.cmp-badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px; font-size: .7rem; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); }
+.cmp-badge.commun { color: var(--up); border-color: rgba(60, 220, 160, .45); }
+.cmp-badge.joue { color: var(--violet); border-color: rgba(128, 175, 255, .5); }
+.cmp-badge.retro { color: var(--ink-dim); }
+.cmp-detail th, .cmp-detail td { padding: .38rem .42rem; }
+.cmp-detail td { font-size: .8rem; }
+.cmp-detail th { white-space: normal; line-height: 1.2; vertical-align: bottom; }
+.cmp-detail td:first-child { white-space: nowrap; }
+@media (max-width: 720px) {
+  .cmp-table.cardify:not(.cmp-detail) td:first-child { display: block; text-align: left; font-weight: 600; padding-left: 0; }
+  .cmp-table.cardify:not(.cmp-detail) td.cmp-sous { padding-left: 0; font-weight: 500; color: var(--ink-dim); }
+  .cmp-table.cardify tr.cmp-total td { border-top: none; }
+  .cmp-table.cardify tr.cmp-total { border-color: var(--line); }
+  .cmp-detail td { font-size: .84rem; }
+}
+.cmp-raison { margin-top: .2rem; max-width: 24rem; font-size: .72rem; color: var(--ink-faint); white-space: normal; }
+.cmp-alerte { margin: .6rem 0 0; padding: .5rem .7rem; border-radius: 8px; border: 1px solid rgba(255, 190, 90, .45); background: rgba(255, 190, 90, .08); font-size: .8rem; }
+
 /* Modes « gain » : barres signées autour d'une ligne de zéro. Chaque barre est
    positionnée en absolu (bas ou haut ancré sur le zéro) ; vert = gain,
    corail = perte ; le signe se lit aussi à la position (au-dessus / au-dessous
