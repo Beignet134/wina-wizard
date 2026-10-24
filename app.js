@@ -4784,6 +4784,8 @@ function renderBacktest() {
   renderHistMatrix(btFiltered({sansHist: true}));
   renderBtActiveFilters(rowsFiltrees);
   renderBtFilterImpact(rowsFiltrees, rowsReferenceComplete);
+  // La page Bankroll compare vos paris réels à ces mêmes lignes filtrées.
+  if (typeof renderComparaison === "function") renderComparaison(rowsFiltrees);
 
   // Étiquette d'intervalle : reflète le calendrier choisi, pas une fenêtre
   // fixe. "Toute la période" si les deux bornes sont vides (aucun filtre
@@ -7913,6 +7915,10 @@ function renderBankroll() {
     </tr>`).join("") || (toutes.length
     ? `<tr><td colspan="10" class="muted">Aucun pari joué sur cette période.</td></tr>`
     : `<tr><td colspan="10" class="muted">Aucun pari marqué comme joué pour l'instant — cochez "Marquer comme joué" sur la page Paris à venir.</td></tr>`);
+
+  // Comparaison avec DC rétrospectif : même période, mêmes paris joués.
+  BK_CTX = {lignes, deb, fin, inverse};
+  if (typeof renderComparaison === "function") renderComparaison();
 }
 
 // Graphique en escalier : un point par pari RÉSOLU (pas par jour), la
@@ -8180,6 +8186,290 @@ if ($("simStrategie")) {
   // un changement doit redessiner les deux plutôt que seulement la première.
   $("bkDepart").addEventListener("input", renderExposition);
   $("bkDepart").addEventListener("change", renderExposition);
+}
+
+// ========================================================================
+// COMPARAISON PARIS RÉELS ↔ DC RÉTROSPECTIF (page Bankroll)
+// ========================================================================
+// Le rétrospectif n'est pas un relevé de paris : c'est « tous les paris qui
+// passent les filtres, à la dernière cote capturée avant le coup d'envoi, à
+// la mise choisie sur sa page ». Cette section met face à face, pour la même
+// période, ce que vous avez réellement joué et ce que le rétrospectif
+// contient, rapprochés par la clé (date, match, pari) :
+//   A  joués ET dans le rétrospectif   → même pari, deux prix et deux mises ;
+//   B  dans le rétrospectif, jamais joués ;
+//   C  joués, absents du rétrospectif  (avec la raison de l'absence).
+// Réel = vos mises, votre cote obtenue (sinon la clôture) ; rétrospectif = sa
+// cote (dernier relevé avant le match) et sa mise. Pour isoler l'effet du
+// PRIX, les paris A sont aussi chiffrés « au prix du rétrospectif, à vos
+// mises » : l'écart avec votre résultat ne vient alors que de la cote.
+// Les filtres sont ceux de la page DC rétrospectif (btFiltered) ; la période
+// est celle du panneau Bankroll ci-dessus (BK_CTX, posé par renderBankroll).
+var BK_CTX = null;          // dernier état de la page Bankroll : lignes de la période
+var CMP_FILTRE = "tous";    // filtre du tableau de détail
+var CMP_TOUT = false;       // détail : toutes les lignes, au lieu des CMP_MAX_LIGNES premières
+var CMP_DETAIL = [];        // lignes du tableau de détail (toutes catégories)
+var CMP_INDEX_BT = null;    // BT_ROWS indexé par clé, construit à la demande
+const CMP_MAX_LIGNES = 150;
+const CMP_RAISONS = {
+  hors_periode: "Hors de la période du rétrospectif (ses dates « Du / Au »)",
+  autre_pari: "Un autre pari du même match a été retenu à sa place (un seul par match et par catégorie)",
+  filtre: "Écarté par un filtre actuel du rétrospectif (edge, cote, mouvement, ligue…)",
+  sans_ligne: "Aucune ligne dans le rétrospectif : au dernier relevé avant le match, le pari ne passait pas le seuil d'edge du modèle (ou le modèle n'avait pas de prévision pour ce match)",
+  rembourse: "Remboursé : marché absent des résultats (mise rendue, non comptée dans les mises)",
+};
+// Libellés courts du tableau de détail ; le texte complet reste en infobulle et dans « pourquoi ? ».
+const CMP_RAISONS_COURT = {
+  hors_periode: "Hors période du rétro", autre_pari: "Autre pari retenu", filtre: "Écarté par un filtre",
+  sans_ligne: "Pas de ligne rétro", rembourse: "Remboursé",
+};
+const CMP_ORDRE_RAISONS = ["sans_ligne", "filtre", "autre_pari", "hors_periode", "rembourse"];
+
+const cleBt = r => `${r.date}|${r.match}|${r.colonne}`;
+const cmpEsc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"})[c]);
+const cmpMontant = x => x.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+const cmpPct = x => (x == null || !isFinite(x)) ? "—"
+  : (x >= 0 ? "+" : "-") + Math.abs(x * 100).toFixed(1).replace(".", ",") + " %";
+const cmpSigne = x => (x == null || !isFinite(x) || x === 0) ? "" : (x > 0 ? "pos" : "neg");
+const cmpPt = x => (x >= 0 ? "+" : "-") + Math.abs(x * 100).toFixed(1).replace(".", ",") + " pt";
+const cmpRoi = (net, mise) => mise > 0 ? net / mise : null;
+// Mise réellement engagée : un pari remboursé a rendu sa mise, il ne pèse ni sur les mises ni sur le ROI.
+const cmpMiseEng = l => l.rembourse ? 0 : l.mise;
+
+function cmpIndexBt() {
+  if (!CMP_INDEX_BT) {
+    CMP_INDEX_BT = new Map();
+    BT_ROWS.forEach(r => { const k = cleBt(r); if (!CMP_INDEX_BT.has(k)) CMP_INDEX_BT.set(k, r); });
+  }
+  return CMP_INDEX_BT;
+}
+
+function cmpMediane(arr) {
+  if (!arr.length) return null;
+  const s = arr.slice().sort((a, b) => a - b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// rowsRetroFiltre : lignes déjà filtrées par la page DC rétrospectif, si l'appelant
+// les a sous la main (renderBacktest) ; sinon on les recalcule.
+function renderComparaison(rowsRetroFiltre) {
+  const corps = $("cmpCorps");
+  if (!corps || !BK_CTX) return;
+  const {lignes, deb, fin, inverse} = BK_CTX;
+  const dansPeriode = r => !inverse && (!deb || r.date >= deb) && (!fin || r.date <= fin);
+
+  // Rappel des filtres du rétrospectif : les mêmes pastilles que sur sa page.
+  const fh = $("cmpFiltres");
+  if (fh) {
+    const src = document.querySelector("#btActiveFilters .active-filter-chips");
+    fh.innerHTML = `<span class="cmp-filtres-titre">Filtres du rétrospectif pris en compte`
+      + `${deb || fin ? " · et période du panneau Bankroll" : ""}</span>`
+      + (src && src.innerHTML.trim() ? `<div class="active-filter-chips">${src.innerHTML}</div>` : '<span class="muted">—</span>');
+  }
+
+  const retroFiltre = rowsRetroFiltre || btFiltered();
+  const retro = retroFiltre.filter(dansPeriode);
+  const retroParCle = new Map(retro.map(r => [cleBt(r), r]));
+  const reels = lignes.filter(l => l.resultatEuros != null);   // joués ET terminés
+  const clesJouees = new Set(lignes.map(l => l.cle));
+
+  // Pourquoi un pari joué n'est pas (ou plus) dans le rétrospectif ?
+  const idx = cmpIndexBt();
+  const rDeb = $("btDateDebut") ? $("btDateDebut").value : "";
+  const rFin = $("btDateFin") ? $("btDateFin").value : "";
+  const dedupEl = $("btDedup");
+  let clesSansDedup = null;
+  if (dedupEl && dedupEl.value === "1") {
+    // Ce que les filtres laisseraient passer sans la règle « un seul par match
+    // et par catégorie » : permet de distinguer « écarté » de « supplanté ».
+    dedupEl.value = "0";
+    try { clesSansDedup = new Set(btFiltered().map(cleBt)); } finally { dedupEl.value = "1"; }
+  }
+  const raison = l => {
+    if (l.rembourse) return "rembourse";
+    if ((rDeb && l.date < rDeb) || (rFin && l.date > rFin)) return "hors_periode";
+    if (!idx.has(l.cle)) return "sans_ligne";
+    if (clesSansDedup && clesSansDedup.has(l.cle)) return "autre_pari";
+    return "filtre";
+  };
+
+  const paires = [], horsRetro = [];
+  reels.forEach(l => {
+    const r = l.rembourse ? null : retroParCle.get(l.cle);
+    if (r) paires.push({l, r}); else horsRetro.push({l, raison: raison(l)});
+  });
+  const nonJoues = retro.filter(r => !clesJouees.has(cleBt(r)));
+
+  const somme = (a, f) => a.reduce((t, x) => t + f(x), 0);
+  const stR = r => { const m = btStakeFor(r); return isFinite(m) ? m : 0; };
+  const A = {n: paires.length,
+    miseJ: somme(paires, p => cmpMiseEng(p.l)), netJ: somme(paires, p => p.l.resultatEuros),
+    miseR: somme(paires, p => stR(p.r)), netR: somme(paires, p => p.r.profit * stR(p.r)),
+    netRvm: somme(paires, p => p.r.profit * p.l.mise)};   // prix du rétrospectif, VOS mises
+  const B = {n: nonJoues.length, miseR: somme(nonJoues, stR), netR: somme(nonJoues, r => r.profit * stR(r))};
+  const C = {n: horsRetro.length, miseJ: somme(horsRetro, h => cmpMiseEng(h.l)), netJ: somme(horsRetro, h => h.l.resultatEuros)};
+  const totR = {n: retro.length, mise: A.miseR + B.miseR, net: A.netR + B.netR};
+  const totJ = {n: reels.length, mise: A.miseJ + C.miseJ, net: A.netJ + C.netJ};
+
+  const part = (a, b) => b ? `${Math.round(a / b * 100)} %` : "—";
+  const kpi = (k, v, sub, cls) =>
+    `<div class="kpi"><div class="k">${k}</div><div class="v ${cls || ""}">${v}</div><div class="kpi-sub">${sub}</div></div>`;
+  const effet = A.netJ - A.netRvm;
+  const kpis = `<div class="kpis">`
+    + kpi("Vos paris dans le rétrospectif", `${A.n} / ${reels.length}`,
+          reels.length ? `${part(A.n, reels.length)} · ${C.n} absent${C.n > 1 ? "s" : ""} (raisons plus bas)` : "aucun pari joué et terminé")
+    + kpi("Lignes du rétrospectif jouées", `${A.n} / ${retro.length}`,
+          retro.length ? `${part(A.n, retro.length)} · ${B.n} jamais jouée${B.n > 1 ? "s" : ""}` : "rétrospectif vide sur la période")
+    + kpi("Effet de vos prix (mêmes paris)", A.n ? fmtEur(effet) : "—",
+          A.n ? "votre résultat − celui du rétrospectif, à vos mises" : "aucun pari commun", A.n ? cmpSigne(effet) : "")
+    + kpi("ROI : vous / rétrospectif", `${cmpPct(cmpRoi(totJ.net, totJ.mise))} / ${cmpPct(cmpRoi(totR.net, totR.mise))}`,
+          `${totJ.n} pari${totJ.n > 1 ? "s" : ""} joué${totJ.n > 1 ? "s" : ""} · ${totR.n} ligne${totR.n > 1 ? "s" : ""}`)
+    + `</div>`;
+
+  // --- Synthèse par groupe --------------------------------------------------
+  const ligne = (lib, o, cls) => `<tr class="${cls || ""}">
+      <td data-label=""${cls ? "" : ' class="cmp-sous"'}>${lib}</td><td data-label="Paris" class="num">${o.n}</td>
+      <td data-label="Mises" class="num">${o.n ? cmpMontant(o.mise) : "—"}</td>
+      <td data-label="Net" class="num ${cmpSigne(o.net)}">${o.n ? fmtEur(o.net) : "—"}</td>
+      <td data-label="ROI" class="num ${cmpSigne(cmpRoi(o.net, o.mise))}">${cmpPct(cmpRoi(o.net, o.mise))}</td></tr>`;
+  const synthese = `<div class="tablewrap"><table class="cmp-table cardify">
+    <thead><tr><th>Groupe</th><th class="num">Paris</th><th class="num">Mises</th><th class="num">Net</th><th class="num">ROI</th></tr></thead>
+    <tbody>
+      ${ligne("Rétrospectif — total (cote du dernier relevé, sa mise)", totR, "cmp-total")}
+      ${ligne("dont déjà joués par vous", {n: A.n, mise: A.miseR, net: A.netR})}
+      ${ligne("dont jamais joués", {n: B.n, mise: B.miseR, net: B.netR})}
+      ${ligne("Vos paris joués — total (votre cote, vos mises)", totJ, "cmp-total")}
+      ${ligne("dont présents dans le rétrospectif", {n: A.n, mise: A.miseJ, net: A.netJ})}
+      ${ligne("dont absents du rétrospectif", {n: C.n, mise: C.miseJ, net: C.netJ})}
+    </tbody></table></div>`;
+
+  // --- Mêmes paris, deux prix -----------------------------------------------
+  const conf = paires.filter(p => p.l.confirmee && p.l.coteJouee != null);
+  const ratios = conf.map(p => p.l.coteJouee / p.r.cote);
+  const moy = (a, f) => a.length ? somme(a, f) / a.length : null;
+  const roiRvm = cmpRoi(A.netRvm, A.miseJ), roiJ = cmpRoi(A.netJ, A.miseJ);
+  const nPire = ratios.filter(x => x < 0.98).length, nMieux = ratios.filter(x => x > 1.02).length;
+  let prix = "";
+  if (A.n) {
+    prix = `<h3 class="cmp-sous-titre">Les mêmes ${A.n} paris, deux prix</h3>
+      <div class="tablewrap"><table class="cmp-table cardify">
+        <thead><tr><th></th><th class="num">Au prix du rétrospectif</th><th class="num">Votre prix</th><th class="num">Écart</th></tr></thead>
+        <tbody>
+          <tr><td data-label="">Résultat net, à vos mises</td><td data-label="Au prix du rétrospectif" class="num ${cmpSigne(A.netRvm)}">${fmtEur(A.netRvm)}</td>
+            <td data-label="Votre prix" class="num ${cmpSigne(A.netJ)}">${fmtEur(A.netJ)}</td><td data-label="Écart" class="num ${cmpSigne(effet)}">${fmtEur(effet)}</td></tr>
+          <tr><td data-label="">ROI (pondéré par vos mises)</td><td data-label="Au prix du rétrospectif" class="num ${cmpSigne(roiRvm)}">${cmpPct(roiRvm)}</td>
+            <td data-label="Votre prix" class="num ${cmpSigne(roiJ)}">${cmpPct(roiJ)}</td>
+            <td data-label="Écart" class="num ${cmpSigne(roiJ - roiRvm)}">${roiJ != null && roiRvm != null ? cmpPt(roiJ - roiRvm) : "—"}</td></tr>
+          <tr><td data-label="">Cote moyenne (${conf.length} cote${conf.length > 1 ? "s" : ""} confirmée${conf.length > 1 ? "s" : ""} par vous)</td>
+            <td data-label="Au prix du rétrospectif" class="num">${conf.length ? moy(conf, p => p.r.cote).toFixed(2) : "—"}</td>
+            <td data-label="Votre prix" class="num">${conf.length ? moy(conf, p => p.l.coteJouee).toFixed(2) : "—"}</td>
+            <td data-label="Écart" class="num ${cmpSigne(conf.length ? moy(conf, p => p.l.coteJouee / p.r.cote) - 1 : null)}">${conf.length ? cmpPct(moy(conf, p => p.l.coteJouee / p.r.cote) - 1) : "—"}</td></tr>
+        </tbody></table></div>
+      <p class="muted cmp-note">${conf.length
+        ? `Sur les ${conf.length} paris dont vous avez saisi ou validé la cote : rapport médian cote jouée / cote du rétrospectif <strong>${cmpMediane(ratios).toFixed(3).replace(".", ",")}</strong> ;
+           cote jouée au moins 2 % <strong>moins bonne</strong> dans <strong>${nPire}</strong> cas (${part(nPire, conf.length)}), au moins 2 % <strong>meilleure</strong> dans ${nMieux} (${part(nMieux, conf.length)}).`
+        : `Aucune cote saisie ou validée par vous sur ces paris : votre résultat est alors calculé à la cote de clôture, celle du rétrospectif — l'écart de prix est nul par construction. Saisissez « Cote obtenue » sur la page Paris à venir pour mesurer l'écart réel.`}
+        Le « prix du rétrospectif » est la dernière cote capturée avant le match.</p>`;
+  }
+  // Résultat différent entre les deux sources (ne devrait pas arriver)
+  const discordants = paires.filter(p => !!p.l.gagne !== !!p.r.gagne);
+  const alerte = discordants.length
+    ? `<div class="cmp-alerte"><strong>${discordants.length} pari${discordants.length > 1 ? "s" : ""} commun${discordants.length > 1 ? "s" : ""}</strong>
+        ${discordants.length > 1 ? "ont" : "a"} un résultat différent (gagné d'un côté, perdu de l'autre) — repérés d'une icône ⚠ dans le détail.
+        Normal pour « Vainqueur du match » si la garantie 2 buts est appliquée dans le rétrospectif ; sinon, vérifiez le score du match.</div>` : "";
+
+  // --- Paris joués absents du rétrospectif ------------------------------------
+  let absents = "";
+  if (C.n) {
+    const lignesR = CMP_ORDRE_RAISONS.map(k => {
+      const g = horsRetro.filter(h => h.raison === k);
+      if (!g.length) return "";
+      const mise = somme(g, h => cmpMiseEng(h.l)), net = somme(g, h => h.l.resultatEuros);
+      return `<tr><td data-label="">${CMP_RAISONS[k]}</td><td data-label="Paris" class="num">${g.length}</td><td data-label="Mises" class="num">${cmpMontant(mise)}</td>
+        <td data-label="Net réel" class="num ${cmpSigne(net)}">${fmtEur(net)}</td><td data-label="ROI" class="num ${cmpSigne(cmpRoi(net, mise))}">${cmpPct(cmpRoi(net, mise))}</td></tr>`;
+    }).join("");
+    absents = `<h3 class="cmp-sous-titre">Vos ${C.n} paris joués absents du rétrospectif — pourquoi ?</h3>
+      <div class="tablewrap"><table class="cmp-table cardify">
+        <thead><tr><th>Raison</th><th class="num">Paris</th><th class="num">Mises</th><th class="num">Net réel</th><th class="num">ROI</th></tr></thead>
+        <tbody>${lignesR}</tbody></table></div>
+      <p class="muted cmp-note">Un pari joué tôt peut ne plus passer les critères au dernier relevé (cote qui s'allonge, edge qui disparaît) : le rétrospectif,
+        qui ne voit que les paris restés qualifiés jusqu'au bout, ne les contient alors jamais. C'est l'écart de sélection entre « ce qu'on joue » et « ce qui est simulé ».</p>`;
+  }
+
+  // --- Détail pari par pari ------------------------------------------------------
+  CMP_DETAIL = [
+    ...paires.map(({l, r}) => ({type: "commun", date: l.date, match: l.match, pari: l.pari,
+      coteJ: l.coteJouee, confirmee: l.confirmee, coteR: r.cote,
+      miseJ: l.mise, resJ: l.resultatEuros, miseR: stR(r), resR: r.profit * stR(r),
+      ecart: l.resultatEuros - r.profit * l.mise, discord: !!l.gagne !== !!r.gagne})),
+    ...horsRetro.map(({l, raison: k}) => ({type: "joue", date: l.date, match: l.match, pari: l.pari,
+      coteJ: l.coteJouee, confirmee: l.confirmee, coteR: l.coteCloture,
+      miseJ: l.mise, resJ: l.resultatEuros, raison: k})),
+    ...nonJoues.map(r => ({type: "retro", date: r.date, match: r.match, pari: r.colonne,
+      coteR: r.cote, miseR: stR(r), resR: r.profit * stR(r)})),
+  ].sort((a, b) => b.date.localeCompare(a.date) || a.match.localeCompare(b.match) || String(a.pari).localeCompare(String(b.pari)));
+
+  const attenteN = lignes.length - reels.length;
+  corps.innerHTML = kpis
+    + `<h3 class="cmp-sous-titre">Synthèse</h3>` + synthese
+    + (attenteN ? `<p class="muted cmp-note">${attenteN} pari${attenteN > 1 ? "s" : ""} joué${attenteN > 1 ? "s" : ""} dont le match n'est pas terminé ne figure${attenteN > 1 ? "nt" : ""} pas ici.</p>` : "")
+    + prix + alerte + absents
+    + `<h3 class="cmp-sous-titre">Détail, pari par pari</h3><div id="cmpDetailWrap"></div>`;
+  cmpDessinerDetail({A, B, C});
+}
+
+function cmpDessinerDetail(n) {
+  const wrap = $("cmpDetailWrap");
+  if (!wrap) return;
+  if (n) wrap.dataset.n = JSON.stringify({tous: n.A.n + n.B.n + n.C.n, commun: n.A.n, joue: n.C.n, retro: n.B.n});
+  const nb = wrap.dataset.n ? JSON.parse(wrap.dataset.n) : {tous: CMP_DETAIL.length, commun: 0, joue: 0, retro: 0};
+  const onglets = [["tous", "Tous"], ["commun", "Joués + rétrospectif"], ["joue", "Joués seulement"], ["retro", "Rétrospectif seulement"]];
+  const puces = `<div class="jour-modes" id="cmpFiltreBtns" role="group" aria-label="Filtrer le détail">`
+    + onglets.map(([k, lib]) => `<button type="button" class="jour-mode${CMP_FILTRE === k ? " is-active" : ""}" data-cmp="${k}" aria-pressed="${CMP_FILTRE === k}">${lib} (${nb[k]})</button>`).join("")
+    + `</div>`;
+  const lignes = CMP_FILTRE === "tous" ? CMP_DETAIL : CMP_DETAIL.filter(d => d.type === CMP_FILTRE);
+  const visibles = CMP_TOUT ? lignes : lignes.slice(0, CMP_MAX_LIGNES);
+  const BADGES = {commun: "Joué + rétro", joue: "Joué seulement", retro: "Rétro seulement"};
+  const cote = (c, conf) => c == null ? "—" : c.toFixed(2) + (conf === false ? "*" : "");
+  const euros = (v, mise) => v == null ? "—" : `<span class="${cmpSigne(v)}">${fmtEur(v)}</span>`;
+  const corpsT = visibles.map(d => {
+    const ecartCote = (d.type === "commun" && d.confirmee && d.coteJ != null && d.coteR)
+      ? d.coteJ / d.coteR - 1 : null;
+    return `<tr>
+      <td data-label="Date">${d.date}</td>
+      <td data-label="Match">${cmpEsc(d.match)}</td>
+      <td data-label="Pari">${cmpEsc(d.pari)}</td>
+      <td data-label="Statut"><span class="cmp-badge ${d.type}">${BADGES[d.type]}</span>${d.discord ? ' <span title="Résultat différent entre vos paris et le rétrospectif">⚠</span>' : ""}${d.raison ? `<div class="cmp-raison" title="${cmpEsc(CMP_RAISONS[d.raison])}">${CMP_RAISONS_COURT[d.raison]}</div>` : ""}</td>
+      <td data-label="Cote jouée" class="num">${cote(d.coteJ, d.confirmee)}</td>
+      <td data-label="Cote rétro" class="num">${d.type === "joue" ? (d.coteR != null ? `<span class="muted" title="Clôture">${d.coteR.toFixed(2)}</span>` : "—") : cote(d.coteR)}</td>
+      <td data-label="Écart cote" class="num ${cmpSigne(ecartCote)}">${ecartCote == null ? "—" : cmpPct(ecartCote)}</td>
+      <td data-label="Votre mise" class="num">${d.miseJ != null ? cmpMontant(d.miseJ) : "—"}</td>
+      <td data-label="Votre résultat" class="num">${euros(d.resJ)}</td>
+      <td data-label="Mise rétro" class="num">${d.miseR != null ? cmpMontant(d.miseR) : "—"}</td>
+      <td data-label="Résultat rétro" class="num">${euros(d.resR)}</td>
+      <td data-label="Écart (vos mises)" class="num ${cmpSigne(d.ecart)}">${d.ecart != null ? fmtEur(d.ecart) : "—"}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="12" class="muted">Aucune ligne.</td></tr>`;
+  wrap.innerHTML = puces
+    + `<div class="tablewrap"><table class="cmp-table cmp-detail cardify"><thead><tr>
+        <th>Date</th><th>Match</th><th>Pari</th><th>Statut</th><th class="num">Cote jouée</th><th class="num">Cote rétro</th>
+        <th class="num">Écart cote</th><th class="num">Votre mise</th><th class="num">Votre résultat</th>
+        <th class="num">Mise rétro</th><th class="num">Résultat rétro</th><th class="num">Écart (vos mises)</th>
+      </tr></thead><tbody>${corpsT}</tbody></table></div>`
+    + (lignes.length > CMP_MAX_LIGNES
+        ? `<p class="muted cmp-note">${CMP_TOUT ? `${lignes.length} lignes affichées.` : `${CMP_MAX_LIGNES} lignes les plus récentes sur ${lignes.length}.`}
+           <button type="button" class="jour-mode" id="cmpPlus">${CMP_TOUT ? "Réduire" : "Tout afficher"}</button></p>` : "")
+    + `<p class="muted cmp-note">« Écart (vos mises) » = votre résultat − le résultat du rétrospectif recalculé avec <em>vos</em> mises : il ne reflète que la différence de cote. « Rétro seulement » : mise et résultat de la simulation, que vous n'avez pas joués.
+        Cote jouée suivie de <strong>*</strong> : cote de la carte, non saisie par vous (non comparée). Pour un pari « Joué seulement », la colonne « Cote rétro » est sa cote de clôture.</p>`;
+}
+
+if ($("cmpCorps")) {
+  $("cmpCorps").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-cmp]");
+    if (b) { CMP_FILTRE = b.dataset.cmp; CMP_TOUT = false; cmpDessinerDetail(); return; }
+    if (ev.target.closest("#cmpPlus")) { CMP_TOUT = !CMP_TOUT; cmpDessinerDetail(); }
+  });
 }
 
 // ========================================================================
