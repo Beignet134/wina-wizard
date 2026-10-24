@@ -940,6 +940,32 @@ details.cat-filter-block > summary:hover { color: var(--cyan); }
 /* Bankroll : sous-texte des cartes de chiffres */
 .kpi .kpi-sub { font-size: .7rem; color: var(--ink-faint); margin-top: .3rem; line-height: 1.35; }
 
+/* Synchronisation des paris joués avec GitHub (24/10/2026) */
+.sync-panel { border-color: rgba(128,175,255,.28); }
+.sync-panel h2 { margin-bottom: .5rem; }
+.sync-badge {
+  font-family: var(--font-body); font-size: .74rem; font-weight: 600; letter-spacing: 0;
+  padding: .15rem .6rem; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-dim);
+}
+.sync-badge:empty { display: none; }
+.sync-badge.ok { color: var(--lime); border-color: rgba(55,217,155,.45); background: rgba(55,217,155,.08); }
+.sync-badge.envoi { color: var(--cyan); border-color: rgba(84,217,206,.45); background: rgba(84,217,206,.06); }
+.sync-badge.erreur { color: var(--coral); border-color: rgba(255,113,133,.5); background: rgba(255,113,133,.08); }
+.sync-badge.lecture { color: var(--gold); border-color: rgba(244,192,103,.45); background: rgba(244,192,103,.06); }
+.sync-aide, .sync-detail { font-size: .82rem; margin: .3rem 0 .7rem; line-height: 1.5; }
+.sync-detail { margin: .6rem 0 0; min-height: 1.2em; }
+.sync-row { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.sync-token {
+  flex: 1 1 18rem; min-width: 0; min-height: 38px; background: var(--bg); border: 1px solid var(--line);
+  color: var(--ink); border-radius: var(--radius-sm); padding: .5rem .7rem;
+  font-family: var(--font-mono); font-size: .82rem;
+}
+.sync-token:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.sync-howto { margin-top: .8rem; font-size: .82rem; }
+.sync-howto summary { cursor: pointer; }
+.sync-howto ol { margin: .5rem 0 .4rem 1.1rem; padding: 0; line-height: 1.65; color: var(--ink-dim); }
+.sync-howto p { margin: .3rem 0 0; line-height: 1.5; }
+
 /* Panneau de suivi des paris joués */
 .placed-panel { border-color: rgba(52,211,153,.28); }
 .placed-export {
