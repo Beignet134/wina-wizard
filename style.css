@@ -499,6 +499,11 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
   box-shadow: inset 0 0 0 1px rgba(128, 175, 255, .36);
 }
 .jour-mode:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+/* Raccourcis de période de la page Bankroll (mêmes boutons que le sélecteur
+   d'histogramme) et phrase qui rappelle la période retenue. */
+.bk-periodes { margin: .8rem 0 .2rem; }
+.bk-periode-note { margin: .3rem 0 .9rem; font-size: .8rem; }
+.bk-periode-note:empty { display: none; }
 
 /* Modes « gain » : barres signées autour d'une ligne de zéro. Chaque barre est
    positionnée en absolu (bas ou haut ancré sur le zéro) ; vert = gain,
