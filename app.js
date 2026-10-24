@@ -1463,6 +1463,10 @@ const PLACED = new Map(
     : Object.entries(WIZARD_DATA.paris_joues || {})
   ).map(([k, v]) => reparerClePlacee(k, v))
 );
+// Photo des paris joués tels que le fichier les a donnés à la génération
+// (avant tout ce que ce navigateur a ajouté ou retiré) : une des deux sources
+// de l'état effectif, voir etatEffectif() plus bas.
+const PARIS_BASE = Object.fromEntries(PLACED);
 
 // --- Filet de sécurité local : le fichier paris_joues.json ci-dessus n'est
 // mis à jour QUE quand vous téléchargez/copiez l'export et remplacez le
@@ -1498,11 +1502,46 @@ function chargerOverridesLocaux() {
 // PLACED (qui ne connaît que l'état ACTUEL, pas les retraits).
 const LOCAL_OVERRIDES = chargerOverridesLocaux();
 
-// Rejoue les overrides locaux par-dessus la Map issue du disque.
-Object.entries(LOCAL_OVERRIDES).forEach(([cle, valeur]) => {
-  if (valeur) PLACED.set(cle, valeur);
-  else PLACED.delete(cle);
-});
+// --- Fusion fichier / navigateur (24/10/2026) --------------------------------
+// Chaque entrée porte `maj` : l'heure (ms) de sa dernière modification, posée
+// par togglePlaced(). Pour un même pari, la version la plus récente gagne, que
+// ce soit celle du fichier généré, de ce navigateur ou de GitHub (voir la
+// section « SYNCHRONISATION DES PARIS JOUÉS » en bas du script). Un pari
+// décoché est une pierre tombale {supprime: true, maj} : sans elle, une
+// ancienne copie restée dans le fichier le ferait réapparaître. Les anciens
+// overrides sans `maj` (et les `null` d'avant : décoché) valent maj = 0 ;
+// à égalité, ce navigateur l'emporte — comme avant cette version.
+function majDe(e) {
+  return (e && typeof e.maj === "number") ? e.maj : 0;
+}
+function estSupprime(e) {
+  return !e || e.supprime === true;
+}
+function normaliserOverride(v) {
+  return v == null ? {supprime: true, maj: 0} : v;
+}
+// Entre deux versions d'une même clé : la plus récente ; à égalité, `locale`.
+function choisirPlusRecent(locale, distante) {
+  if (distante === undefined) return locale;
+  if (locale === undefined) return distante;
+  return majDe(distante) > majDe(locale) ? distante : locale;
+}
+// État complet (pierres tombales comprises) : fichier généré + ce navigateur.
+function etatEffectif() {
+  const eff = Object.assign({}, PARIS_BASE);
+  Object.entries(LOCAL_OVERRIDES).forEach(([cle, valeur]) => {
+    eff[cle] = choisirPlusRecent(normaliserOverride(valeur), eff[cle]);
+  });
+  return eff;
+}
+// Reconstruit la Map des paris joués (actifs seulement) depuis l'état effectif.
+function reconstruirePlaced() {
+  PLACED.clear();
+  Object.entries(etatEffectif()).forEach(([cle, valeur]) => {
+    if (!estSupprime(valeur)) PLACED.set(cle, valeur);
+  });
+}
+reconstruirePlaced();
 
 function sauverOverridesLocaux() {
   try {
@@ -1518,19 +1557,27 @@ function betKey(v) {
 }
 
 function togglePlaced(key, on, mise, extra) {
+  // Heure de cette modification : c'est elle qui départage deux versions du
+  // même pari (ce navigateur, le fichier, GitHub) — la plus récente gagne.
+  const maintenant = Date.now();
   if (on) {
     // Fusion : une correction de mise ne doit pas effacer la cote déjà saisie
     // (et inversement) ; `extra` n'écrase que les champs qu'il fournit.
     const avant = PLACED.get(key) || {};
     PLACED.set(key, Object.assign({}, avant, extra || {},
-      {mise: mise != null ? mise : (avant.mise ?? null)}));
+      {mise: mise != null ? mise : (avant.mise ?? null)}, {maj: maintenant}));
   } else PLACED.delete(key);
-  // Trace locale : {mise} si coché, `null` si décoché (tombstone) — voir
-  // le commentaire au-dessus de LOCAL_OVERRIDES. Persisté immédiatement,
-  // pas seulement au rechargement, pour survivre à un crash/fermeture
-  // d'onglet entre la coche et la prochaine régénération.
-  LOCAL_OVERRIDES[key] = on ? PLACED.get(key) : null;
+  // Trace locale : l'entrée si coché, une pierre tombale {supprime, maj} si
+  // décoché (un simple retrait de la Map ne suffirait pas à empêcher le
+  // fichier ou GitHub, restés périmés, de la faire réapparaître) — voir le
+  // commentaire au-dessus de LOCAL_OVERRIDES. Persisté immédiatement, pas
+  // seulement au rechargement, pour survivre à un crash/fermeture d'onglet
+  // entre la coche et la prochaine régénération.
+  LOCAL_OVERRIDES[key] = on ? PLACED.get(key) : {supprime: true, maj: maintenant};
   sauverOverridesLocaux();
+  // Envoi vers GitHub (si activé) — différé de ~1 s pour regrouper une rafale
+  // de modifications (coche + mise + cote) en un seul envoi.
+  if (typeof planifierSynchro === "function") planifierSynchro();
   updatePlacedSummary();
   renderPlacedExport();
   // La page Bankroll n'est pas forcément visible au moment du clic (les
@@ -8708,3 +8755,344 @@ renderBacktest();
 drawShotsCoverage();
 renderTirsPage();
 renderMarges();
+
+/* ================= SYNCHRONISATION DES PARIS JOUÉS (GitHub) =================
+   Ajoutée le 24/10/2026. Avant : « Marquer comme joué » ne gardait la coche que
+   dans CE navigateur ; pour la retrouver ailleurs ou dans le site régénéré, il
+   fallait télécharger paris_joues.json et le déposer à côté de wina_wizard.py.
+
+   Maintenant : chaque coche, mise ou cote obtenue est envoyée dans le fichier
+   paris_joues.json d'une BRANCHE DÉDIÉE du dépôt (pas `main` : un commit sur
+   main relancerait la publication GitHub Pages à chaque clic), avec un jeton
+   GitHub collé une fois dans ce navigateur. wina_wizard.py relit ce même
+   fichier à chaque run (et le fusionne avec son fichier local).
+
+   Fusion : chaque pari porte `maj` (heure de sa dernière modification, en ms) ;
+   pour un même pari, la version la plus récente gagne, où qu'elle ait été
+   faite. Un pari décoché est une pierre tombale {supprime: true, maj}.
+   Sans jeton, la page relit seulement le fichier (dépôt public) : on voit ce
+   que les autres appareils ont enregistré, mais on n'écrit pas.
+   Le jeton reste dans le localStorage de ce navigateur : il n'est ni publié, ni
+   écrit dans donnees.js, ni envoyé ailleurs qu'à api.github.com. */
+const SYNC_CFG = (WIZARD_DATA.config && WIZARD_DATA.config.sync_paris) || null;
+const SYNC_TOKEN_LS = "wina_gh_token_v1";
+const GH_API = "https://api.github.com";
+let JETON_MEMOIRE = "";              // repli si localStorage est indisponible
+let SYNC_EN_COURS = false, SYNC_A_REFAIRE = false;
+let SYNC_TIMER = null, SYNC_RETRY_TIMER = null;
+let SYNC_DERNIER_OK = 0, SYNC_DERNIERE_TENTATIVE = 0;
+let DERNIER_DISTANT = null;          // dernier contenu connu du fichier GitHub
+const SYNC_ETAT = {etat: "lecture", detail: ""};
+
+function lireJeton() {
+  try { const t = localStorage.getItem(SYNC_TOKEN_LS); if (t) return t; } catch (e) { /* storage indisponible */ }
+  return JETON_MEMOIRE;
+}
+function ecrireJeton(t) {
+  JETON_MEMOIRE = t || "";
+  try {
+    if (t) localStorage.setItem(SYNC_TOKEN_LS, t);
+    else localStorage.removeItem(SYNC_TOKEN_LS);
+  } catch (e) { /* navigation privée, quota… : le jeton reste en mémoire pour cette session */ }
+}
+
+// --- Encodage : l'API Contents échange du base64 d'un texte UTF-8 ------------
+function b64VersTexte(b64) {
+  const bin = atob(String(b64 || "").replace(/\s/g, ""));
+  const octets = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(octets);
+}
+function texteVersB64(txt) {
+  const octets = new TextEncoder().encode(txt);
+  let bin = "";
+  octets.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+
+// --- Comparaison d'états (indépendante de l'ordre des clés) ------------------
+function canonEntree(e) {
+  if (!e || typeof e !== "object") return JSON.stringify(e ?? null);
+  return JSON.stringify(Object.keys(e).sort().map(c => [c, e[c]]));
+}
+function canonEtat(o) {
+  return JSON.stringify(Object.keys(o).sort().map(k => [k, canonEntree(o[k])]));
+}
+function etatEffectifTrie() {
+  const eff = etatEffectif(), out = {};
+  Object.keys(eff).sort().forEach(k => { out[k] = eff[k]; });
+  return out;
+}
+function nbEnAttente() {
+  if (!DERNIER_DISTANT) return 0;
+  const eff = etatEffectif();
+  return Object.keys(eff).filter(k => canonEntree(eff[k]) !== canonEntree(DERNIER_DISTANT[k])).length;
+}
+
+// --- Appels à l'API GitHub ---------------------------------------------------
+function ghEntetes(jeton) {
+  // Pas d'en-tête X-GitHub-Api-Version : inutile ici et un en-tête de plus à
+  // faire accepter par la vérification CORS du navigateur.
+  const h = {"Accept": "application/vnd.github+json"};
+  if (jeton) h["Authorization"] = "Bearer " + jeton;
+  return h;
+}
+function erreurHttp(statut) {
+  const messages = {
+    401: "jeton refusé (invalide ou expiré)",
+    403: "droits insuffisants ou limite d'appels GitHub atteinte",
+    404: "dépôt, branche ou fichier introuvable avec ce jeton",
+  };
+  const e = new Error(messages[statut] || `erreur GitHub ${statut}`);
+  e.statut = statut;
+  return e;
+}
+async function ghFetch(url, options) {
+  try {
+    return await fetch(url, Object.assign({cache: "no-store"}, options || {}));
+  } catch (err) {
+    const e = new Error("GitHub injoignable (hors ligne ?)");
+    e.statut = 0;
+    throw e;
+  }
+}
+// Contenu du fichier partagé : un dict {clé: entrée}. Tout autre format
+// (liste d'un ancien export, texte illisible) est ignoré plutôt que d'échouer.
+function analyserContenu(texte) {
+  try {
+    const o = JSON.parse(texte);
+    if (!o || typeof o !== "object" || Array.isArray(o)) return {};
+    const out = {};
+    Object.entries(o).forEach(([k, v]) => {
+      if (v && typeof v === "object" && !Array.isArray(v)) out[k] = v;
+    });
+    return out;
+  } catch (e) {
+    return {};
+  }
+}
+async function ghLire(cfg, jeton) {
+  if (jeton) {
+    const url = `${GH_API}/repos/${cfg.repo}/contents/${encodeURIComponent(cfg.fichier)}?ref=${encodeURIComponent(cfg.branche)}`;
+    const r = await ghFetch(url, {headers: ghEntetes(jeton)});
+    if (r.status === 404) return {contenu: {}, sha: null, existe: false};
+    if (!r.ok) throw erreurHttp(r.status);
+    const j = await r.json();
+    let texte;
+    if (j.content && j.encoding !== "none") {
+      texte = b64VersTexte(j.content);
+    } else {
+      // Au-delà de 1 Mo, l'API Contents ne renvoie plus le contenu (encoding
+      // "none") : on le lit comme blob Git, bon jusqu'à 100 Mo.
+      const rb = await ghFetch(`${GH_API}/repos/${cfg.repo}/git/blobs/${j.sha}`, {headers: ghEntetes(jeton)});
+      if (!rb.ok) throw erreurHttp(rb.status);
+      texte = b64VersTexte((await rb.json()).content);
+    }
+    return {contenu: analyserContenu(texte), sha: j.sha, existe: true};
+  }
+  // Sans jeton : lecture publique du fichier brut (le paramètre t contourne le
+  // cache du CDN, sinon on pourrait relire une version vieille de plusieurs minutes).
+  const url = `https://raw.githubusercontent.com/${cfg.repo}/${cfg.branche}/${cfg.fichier}?t=${Date.now()}`;
+  const r = await ghFetch(url);
+  if (r.status === 404) return {contenu: {}, sha: null, existe: false};
+  if (!r.ok) throw erreurHttp(r.status);
+  return {contenu: analyserContenu(await r.text()), sha: null, existe: true};
+}
+// Crée la branche dédiée (à partir de la branche principale) si elle n'existe pas.
+async function assurerBranche(cfg, jeton) {
+  const h = ghEntetes(jeton), base = `${GH_API}/repos/${cfg.repo}/git`;
+  let r = await ghFetch(`${base}/ref/heads/${cfg.branche}`, {headers: h});
+  if (r.status === 200) return;
+  if (r.status !== 404) throw erreurHttp(r.status);
+  r = await ghFetch(`${base}/ref/heads/${cfg.branche_base}`, {headers: h});
+  if (!r.ok) throw erreurHttp(r.status);
+  const sha = (await r.json()).object.sha;
+  r = await ghFetch(`${base}/refs`, {
+    method: "POST", headers: Object.assign({"Content-Type": "application/json"}, h),
+    body: JSON.stringify({ref: `refs/heads/${cfg.branche}`, sha}),
+  });
+  if (r.status !== 201 && r.status !== 422) throw erreurHttp(r.status);   // 422 : déjà créée entre-temps
+}
+async function ghEcrire(cfg, jeton, objet, sha) {
+  const corps = {
+    message: `Paris joués — ${isoLocalNaif(new Date())} (tableau de bord)`,
+    content: texteVersB64(JSON.stringify(objet, null, 1) + "\n"),
+    branch: cfg.branche,
+  };
+  if (sha) corps.sha = sha;
+  const r = await ghFetch(`${GH_API}/repos/${cfg.repo}/contents/${encodeURIComponent(cfg.fichier)}`, {
+    method: "PUT", headers: Object.assign({"Content-Type": "application/json"}, ghEntetes(jeton)),
+    body: JSON.stringify(corps),
+  });
+  if (r.status === 200 || r.status === 201) return (await r.json()).content.sha;
+  const e = erreurHttp(r.status);
+  if (r.status === 409 || r.status === 422) {   // sha périmé : quelqu'un a écrit entre-temps
+    e.conflit = true;
+    e.message = "conflit d'écriture (fichier modifié ailleurs)";
+  }
+  throw e;
+}
+
+// Intègre le contenu GitHub à l'état local : pour chaque pari, la version la
+// plus récente gagne (à égalité, la version locale). Renvoie true si la liste
+// des paris joués visible a changé.
+function fusionnerDistant(distant) {
+  const avant = canonEtat(Object.fromEntries(PLACED));
+  const eff = etatEffectif();
+  let touche = false;
+  Object.entries(distant || {}).forEach(([cle, dv]) => {
+    if (!dv || typeof dv !== "object" || Array.isArray(dv)) return;
+    const courant = eff[cle];
+    if (courant !== undefined
+        && (choisirPlusRecent(courant, dv) !== dv || canonEntree(courant) === canonEntree(dv))) return;
+    LOCAL_OVERRIDES[cle] = dv;
+    touche = true;
+  });
+  if (!touche) return false;
+  sauverOverridesLocaux();
+  reconstruirePlaced();
+  return canonEtat(Object.fromEntries(PLACED)) !== avant;
+}
+
+// Remet à jour l'affichage après un changement venu de GitHub — sans casser
+// une saisie en cours dans une carte (le rendu reconstruit toutes les cartes).
+function rafraichirApresSynchro() {
+  const actif = document.activeElement;
+  if (actif && actif.closest && actif.closest("#recGrid") && /^(INPUT|TEXTAREA|SELECT)$/.test(actif.tagName)) {
+    setTimeout(rafraichirApresSynchro, 2500);
+    return;
+  }
+  updatePlacedSummary();
+  renderPlacedExport();
+  if (typeof renderUpcoming === "function") renderUpcoming();
+  if (typeof renderBankroll === "function") renderBankroll();
+}
+
+// --- Affichage du statut -----------------------------------------------------
+function setStatutSynchro(etat, detail) {
+  SYNC_ETAT.etat = etat;
+  SYNC_ETAT.detail = detail || "";
+  afficherStatutSynchro();
+}
+function afficherStatutSynchro() {
+  const box = $("syncBox");
+  if (!box) return;
+  if (!SYNC_CFG) { box.style.display = "none"; return; }
+  box.style.display = "";
+  const jeton = lireJeton();
+  $("syncSansJeton").style.display = jeton ? "none" : "";
+  $("syncAvecJeton").style.display = jeton ? "" : "none";
+  const heure = SYNC_DERNIER_OK
+    ? new Date(SYNC_DERNIER_OK).toLocaleTimeString("fr-FR", {hour: "2-digit", minute: "2-digit"}) : "";
+  const {etat, detail} = SYNC_ETAT;
+  const textes = {
+    lecture: "Lecture seule" + (heure ? ` · relu à ${heure}` : ""),
+    envoi: "↻ Synchronisation…",
+    ok: "✓ Synchronisé" + (heure ? ` · ${heure}` : ""),
+    erreur: "⚠ Non synchronisé",
+  };
+  const badge = $("syncBadge");
+  badge.textContent = textes[etat] || "";
+  badge.className = "sync-badge " + etat;
+  $("syncDetail").textContent = detail;
+  $("syncAide").textContent = jeton
+    ? "Chaque coche, mise ou cote obtenue est envoyée automatiquement dans ton dépôt GitHub ; "
+      + "wina_wizard.py la relit à chaque run. Rien à télécharger."
+    : "Pour que « Marquer comme joué » soit enregistré partout (téléphone, PC, site régénéré) sans "
+      + "fichier à télécharger, colle ici un jeton GitHub. Il reste dans ce navigateur, jamais dans le "
+      + "site publié. Tant qu'il manque, les coches ne sont gardées que dans ce navigateur.";
+}
+
+// --- Synchronisation proprement dite -----------------------------------------
+async function synchroniser(raison) {
+  if (!SYNC_CFG) return;
+  if (SYNC_EN_COURS) { SYNC_A_REFAIRE = true; return; }
+  SYNC_EN_COURS = true;
+  SYNC_DERNIERE_TENTATIVE = Date.now();
+  clearTimeout(SYNC_RETRY_TIMER);
+  const jeton = lireJeton();
+  setStatutSynchro("envoi", "");
+  try {
+    for (let essai = 1; essai <= 3; essai++) {
+      const distant = await ghLire(SYNC_CFG, jeton);
+      DERNIER_DISTANT = distant.contenu;
+      if (fusionnerDistant(distant.contenu)) rafraichirApresSynchro();
+      if (!jeton) {
+        SYNC_DERNIER_OK = Date.now();
+        setStatutSynchro("lecture", "");
+        return;
+      }
+      const etat = etatEffectifTrie();
+      if (canonEtat(etat) === canonEtat(distant.contenu)) break;
+      if (!distant.existe) await assurerBranche(SYNC_CFG, jeton);
+      try {
+        await ghEcrire(SYNC_CFG, jeton, etat, distant.sha);
+        DERNIER_DISTANT = etat;
+        break;
+      } catch (e) {
+        if (e.conflit && essai < 3) continue;   // on relit, on refusionne, on réessaie
+        throw e;
+      }
+    }
+    SYNC_DERNIER_OK = Date.now();
+    setStatutSynchro("ok", "");
+  } catch (e) {
+    const n = nbEnAttente();
+    setStatutSynchro(jeton ? "erreur" : "lecture",
+      e.message + (n ? ` — ${n} modification(s) gardée(s) dans ce navigateur, renvoyée(s) automatiquement.` : ""));
+    // Nouvel essai automatique seulement pour les pannes passagères (réseau, 5xx, conflit) :
+    // un jeton refusé ou sans droits ne se corrige pas tout seul.
+    if (jeton && (e.statut === 0 || e.statut >= 500 || e.conflit)) {
+      SYNC_RETRY_TIMER = setTimeout(() => synchroniser("reessai"), 60000);
+    }
+  } finally {
+    SYNC_EN_COURS = false;
+    if (SYNC_A_REFAIRE) { SYNC_A_REFAIRE = false; planifierSynchro(); }
+  }
+}
+// Envoi différé de ~1 s : une coche, puis la mise, puis la cote font un seul commit.
+function planifierSynchro() {
+  if (!SYNC_CFG || !lireJeton()) return;
+  clearTimeout(SYNC_TIMER);
+  SYNC_TIMER = setTimeout(() => synchroniser("modification"), 1200);
+}
+
+async function activerJeton() {
+  const champ = $("syncToken");
+  const jeton = (champ.value || "").trim();
+  if (!jeton) { setStatutSynchro("erreur", "Colle d'abord le jeton dans le champ."); return; }
+  if (/\s/.test(jeton)) { setStatutSynchro("erreur", "Le jeton ne doit contenir ni espace ni saut de ligne."); return; }
+  setStatutSynchro("envoi", "Vérification du jeton…");
+  try {
+    const r = await ghFetch(`${GH_API}/repos/${SYNC_CFG.repo}`, {headers: ghEntetes(jeton)});
+    if (r.status === 401) throw new Error("jeton refusé (invalide ou expiré)");
+    if (r.status === 404) throw new Error(`ce jeton n'a pas accès au dépôt ${SYNC_CFG.repo} (à choisir dans « Repository access »)`);
+    if (!r.ok) throw erreurHttp(r.status);
+  } catch (e) {
+    setStatutSynchro("erreur", "Jeton non accepté : " + e.message + ".");
+    return;
+  }
+  ecrireJeton(jeton);
+  champ.value = "";
+  await synchroniser("activation");
+}
+
+(function initSynchroParis() {
+  afficherStatutSynchro();
+  if (!SYNC_CFG || !$("syncSave")) return;
+  $("syncSave").addEventListener("click", activerJeton);
+  $("syncToken").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); activerJeton(); }
+  });
+  $("syncNow").addEventListener("click", () => synchroniser("manuel"));
+  $("syncForget").addEventListener("click", () => {
+    ecrireJeton("");
+    setStatutSynchro("lecture", "Jeton retiré de ce navigateur : les coches ne sont plus envoyées.");
+  });
+  // Retour sur l'onglet / retour du réseau : on relit pour voir ce que les
+  // autres appareils ont enregistré (au plus une fois toutes les 30 s).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && Date.now() - SYNC_DERNIERE_TENTATIVE > 30000) synchroniser("retour");
+  });
+  window.addEventListener("online", () => synchroniser("reconnexion"));
+  synchroniser("chargement");
+})();
