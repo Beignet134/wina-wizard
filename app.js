@@ -3903,7 +3903,9 @@ function mettreAJourBadgesCategorie(prefixe, verdicts, contexte) {
 // Calendrier compact et cohérent avec le thème. Les champs date d'origine
 // restent la source de vérité des filtres et continuent d'émettre change.
 (function initBtDatePickers() {
-  const inputs = [$("btDateDebut"), $("btDateFin")].filter(Boolean);
+  // Les deux champs du DC rétrospectif, plus ceux de la page Bankroll (même
+  // calendrier ; ces derniers peuvent rester vides = « sans limite »).
+  const inputs = [$("btDateDebut"), $("btDateFin"), $("bkDateDebut"), $("bkDateFin")].filter(Boolean);
   if (!inputs.length) return;
   const today = new Date();
   const isoFromDate = date => String(date.getFullYear()).padStart(4, "0") + "-"
@@ -3980,9 +3982,15 @@ function mettreAJourBadgesCategorie(prefixe, verdicts, contexte) {
     function actualiserValeur() {
       const date = parseIso(input.value);
       const value = trigger.querySelector(".date-picker-value");
-      value.textContent = date ? dateLabel.format(date) : "Choisir une date";
-      trigger.title = date ? dateLabel.format(date) : "Choisir une date";
+      const vide = input.dataset.vide || "Choisir une date";
+      value.textContent = date ? dateLabel.format(date) : vide;
+      trigger.title = date ? dateLabel.format(date) : vide;
     }
+    // Un changement venu du code (raccourcis de période, remise à zéro) doit
+    // aussi remettre à jour le texte du bouton : « wina-maj » le demande sans
+    // relancer les calculs liés à « change ».
+    input.addEventListener("wina-maj", actualiserValeur);
+    input.addEventListener("change", actualiserValeur);
     function rendreCalendrier(focusDate = null) {
       const year = picker.month.getFullYear(), month = picker.month.getMonth();
       const first = new Date(year, month, 1);
@@ -4861,7 +4869,7 @@ function renderBacktest() {
     }
     // Vide aussi les graphiques : mieux vaut un message clair qu'un reste
     // d'affichage qui laisserait croire à des données disponibles.
-    parJourDernier = null;
+    HISTO_BT.dernier = null;
     ["btCalibWrap", "btCoteWrap", "btEvoWrap", "btJourWrap"].forEach(id => {
       const w = $(id);
       if (w) w.innerHTML = '<p class="muted">En attente de données.</p>';
@@ -7065,8 +7073,9 @@ function drawEvolution() {
 // 240 jours d'étendue, on regroupe par semaine (sinon les barres feraient
 // moins de 3 px) et la légende le dit.
 // ---------------------------------------------------------------------------
-let parJourDernier = null;   // dernières lignes tracées : pour redessiner si la largeur change
-let parJourLargeur = 0;
+// (Les dernières lignes tracées et la dernière largeur — pour redessiner si la
+// largeur change — vivent dans le contexte de chaque histogramme : HISTO_BT
+// plus bas pour le DC rétrospectif, HISTO_BK pour la page Bankroll.)
 const JOURS_FR_COURTS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
 
 // 'YYYY-MM-DD' -> nombre de jours depuis 1970 (UTC : pas de décalage d'heure d'été)
@@ -7106,11 +7115,57 @@ const PARJOUR_MODES = {
   cumul: {titre: "Gain / perte cumulé",   hint: "— résultat net accumulé jour après jour"},
 };
 const PARJOUR_LS_KEY = "wina_parjour_mode_v1";
-let parJourMode = "n";
-try {
-  const m = localStorage.getItem(PARJOUR_LS_KEY);
-  if (m && Object.prototype.hasOwnProperty.call(PARJOUR_MODES, m)) parJourMode = m;
-} catch (e) { /* stockage indisponible : on garde « nombre de paris » */ }
+
+// Le même histogramme sert deux pages ; chacune a son CONTEXTE (éléments HTML,
+// mode mémorisé, calcul du net, textes) et le dessin est commun
+// (dessinerHistoJour). Une ligne à tracer porte : date (AAAA-MM-JJ), gagne,
+// profit (en unités de mise), categorie ; plus, selon le contexte, `net`
+// (euros réels) et `neutre` (pari remboursé : compté, mais ni gagné ni perdu).
+//   HISTO_BT  page « DC rétrospectif » : simulation à mise choisie (btStakeFor).
+//   HISTO_BK  page « Bankroll » : vos vrais paris joués, avec leurs vraies mises.
+const HISTO_BT = {
+  wrapId: "btJourWrap", titreId: "btJourTitre", hintId: "btJourHint", modesId: "btJourModes",
+  lsKey: PARJOUR_LS_KEY, mode: "n", titres: PARJOUR_MODES,
+  netDe: r => {
+    const mise = btStakeFor(r);
+    return (Number(r.profit) || 0) * (isFinite(mise) ? mise : 0);
+  },
+  avecUnites: true,
+  vide: "Aucun pari à répartir par jour avec ces filtres.",
+  t: {
+    sujetN: "paris retenus par les filtres de la page", kpiN: "KPI « Paris »",
+    formuleNet: "somme de profit × mise des paris retenus par les filtres,\n        avec la stratégie de mise choisie",
+    kpiNet: "KPI « Net »",
+  },
+  dernier: null, largeur: 0,
+};
+const HISTO_BK = {
+  wrapId: "bkJourWrap", titreId: "bkJourTitre", hintId: "bkJourHint", modesId: "bkJourModes",
+  lsKey: "wina_bankroll_jour_mode_v1", mode: "jour",
+  titres: {
+    n:     {titre: "Paris joués par jour",   hint: "— combien de vos paris se terminent chaque jour"},
+    jour:  {titre: "Gain / perte par jour",  hint: "— résultat net réel de chaque jour, avec vos mises"},
+    cumul: {titre: "Gain / perte cumulé",    hint: "— résultat net réel accumulé sur la période choisie"},
+  },
+  netDe: r => Number(r.net) || 0,
+  avecUnites: false,
+  vide: "Aucun pari joué et terminé sur cette période.",
+  t: {
+    sujetN: "paris que vous avez joués et dont le match est terminé, sur la période choisie",
+    kpiN: "KPI « Paris résolus »",
+    formuleNet: "somme des résultats réels de vos paris joués\n        (vos mises, à la cote obtenue quand elle est connue)",
+    kpiNet: "KPI « Résultat net (résolu) »",
+  },
+  dernier: null, largeur: 0,
+};
+// Mode mémorisé dans le navigateur (simple confort : stockage indisponible =
+// on garde le mode par défaut du contexte).
+[HISTO_BT, HISTO_BK].forEach(C => {
+  try {
+    const m = localStorage.getItem(C.lsKey);
+    if (m && Object.prototype.hasOwnProperty.call(C.titres, m)) C.mode = m;
+  } catch (e) { /* stockage indisponible */ }
+});
 
 // Pas "rond" (1, 2, 5, 10, 20, 50... et ses sous-multiples) pour un axe qui
 // passe par zéro : au plus 6 intervalles au total. vMin <= 0 <= vMax.
@@ -7128,21 +7183,23 @@ function pasGraduationSigne(vMin, vMax) {
   return {pas: choix, kMax, kMin};
 }
 
-function drawParJour(rows) {
-  const wrap = $("btJourWrap");
-  if (!wrap) return;
-  parJourDernier = rows;
-  parJourLargeur = wrap.clientWidth || 0;
+function drawParJour(rows) { dessinerHistoJour(HISTO_BT, rows); }
 
-  const mode = parJourMode;
+function dessinerHistoJour(C, rows) {
+  const wrap = $(C.wrapId);
+  if (!wrap) return;
+  C.dernier = rows;
+  C.largeur = wrap.clientWidth || 0;
+
+  const mode = C.mode;
   const signe = mode !== "n";
-  const titreEl = $("btJourTitre"), hintEl = $("btJourHint");
-  if (titreEl) titreEl.textContent = PARJOUR_MODES[mode].titre;
-  if (hintEl) hintEl.textContent = PARJOUR_MODES[mode].hint;
+  const titreEl = $(C.titreId), hintEl = $(C.hintId);
+  if (titreEl) titreEl.textContent = C.titres[mode].titre;
+  if (hintEl) hintEl.textContent = C.titres[mode].hint;
 
   const datees = (rows || []).filter(r => numeroJour(r.date) !== null);
   if (!datees.length) {
-    wrap.innerHTML = '<p class="muted">Aucun pari à répartir par jour avec ces filtres.</p>';
+    wrap.innerHTML = `<p class="muted">${C.vide}</p>`;
     return;
   }
 
@@ -7154,14 +7211,14 @@ function drawParJour(rows) {
   const nb = Math.ceil(etendue / pas);
   const gap = nb > 120 ? 1 : 2;
 
-  const seaux = Array.from({length: nb}, () => ({n: 0, gagnes: 0, profit: 0, net: 0, cumul: 0, cats: {}}));
+  const seaux = Array.from({length: nb}, () => ({n: 0, gagnes: 0, neutres: 0, profit: 0, net: 0, cumul: 0, cats: {}}));
   datees.forEach(r => {
     const s = seaux[Math.floor((numeroJour(r.date) - dMin) / pas)];
     s.n++;
-    if (r.gagne) s.gagnes++;
+    if (r.neutre) s.neutres++;
+    else if (r.gagne) s.gagnes++;
     s.profit += Number(r.profit) || 0;
-    const mise = btStakeFor(r);
-    s.net += (Number(r.profit) || 0) * (isFinite(mise) ? mise : 0);
+    s.net += C.netDe(r);
     s.cats[r.categorie] = (s.cats[r.categorie] || 0) + 1;
   });
   let cumulCourant = 0;
@@ -7294,8 +7351,8 @@ function drawParJour(rows) {
       + ` · pic : ${maxN} ${pas === 1 ? "le" : "la semaine"} ${pas === 1 ? fmtChartDate(dateDuJour(debutSeau(iPic))) : libelleSeau(iPic)}`
       + `${nbPics > 1 ? ` (et ${nbPics - 1} autre${nbPics > 2 ? "s" : ""})` : ""}`;
     aria = `Histogramme du nombre de paris par ${unite}`;
-    note = `Compte les paris retenus par les filtres de la page
-      (la somme des barres égale le KPI « Paris »). Les ${unite}s sans barre sont des ${unite}s sans aucun pari.
+    note = `Compte les ${C.t.sujetN}
+      (la somme des barres égale le ${C.t.kpiN}). Les ${unite}s sans barre sont des ${unite}s sans aucun pari.
       ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
       Survole une barre pour le détail par catégorie.`;
   } else {
@@ -7309,8 +7366,7 @@ function drawParJour(rows) {
         + `${vals[iMeilleur] > 0 ? ` · meilleur : ${fmtEur(vals[iMeilleur])} (${libelleResume(iMeilleur)})` : ""}`
         + `${vals[iPire] < 0 ? ` · pire : ${fmtEur(vals[iPire])} (${libelleResume(iPire)})` : ""}`;
       aria = `Histogramme du gain ou de la perte nette par ${unite}`;
-      note = `${cle}. Résultat net de chaque ${unite} : somme de profit × mise des paris retenus par les filtres,
-        avec la stratégie de mise choisie (la somme des barres égale le KPI « Net »). La date retenue
+      note = `${cle}. Résultat net de chaque ${unite} : ${C.t.formuleNet} (la somme des barres égale le ${C.t.kpiNet}). La date retenue
         est celle du match. ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
         Survole une barre pour le détail.`;
     } else {
@@ -7320,7 +7376,7 @@ function drawParJour(rows) {
         + `${vals[iBas] < 0 ? ` · point bas : ${fmtEur(vals[iBas])} (${libelleResume(iBas)})` : ""}`;
       aria = `Histogramme du gain net cumulé par ${unite}`;
       note = `${cle}. Chaque barre est le résultat net accumulé depuis le premier ${unite} du graphique
-        (un ${unite} sans pari reprend la valeur de la veille). La dernière barre égale le KPI « Net ».
+        (un ${unite} sans pari reprend la valeur de la veille). La dernière barre égale le ${C.t.kpiNet}.
         ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
         Survole une barre pour le détail.`;
     }
@@ -7330,8 +7386,8 @@ function drawParJour(rows) {
   const classeSigne = v => (v >= 0 ? "pos" : "neg");
   const lignesTab = seaux.map((s, i) => ({s, i})).filter(x => x.s.n).reverse().map(({s, i}) => `
     <tr><td>${libelleSeau(i)}</td><td class="num">${s.n}</td>
-      <td class="num">${s.gagnes} / ${s.n - s.gagnes}</td>
-      <td class="num ${classeSigne(s.profit)}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</td>
+      <td class="num">${s.gagnes} / ${s.n - s.gagnes - s.neutres}${s.neutres ? ` (+${s.neutres} remb.)` : ""}</td>
+      ${C.avecUnites ? `<td class="num ${classeSigne(s.profit)}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</td>` : ""}
       <td class="num ${classeSigne(s.net)}">${fmtEur(s.net)}</td>
       <td class="num ${classeSigne(s.cumul)}">${fmtEur(s.cumul)}</td></tr>`).join("");
 
@@ -7349,7 +7405,7 @@ function drawParJour(rows) {
     <details class="chart-help" style="margin:.5rem 0 0">
       <summary class="muted" style="cursor:pointer;font-size:.82rem">Voir les chiffres ${pas === 1 ? "jour par jour" : "semaine par semaine"}</summary>
       <div class="jour-table-wrap"><table>
-        <thead><tr><th>${pas === 1 ? "Jour" : "Semaine"}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th><th class="num">Bilan (1 u. par pari)</th><th class="num">Net (€)</th><th class="num">Cumul (€)</th></tr></thead>
+        <thead><tr><th>${pas === 1 ? "Jour" : "Semaine"}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th>${C.avecUnites ? '<th class="num">Bilan (1 u. par pari)</th>' : ""}<th class="num">Net (€)</th><th class="num">Cumul (€)</th></tr></thead>
         <tbody>${lignesTab}</tbody>
       </table></div>
     </details>`;
@@ -7390,14 +7446,17 @@ function drawParJour(rows) {
         .concat(Object.keys(s.cats).filter(c => !CATEGORIES_DC.includes(c)))
         .map(c => `<div class="tt-row"><span class="muted">${c}</span><span>${s.cats[c]}</span></div>`).join("");
       const gp = `<div class="tt-row"><span>Gagnés / perdus</span>
-          <span><span class="tt-win">${s.gagnes}</span> / <span class="tt-lose">${s.n - s.gagnes}</span></span></div>`;
+          <span><span class="tt-win">${s.gagnes}</span> / <span class="tt-lose">${s.n - s.gagnes - s.neutres}</span></span></div>`
+        + (s.neutres ? `<div class="tt-row"><span>Remboursés</span><span>${s.neutres}</span></div>` : "");
       if (mode === "n") {
         corps = `
         <div class="tt-date">${libelleSeau(i)}</div>
         <div class="tt-match">${plur(s.n, "pari")}</div>
         ${gp}
         ${parCat}
-        <div class="tt-cum">Bilan <strong class="${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</strong></div>`;
+        <div class="tt-cum">${C.avecUnites
+          ? `Bilan <strong class="${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</strong>`
+          : `Net <strong class="${classeSigne(s.net)}">${fmtEur(s.net)}</strong>`}</div>`;
       } else if (mode === "jour") {
         corps = `
         <div class="tt-date">${libelleSeau(i)}</div>
@@ -7432,39 +7491,40 @@ function drawParJour(rows) {
   barres.addEventListener("pointerleave", cacher);
 }
 
-// Sélecteur de mode (nombre de paris / gain par jour / gain cumulé)
-(function () {
-  const groupe = $("btJourModes");
+// Sélecteur de mode (nombre de paris / gain par jour / gain cumulé), un par page
+function brancherSelecteurHisto(C) {
+  const groupe = $(C.modesId);
   if (!groupe) return;
   const boutons = Array.from(groupe.querySelectorAll(".jour-mode"));
   function marquer() {
     boutons.forEach(b => {
-      const actif = b.dataset.mode === parJourMode;
+      const actif = b.dataset.mode === C.mode;
       b.classList.toggle("is-active", actif);
       b.setAttribute("aria-pressed", actif ? "true" : "false");
     });
   }
   marquer();
   boutons.forEach(b => b.addEventListener("click", () => {
-    if (b.dataset.mode === parJourMode) return;
-    parJourMode = b.dataset.mode;
-    try { localStorage.setItem(PARJOUR_LS_KEY, parJourMode); } catch (e) { /* confort seulement */ }
+    if (b.dataset.mode === C.mode) return;
+    C.mode = b.dataset.mode;
+    try { localStorage.setItem(C.lsKey, C.mode); } catch (e) { /* confort seulement */ }
     marquer();
-    if (parJourDernier) drawParJour(parJourDernier);
+    if (C.dernier) dessinerHistoJour(C, C.dernier);
   }));
-})();
+}
 
 // Redessine l'histogramme si sa largeur change (rotation d'écran, onglet qui
 // devient visible après avoir été tracé à largeur nulle) : le choix des
 // libellés de dates dépend de la place disponible.
-(function () {
-  const wrap = $("btJourWrap");
+function observerLargeurHisto(C) {
+  const wrap = $(C.wrapId);
   if (!wrap || typeof ResizeObserver === "undefined") return;
   new ResizeObserver(() => {
     const w = wrap.clientWidth;
-    if (w && Math.abs(w - parJourLargeur) > 8 && parJourDernier) drawParJour(parJourDernier);
+    if (w && Math.abs(w - C.largeur) > 8 && C.dernier) dessinerHistoJour(C, C.dernier);
   }).observe(wrap);
-})();
+}
+[HISTO_BT, HISTO_BK].forEach(C => { brancherSelecteurHisto(C); observerLargeurHisto(C); });
 
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
@@ -7666,6 +7726,25 @@ function fmtDelaiH(h) {
   return `${sgn}${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
 }
 
+// Date du jour (heure locale) au format AAAA-MM-JJ, comme un champ <input type="date">.
+function isoAujourdhui(d) {
+  d = d || new Date();
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Raccourcis de période de la page Bankroll → valeurs de « Du » / « Au ».
+// « Au » reste vide pour les périodes qui courent jusqu'à aujourd'hui : les
+// paris joués plus tard y entrent d'eux-mêmes.
+function periodeBankroll(code) {
+  const auj = new Date();
+  if (code === "7j" || code === "30j") {
+    return {deb: isoAujourdhui(new Date(auj.getFullYear(), auj.getMonth(), auj.getDate() - (code === "7j" ? 6 : 29))), fin: ""};
+  }
+  if (code === "mois") return {deb: isoAujourdhui(new Date(auj.getFullYear(), auj.getMonth(), 1)), fin: ""};
+  return {deb: "", fin: ""};
+}
+
 function renderBankroll() {
   const departEl = $("bkDepart");
   const evoWrap = $("bkEvoWrap"), body = $("bkBody");
@@ -7685,38 +7764,93 @@ function renderBankroll() {
       coteCapturee: info.cote_capturee != null ? Number(info.cote_capturee) : null,
       coteCloture: ref ? ref.cote : null,
       ts: info.ts || null, kickoff: info.kickoff || null,
+      cat: ref ? (ref.cat || null) : null,
       resolu: !!ref, rembourse: !ref && fini,
       gagne: ref ? ref.won : null,
     };
   }).sort((a, b) => a.date.localeCompare(b.date) || a.cle.localeCompare(b.cle));
 
-  let bankroll = depart, net = 0, resolus = 0, attente = 0;
-  const pts = [{date: "Départ", y: depart}];
-  const lignes = paris.map(p => {
+  // 1) TOUS les paris, dans l'ordre : le résultat de chaque ligne et la bankroll
+  //    qui en découle ne dépendent pas de la période regardée (la bankroll d'un
+  //    jour est la même qu'on affiche tout l'historique ou une seule semaine).
+  let bankroll = depart;
+  const toutes = paris.map(p => {
     let resultatEuros = null, statut = "En attente", bankrollApres = null;
     if (p.resolu || p.rembourse) {
       // Cote de calcul : celle obtenue si on la connaît, sinon la clôture.
       const coteCalc = p.coteJouee ?? p.coteCloture;
       resultatEuros = p.rembourse ? 0 : (p.gagne ? p.mise * (coteCalc - 1) : -p.mise);
       bankroll += resultatEuros;
-      net += resultatEuros;
-      resolus++;
       statut = p.rembourse ? "Remboursé" : (p.gagne ? "Gagné" : "Perdu");
       bankrollApres = bankroll;
-      pts.push({date: p.date, y: bankroll, match: p.match, pari: p.pari,
-               mise: p.mise, statut, resultatEuros, gagne: p.gagne});
-    } else {
-      attente++;
     }
     return {...p, resultatEuros, statut, bankrollApres};
   });
 
-  $("bkActuelle").textContent = bankroll.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+  // 2) Période choisie (« Du » / « Au », l'un ou l'autre peut rester vide). Les
+  //    dates sont au format AAAA-MM-JJ, celui d'un champ date : comparaison de
+  //    chaînes. Bornes du calendrier = premier et dernier pari joué (et
+  //    aujourd'hui), « Du » ne peut pas dépasser « Au » et inversement.
+  const debEl = $("bkDateDebut"), finEl = $("bkDateFin");
+  const datesToutes = toutes.map(l => l.date).filter(Boolean).sort();
+  const minD = datesToutes[0] || "", maxD = datesToutes[datesToutes.length - 1] || "";
+  const auj = isoAujourdhui();
+  const limiteMax = maxD > auj ? maxD : auj;
+  if (debEl) { debEl.min = minD; debEl.max = (finEl && finEl.value) || limiteMax; }
+  if (finEl) { finEl.min = (debEl && debEl.value) || minD; finEl.max = limiteMax; }
+  const deb = debEl ? debEl.value : "", fin = finEl ? finEl.value : "";
+  const inverse = !!(deb && fin && deb > fin);
+  const filtre = !!(deb || fin);
+  const dansPeriode = l => !inverse && (!deb || l.date >= deb) && (!fin || l.date <= fin);
+  const lignes = toutes.filter(dansPeriode);
+  // Bankroll au début de la période = départ + résultats des paris d'avant.
+  const avant = (deb && !inverse)
+    ? depart + toutes.filter(l => l.date < deb && l.resultatEuros != null).reduce((t, l) => t + l.resultatEuros, 0)
+    : depart;
+
+  let net = 0, resolus = 0, attente = 0;
+  const pts = [{date: "Départ", y: avant, periode: !!(deb && !inverse)}];
+  lignes.forEach(l => {
+    if (l.resultatEuros != null) {
+      net += l.resultatEuros;
+      resolus++;
+      pts.push({date: l.date, y: l.bankrollApres, match: l.match, pari: l.pari,
+                mise: l.mise, statut: l.statut, resultatEuros: l.resultatEuros, gagne: l.gagne});
+    } else {
+      attente++;
+    }
+  });
+  const bankrollFin = avant + net;
+  const fmtJJ = iso => iso.split("-").reverse().join("/");
+
+  const lblAct = $("bkActuelleLabel");
+  if (lblAct) lblAct.textContent = (fin && !inverse) ? `Bankroll au ${fmtJJ(fin)}` : "Bankroll actuelle";
+  $("bkActuelle").textContent = bankrollFin.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+  const subAct = $("bkActuelleSub");
+  if (subAct) subAct.textContent = (deb && !inverse)
+    ? `au début de la période : ${avant.toLocaleString("fr-FR", {maximumFractionDigits: 2})} €` : "";
   const netEl = $("bkNet");
   netEl.textContent = fmtEur(net);
   netEl.className = "v " + (net >= 0 ? "pos" : "neg");
+  const subNet = $("bkNetSub");
+  if (subNet) subNet.textContent = filtre && !inverse ? "sur la période choisie" : "";
   $("bkResolus").textContent = resolus;
   $("bkAttente").textContent = attente;
+
+  const noteP = $("bkPeriodeNote");
+  if (noteP) {
+    if (!toutes.length) noteP.textContent = "";
+    else if (inverse) noteP.textContent = "La date de début est postérieure à la date de fin : aucun pari à afficher.";
+    else if (filtre) noteP.textContent = `Période : ${deb ? "du " + fmtJJ(deb) : "depuis le début"} ${fin ? "au " + fmtJJ(fin) : "jusqu'à aujourd'hui"}`
+      + ` — ${lignes.length} pari${lignes.length > 1 ? "s" : ""} sur ${toutes.length} joué${toutes.length > 1 ? "s" : ""} au total.`;
+    else noteP.textContent = `Tous les paris joués : ${toutes.length}, du ${fmtJJ(minD)} au ${fmtJJ(maxD)}.`;
+  }
+  document.querySelectorAll("#bkPeriodes [data-periode]").forEach(b => {
+    const pr = periodeBankroll(b.dataset.periode);
+    const actif = pr.deb === deb && pr.fin === fin;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
 
   // Qualité d'exécution (CLV réel, écart avec l'écran, délai avant le match)
   const ex = statsExecution(lignes);
@@ -7745,6 +7879,14 @@ function renderBankroll() {
 
   drawBankrollChart(pts, "bkEvoWrap");
 
+  // Histogramme gain / perte par jour (même composant que « DC rétrospectif ») :
+  // les paris joués et terminés de la période, avec leur vrai résultat en euros.
+  dessinerHistoJour(HISTO_BK, lignes.filter(l => l.resultatEuros != null).map(l => ({
+    date: l.date, gagne: !!l.gagne && !l.rembourse, neutre: !!l.rembourse,
+    profit: l.mise > 0 ? l.resultatEuros / l.mise : 0,
+    categorie: l.cat || "Autre", net: l.resultatEuros,
+  })));
+
   const cellCote = l => {
     if (l.coteJouee == null) return `<span class="muted" title="Cote obtenue non renseignée : le résultat est calculé à la cote de clôture">—</span>`;
     return l.confirmee
@@ -7768,7 +7910,9 @@ function renderBankroll() {
       <td data-label="Statut">${l.statut}</td>
       <td data-label="Résultat" class="num ${l.resultatEuros == null ? "" : (l.resultatEuros >= 0 ? "pos" : "neg")}">${l.resultatEuros != null ? fmtEur(l.resultatEuros) : "—"}</td>
       <td data-label="Bankroll" class="num">${l.bankrollApres != null ? l.bankrollApres.toLocaleString("fr-FR",{maximumFractionDigits:2}) + " €" : "—"}</td>
-    </tr>`).join("") || `<tr><td colspan="10" class="muted">Aucun pari marqué comme joué pour l'instant — cochez "Marquer comme joué" sur la page Paris à venir.</td></tr>`;
+    </tr>`).join("") || (toutes.length
+    ? `<tr><td colspan="10" class="muted">Aucun pari joué sur cette période.</td></tr>`
+    : `<tr><td colspan="10" class="muted">Aucun pari marqué comme joué pour l'instant — cochez "Marquer comme joué" sur la page Paris à venir.</td></tr>`);
 }
 
 // Graphique en escalier : un point par pari RÉSOLU (pas par jour), la
@@ -7808,7 +7952,7 @@ function drawBankrollChart(pts, wrapId) {
   }
   let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
   for (let i = 0; i < pts.length; i += step) {
-    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? "Départ" : fmtChartDate(pts[i].date)}</text>`;
+    xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? (pts[i].periode ? "Début" : "Départ") : fmtChartDate(pts[i].date)}</text>`;
   }
 
   wrap.innerHTML = `
@@ -7871,7 +8015,7 @@ function drawBankrollChart(pts, wrapId) {
 
     let corps;
     if (best.date === "Départ") {
-      corps = `<div class="tt-row"><span class="muted">Bankroll de départ</span></div>`;
+      corps = `<div class="tt-row"><span class="muted">${best.periode ? "Bankroll au début de la période" : "Bankroll de départ"}</span></div>`;
     } else if (best.match) {
       // Point = un pari réel résolu
       corps = `
@@ -7917,6 +8061,21 @@ if ($("bkDepart")) {
   $("bkDepart").addEventListener("input", renderBankroll);
   $("bkDepart").addEventListener("change", renderBankroll);
 }
+// Période : calendrier (change) ou raccourcis (7 / 30 jours, ce mois-ci, tout).
+["bkDateDebut", "bkDateFin"].forEach(id => {
+  if ($(id)) $(id).addEventListener("change", renderBankroll);
+});
+(function () {
+  const groupe = $("bkPeriodes");
+  if (!groupe) return;
+  groupe.querySelectorAll("[data-periode]").forEach(b => b.addEventListener("click", () => {
+    const pr = periodeBankroll(b.dataset.periode);
+    const deb = $("bkDateDebut"), fin = $("bkDateFin");
+    if (deb) { deb.value = pr.deb; deb.dispatchEvent(new Event("wina-maj")); }
+    if (fin) { fin.value = pr.fin; fin.dispatchEvent(new Event("wina-maj")); }
+    renderBankroll();
+  }));
+})();
 
 // --- Simulation d'exposition sur l'historique du backtest --------------
 // Contrairement à renderBankroll() ci-dessus (vos VRAIS paris joués),
