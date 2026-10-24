@@ -358,5 +358,25 @@
  },
  "2026-10-19|Sūduva - Kauno Žalgiris|draw": {
   "mise": 6
+ },
+ "2026-10-25|O'Higgins - Cobresal|0 - 0": {
+  "cote": 13.5,
+  "cote_confirmee": false,
+  "cote_capturee": 13.5,
+  "ts": "2026-10-24T21:11:10",
+  "kickoff": "2026-10-25T01:00:00",
+  "capture_iso": "2026-10-24T20:29:45.559537",
+  "mise": 10,
+  "maj": 1792869070497
+ },
+ "2026-10-25|Philadelphia Union - New England Revolution|0 - 0": {
+  "cote": 18,
+  "cote_confirmee": false,
+  "cote_capturee": 18,
+  "ts": "2026-10-24T21:11:12",
+  "kickoff": "2026-10-25T01:30:00",
+  "capture_iso": "2026-10-24T20:29:45.559537",
+  "mise": 10,
+  "maj": 1792869072323
  }
 }
