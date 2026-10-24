@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261024202946">
+<link rel="stylesheet" href="style.css?v=20261024233011">
 </head>
 <body>
 <div class="topbar">
@@ -1563,6 +1563,19 @@
       </div>
     </div>
 
+    <div class="panel" id="cmpPanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 6.5h10M11 3.5l3 3-3 3M16 13.5H6M9 10.5l-3 3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Comparaison avec DC rétrospectif <span class="hint">— ce que vous avez vraiment joué face à la simulation</span></h2>
+      <p class="muted" style="margin:0 0 .8rem">
+        Chaque pari que vous avez joué (match terminé) est rapproché de la ligne du <strong>même pari</strong>
+        (date, match, pari) dans la page <strong>DC rétrospectif</strong>. Le rétrospectif simule, lui, tous les
+        paris qui passent ses filtres, à la <em>dernière cote capturée avant le match</em> et à sa propre mise ;
+        il ne sait pas ce que vous avez joué. La comparaison suit <strong>les filtres actuels du rétrospectif</strong>
+        et <strong>la période choisie plus haut</strong> dans ce panneau Bankroll.
+      </p>
+      <div id="cmpFiltres" class="cmp-filtres"></div>
+      <div id="cmpCorps"><p class="muted">Calcul en cours…</p></div>
+    </div>
+
     <div class="panel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 15.5l4.5-6 3.5 3 6-8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Simulation sur l'historique (backtest) <span class="hint">— hypothétique, pas vos vrais paris</span></h2>
       <p class="muted" style="margin:0 0 .8rem">Applique une stratégie de mise à <strong>tous les paris du backtest correspondant aux filtres de la page « DC rétrospectif »</strong> (les deux pages partagent ces réglages), pour voir l'exposition et l'évolution de bankroll que cette stratégie aurait donné — pas une prédiction de ce qui va arriver.</p>
@@ -1842,7 +1855,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261024203010"></script>
-<script src="app.js?v=20261024202946"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261024233043"></script>
+<script src="app.js?v=20261024233011"></script>
 </body>
 </html>
