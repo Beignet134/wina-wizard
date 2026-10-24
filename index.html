@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261024180945">
+<link rel="stylesheet" href="style.css?v=20261024193119">
 </head>
 <body>
 <div class="topbar">
@@ -1498,11 +1498,26 @@
           <label for="bkDepart">Bankroll de départ (€)</label>
           <input type="number" id="bkDepart" value="100" min="0" step="10">
         </div>
+        <div class="field">
+          <label for="bkDateDebut">Du</label>
+          <input type="date" id="bkDateDebut" data-vide="Depuis le début">
+        </div>
+        <div class="field">
+          <label for="bkDateFin">Au</label>
+          <input type="date" id="bkDateFin" data-vide="Jusqu'à aujourd'hui">
+        </div>
       </div>
+      <div class="jour-modes bk-periodes" id="bkPeriodes" role="group" aria-label="Périodes rapides">
+        <button type="button" class="jour-mode is-active" data-periode="tout" aria-pressed="true">Tout</button>
+        <button type="button" class="jour-mode" data-periode="7j" aria-pressed="false">7 derniers jours</button>
+        <button type="button" class="jour-mode" data-periode="30j" aria-pressed="false">30 derniers jours</button>
+        <button type="button" class="jour-mode" data-periode="mois" aria-pressed="false">Ce mois-ci</button>
+      </div>
+      <p class="muted bk-periode-note" id="bkPeriodeNote"></p>
 
       <div class="kpis">
-        <div class="kpi"><div class="k">Bankroll actuelle</div><div class="v" id="bkActuelle">—</div></div>
-        <div class="kpi"><div class="k">Résultat net (résolu)</div><div class="v" id="bkNet">—</div></div>
+        <div class="kpi"><div class="k" id="bkActuelleLabel">Bankroll actuelle</div><div class="v" id="bkActuelle">—</div><div class="kpi-sub" id="bkActuelleSub"></div></div>
+        <div class="kpi"><div class="k">Résultat net (résolu)</div><div class="v" id="bkNet">—</div><div class="kpi-sub" id="bkNetSub"></div></div>
         <div class="kpi"><div class="k">Paris résolus</div><div class="v" id="bkResolus">0</div></div>
         <div class="kpi"><div class="k">Paris en attente</div><div class="v" id="bkAttente">0</div></div>
       </div>
@@ -1526,6 +1541,14 @@
       </p>
 
       <div id="bkEvoWrap" style="margin-top:1rem"></div>
+
+      <h3 class="section-divider" style="margin:1.4rem 0 .6rem"><span id="bkJourTitre">Gain / perte par jour</span> <span class="hint" id="bkJourHint" style="text-transform:none;letter-spacing:0;font-weight:400">— résultat net réel de chaque jour, avec vos mises</span></h3>
+      <div class="jour-modes" id="bkJourModes" role="group" aria-label="Affichage de l'histogramme">
+        <button type="button" class="jour-mode" data-mode="n" aria-pressed="false">Nombre de paris</button>
+        <button type="button" class="jour-mode is-active" data-mode="jour" aria-pressed="true">Gain / perte par jour</button>
+        <button type="button" class="jour-mode" data-mode="cumul" aria-pressed="false">Gain / perte cumulé</button>
+      </div>
+      <div id="bkJourWrap"></div>
 
       <div class="tablewrap" style="margin-top:1rem">
         <table id="bkTable" class="cardify">
@@ -1819,7 +1842,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261024181032"></script>
-<script src="app.js?v=20261024180945"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261024193136"></script>
+<script src="app.js?v=20261024193119"></script>
 </body>
 </html>
