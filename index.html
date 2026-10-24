@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261024173230">
+<link rel="stylesheet" href="style.css?v=20261024180945">
 </head>
 <body>
 <div class="topbar">
@@ -1406,16 +1406,46 @@
       </div>
     </div>
 
+    <div id="syncBox" class="panel sync-panel" style="display:none">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5.5 14.5a3.5 3.5 0 0 1-.4-6.98A4.8 4.8 0 0 1 14.4 6.9 3.8 3.8 0 0 1 14.5 14.5h-9Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 11.2l2 2 2-2M10 13.2V8.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Synchronisation des paris joués
+        <span id="syncBadge" class="sync-badge lecture" role="status" aria-live="polite"></span></h2>
+      <p class="muted sync-aide" id="syncAide"></p>
+      <div class="sync-row" id="syncSansJeton">
+        <input type="password" id="syncToken" class="sync-token" autocomplete="off" spellcheck="false"
+               placeholder="Colle ici ton jeton GitHub" aria-label="Jeton GitHub (accès au dépôt, Contents en lecture et écriture)">
+        <button type="button" id="syncSave" class="btn btn-primary">Activer</button>
+      </div>
+      <div class="sync-row" id="syncAvecJeton" style="display:none">
+        <button type="button" id="syncNow" class="btn">Synchroniser maintenant</button>
+        <button type="button" id="syncForget" class="btn">Retirer le jeton de ce navigateur</button>
+      </div>
+      <p class="muted sync-detail" id="syncDetail"></p>
+      <details class="sync-howto">
+        <summary class="muted">Comment créer le jeton (une seule fois par appareil) ?</summary>
+        <ol>
+          <li>Sur GitHub : ton avatar &rarr; <em>Settings</em> &rarr; <em>Developer settings</em> &rarr; <em>Personal access tokens</em> &rarr; <em>Fine-grained tokens</em> &rarr; <em>Generate new token</em>.</li>
+          <li><em>Repository access</em> : <em>Only select repositories</em>, puis choisis le dépôt du tableau de bord.</li>
+          <li><em>Permissions</em> &rarr; <em>Repository permissions</em> &rarr; <em>Contents</em> : <strong>Read and write</strong> (rien d'autre).</li>
+          <li>Choisis une durée (jusqu'à un an), génère le jeton, copie-le et colle-le ci-dessus. Il n'est affiché qu'une fois par GitHub.</li>
+        </ol>
+        <p class="muted">Les coches sont écrites dans le fichier <code>paris_joues.json</code> d'une branche dédiée du dépôt
+        (le site n'est pas republié à chaque clic). Pour supprimer un pari, décoche-le sur le site : les coches
+        supprimées à la main dans le fichier local reviendraient à la synchronisation suivante.</p>
+      </details>
+    </div>
+
     <div id="placedBox" class="panel placed-panel" style="display:none">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10.2l2 2 4-4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Mes paris joués <span class="hint">— <span id="uPlacedCount">0</span> pari(s) coché(s), <span id="uPlacedTotal">0 €</span> engagé(s)</span></h2>
       <p class="muted" style="margin:-.4rem 0 .9rem; font-size:.85rem">
         Coche « Pari joué » sur une carte pour garder la trace de ce que tu as réellement misé,
         et de la cote réellement obtenue (champ « Cote obtenue » sous la case : corrige-la si elle a
         bougé, elle sert au CLV réel de la page Bankroll).
-        Ce navigateur retient déjà tes coches tout seul (filet de sécurité local), mais ça reste
-        propre à cet appareil et ce navigateur : pour que ces coches survivent à une nouvelle
-        génération lancée d'ailleurs, ou changent d'appareil, télécharge le fichier
-        et dépose-le à côté de <code>wina_wizard.py</code> (remplace l'ancien).
+        Ce navigateur retient déjà tes coches tout seul. <strong>Si la synchronisation ci-dessus est
+        activée, il n'y a rien à télécharger</strong> : tout est enregistré dans ton dépôt GitHub et
+        relu par <code>wina_wizard.py</code> à chaque run. Sans elle, les coches restent propres à cet
+        appareil et ce navigateur : pour qu'elles survivent à une génération lancée d'ailleurs, ou
+        changent d'appareil, télécharge le fichier et dépose-le à côté de <code>wina_wizard.py</code>
+        (remplace l'ancien). Le téléchargement reste utile comme sauvegarde.
       </p>
       <div class="placed-actions">
         <button type="button" id="downloadPlaced" class="btn btn-primary">
@@ -1789,7 +1819,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261024173404"></script>
-<script src="app.js?v=20261024173230"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261024181032"></script>
+<script src="app.js?v=20261024180945"></script>
 </body>
 </html>
