@@ -379,6 +379,16 @@
   "mise": 5,
   "maj": 1792929774835
  },
+ "2026-10-25|Palerme - Carrarese|Buts 0-1": {
+  "cote": 4.3,
+  "cote_confirmee": false,
+  "cote_capturee": 4.3,
+  "ts": "2026-10-25T13:07:11",
+  "kickoff": "2026-10-25T15:00:00",
+  "capture_iso": "2026-10-25T12:54:45.188043",
+  "mise": 5,
+  "maj": 1792930031341
+ },
  "2026-10-25|Philadelphia Union - New England Revolution|0 - 0": {
   "cote": 18,
   "cote_confirmee": false,
