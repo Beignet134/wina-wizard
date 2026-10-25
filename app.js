@@ -588,6 +588,11 @@ function initMeta() {
 
 BETS.forEach((b,i) => b.id = i);
 const selected = new Set();
+// Vrai pendant « Réinitialiser les filtres » : les écouteurs existants (synchro des deux
+// onglets, libellés des menus, curseurs...) tournent normalement, mais renderBacktest() et
+// renderUpcoming() ne redessinent rien tant que tout n'est pas remis en place — un seul
+// rendu à la fin, au lieu d'un par contrôle modifié.
+let REINIT_FILTRES_EN_COURS = false;
 
 const $ = id => document.getElementById(id);
 const fmtEur = x => (x>=0?"+":"") + x.toLocaleString("fr-FR",{maximumFractionDigits:2}) + " €";
@@ -1832,6 +1837,7 @@ function fmtKickoff(iso) {
 }
 
 function renderUpcoming() {
+  if (REINIT_FILTRES_EN_COURS) return;
   const stake = parseFloat($("uStake").value) || 0;
   // Kelly raisonne en fraction de bankroll : on prend celle saisie sur la
   // page Bankroll, a defaut 100 EUR pour que l'ordre de grandeur reste lisible.
@@ -4765,6 +4771,7 @@ function texteCategorieSansPari(x) {
 }
 
 function renderBacktest() {
+  if (REINIT_FILTRES_EN_COURS) return;
   // Les agrégats sont recalculés sur l'ensemble filtré : la déduplication
   // change n, ROI, réussite... on ne peut donc pas réutiliser les totaux
   // bruts calculés côté Python.
@@ -8083,111 +8090,6 @@ if ($("bkDepart")) {
   }));
 })();
 
-// --- Simulation d'exposition sur l'historique du backtest --------------
-// Contrairement à renderBankroll() ci-dessus (vos VRAIS paris joués),
-// cette section est une simulation : elle applique une stratégie de mise
-// à TOUT ce que le backtest a retenu, avec les MÊMES filtres que la page
-// DC rétrospectif (btFiltered — les deux pages partagent déjà ces
-// réglages, cf. lierFiltres plus haut). Sert à choisir une stratégie AVANT
-// de l'appliquer pour de vrai, pas à prédire l'avenir.
-function renderExposition() {
-  const wrap = $("simEvoWrap"), body = $("simBody");
-  if (!wrap || !body) return;
-
-  const strategie = $("simStrategie") ? $("simStrategie").value : "fixe";
-  const montantFixe = parseFloat($("simMontantFixe").value) || 0;
-  const pctMax = (parseFloat($("simPct").value) || 0) / 100;
-  const fracKelly = parseFloat($("simKellyFrac") ? $("simKellyFrac").value : "0.25") || 0.25;
-  const depart = parseFloat($("bkDepart") ? $("bkDepart").value : 100) || 0;
-
-  const rows = btFiltered().slice().sort((a, b) => a.date.localeCompare(b.date));
-  const parJour = {};
-  rows.forEach(r => { (parJour[r.date] = parJour[r.date] || []).push(r); });
-  const dates = Object.keys(parJour).sort();
-
-  // Contrairement au backtest de la page « DC rétrospectif » (bankroll de
-  // référence figée pour rester indépendant de l'ordre des paris), la
-  // bankroll ICI compose vraiment jour après jour : c'est le but même de
-  // cette simulation — rendre visible ce que Kelly change réellement, ce
-  // qu'une bankroll figée ne peut pas montrer.
-  let bankroll = depart, pic = 0, picJour = null;
-  const pts = [{date: "Départ", y: depart}];
-  const lignes = dates.map(date => {
-    const paris = parJour[date];
-    const n = paris.length;
-    let misesParPari;
-    if (strategie === "kelly") {
-      // Mise Kelly : propre à CHAQUE pari (edge et cote lui sont propres),
-      // calculée sur la bankroll telle qu'elle est au début de ce jour —
-      // pas répartie également comme le mode "%".
-      const brutes = paris.map(r => kellyFraction(r.p_aff ?? r.p_model, r.cote, fracKelly) * bankroll);
-      const totalBrut = brutes.reduce((s, m) => s + m, 0);
-      // kellyFraction plafonne déjà CHAQUE pari à 10 % de la bankroll
-      // (MISE_PLAFOND), mais plusieurs paris à fort edge le même jour
-      // peuvent quand même réclamer, ensemble, plus que la bankroll totale
-      // (jusqu'à 23 paris qualifiés le même jour sur l'historique récent,
-      // cf. l'avertissement plus haut sur cette page). On ne peut pas
-      // engager plus que ce qu'on a : les mises du jour sont réduites au
-      // prorata si leur somme dépasse la bankroll disponible.
-      const echelle = (totalBrut > bankroll && totalBrut > 0) ? bankroll / totalBrut : 1;
-      misesParPari = brutes.map(m => m * echelle);
-    } else if (strategie === "pct") {
-      // % de la bankroll par jour, réparti également : l'exposition du
-      // jour est PLAFONNÉE d'avance — elle ne dépend plus du hasard du
-      // nombre de matchs qualifiés.
-      const m = (bankroll * pctMax) / n;
-      misesParPari = paris.map(() => m);
-    } else {
-      // Mise fixe : chaque pari coûte le même montant, l'exposition du
-      // jour grandit avec le nombre de paris qualifiés ce jour-là (c'est
-      // justement ce qui a atteint 115€ un jour sur 5€/pari dans l'exemple
-      // qui a motivé cette page).
-      misesParPari = paris.map(() => montantFixe);
-    }
-    const exposition = misesParPari.reduce((s, m) => s + m, 0);
-    const resultatJour = paris.reduce((s, r, i) => s + r.profit * misesParPari[i], 0);
-    bankroll += resultatJour;
-    if (exposition > pic) { pic = exposition; picJour = date; }
-    pts.push({date, y: bankroll, n, exposition, resultatJour});
-    return {date, n, exposition, resultatJour, bankrollApres: bankroll};
-  });
-
-  $("simFinale").textContent = bankroll.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
-  $("simPic").textContent = pic.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
-  $("simPicJour").textContent = picJour || "—";
-  $("simJours").textContent = dates.length;
-
-  drawBankrollChart(pts, "simEvoWrap");
-
-  body.innerHTML = lignes.map(l => `
-    <tr>
-      <td data-label="Date">${l.date}</td>
-      <td data-label="Nb paris" class="num">${l.n}</td>
-      <td data-label="Exposition" class="num">${l.exposition.toLocaleString("fr-FR",{maximumFractionDigits:2})} €</td>
-      <td data-label="Résultat du jour" class="num ${l.resultatJour >= 0 ? "pos" : "neg"}">${fmtEur(l.resultatJour)}</td>
-      <td data-label="Bankroll après" class="num">${l.bankrollApres.toLocaleString("fr-FR",{maximumFractionDigits:2})} €</td>
-    </tr>`).join("") || `<tr><td colspan="5" class="muted">Aucun pari ne correspond aux filtres actuels de la page DC rétrospectif.</td></tr>`;
-}
-
-if ($("simStrategie")) {
-  $("simStrategie").addEventListener("change", () => {
-    const val = $("simStrategie").value;
-    $("simFixeWrap").style.display = val === "fixe" ? "" : "none";
-    $("simPctWrap").style.display = val === "pct" ? "" : "none";
-    $("simKellyWrap").style.display = val === "kelly" ? "" : "none";
-    if ($("simKellyNote")) $("simKellyNote").style.display = val === "kelly" ? "" : "none";
-    renderExposition();
-  });
-  ["simMontantFixe", "simPct", "simKellyFrac"].forEach(id => {
-    $(id).addEventListener("input", renderExposition);
-    $(id).addEventListener("change", renderExposition);
-  });
-  // bkDepart sert de base aux DEUX simulations (réelle et hypothétique) :
-  // un changement doit redessiner les deux plutôt que seulement la première.
-  $("bkDepart").addEventListener("input", renderExposition);
-  $("bkDepart").addEventListener("change", renderExposition);
-}
-
 // ========================================================================
 // COMPARAISON PARIS RÉELS ↔ DC RÉTROSPECTIF (page Bankroll)
 // ========================================================================
@@ -8475,18 +8377,21 @@ if ($("cmpCorps")) {
 // ========================================================================
 // PAGE — SIMULATION DE VARIANCE (MONTE CARLO)
 // ========================================================================
-// Différence avec renderExposition() ci-dessus : celle-ci rejoue l'historique
-// UNE fois avec les résultats RÉELLEMENT survenus (déterministe). Celle-ci
-// le rejoue des MILLIERS de fois, dans le même ordre chronologique et avec
-// les mêmes mises, mais en tirant à chaque fois un résultat gagné/perdu au
+// Rejoue l'historique des MILLIERS de fois, dans le même ordre chronologique
+// et avec les mêmes mises, en tirant à chaque fois un résultat gagné/perdu au
 // hasard selon la probabilité du modèle plutôt que de relire ce qui s'est
 // réellement passé. Objectif : rendre visible la variance inhérente au
 // hasard, séparément de la question "le modèle a-t-il raison en moyenne ?"
-// déjà traitée par le reste du site.
+// déjà traitée par le reste du site. Le même historique est aussi rejoué UNE
+// fois avec les résultats RÉELLEMENT survenus (mcTrajectoireReelle) : c'est la
+// trajectoire en pointillés et le tableau « Sur l'historique réel » (c'est ce
+// que faisait l'ancien panneau « Simulation sur l'historique » de la page
+// Bankroll, fusionné ici le 25/10/2026 avec ses stratégies et son pic
+// d'exposition).
 //
 // Rejoue btFiltered() : hérite donc de TOUS les filtres de la page DC
 // rétrospectif (dates, catégories, edge, dédup, correction de calibration,
-// substitution xG...), exactement comme renderExposition(). C'est pourquoi
+// substitution xG...). C'est pourquoi
 // cette page ne propose pas son propre réglage de calibration : celui de la
 // page DC rétrospectif (btCalib) s'applique déjà avant que btFiltered() ne
 // renvoie ses lignes.
@@ -8505,21 +8410,30 @@ function drawFanChartMulti(series, wrapId) {
   const wrap = $(wrapId);
   if (!wrap) return;
   const valides = series.filter(s => s.pts.length >= 2);
-  if (!valides.length) {
+  // Séries « réel » : la trajectoire unique réellement observée, en pointillés dans la couleur de
+  // sa stratégie. Ses points peuvent être nuls (au-delà de la fin de l'historique) : la courbe
+  // s'interrompt alors. Les séries « principales » (médianes simulées) fixent l'axe des dates.
+  const principales = valides.filter(s => !s.reel);
+  const reelles = valides.filter(s => s.reel);
+  if (!principales.length) {
     wrap.innerHTML = '<p class="muted">Pas assez de paris dans l\'historique filtré pour tracer une fourchette.</p>';
     return;
   }
-  const nPts = valides[0].pts.length;
+  const nPts = principales[0].pts.length;
   const W = 1180, H = 280, padL = 66, padR = 22, padT = 26, padB = 38;
   const xMax = nPts - 1;
   let yMin = Infinity, yMax = -Infinity;
-  valides.forEach(s => s.pts.forEach(p => { if (p.p50 < yMin) yMin = p.p50; if (p.p50 > yMax) yMax = p.p50; }));
+  valides.forEach(s => s.pts.forEach(p => {
+    if (p.p50 == null) return;
+    if (p.p50 < yMin) yMin = p.p50;
+    if (p.p50 > yMax) yMax = p.p50;
+  }));
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.12; yMin = Math.max(0, yMin - pad); yMax += pad;
   const sx = i => padL + i / (xMax || 1) * (W - padL - padR);
   const sy = y => padT + (yMax - y) / (yMax - yMin) * (H - padT - padB);
 
-  const depart = valides[0].pts[0].p50;
+  const depart = principales[0].pts[0].p50;
   const yDepart = sy(depart);
 
   let yticks = "";
@@ -8530,23 +8444,34 @@ function drawFanChartMulti(series, wrapId) {
   }
   let xticks = ""; const step = Math.max(1, Math.floor(nPts / 7));
   for (let i = 0; i < nPts; i += step) {
-    const d = valides[0].pts[i].date;
+    const d = principales[0].pts[i].date;
     xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${d === "Départ" ? "Départ" : fmtChartDate(d)}</text>`;
   }
 
   const lignes = valides.map(s => {
-    const path = s.pts.map((p, i) => (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(p.p50).toFixed(1)).join(" ");
-    return `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+    // Tracé par segments : un point nul interrompt la courbe au lieu de la relier.
+    let path = "", plume = false;
+    s.pts.forEach((p, i) => {
+      if (p.p50 == null) { plume = false; return; }
+      path += (plume ? "L" : "M") + sx(i).toFixed(1) + " " + sy(p.p50).toFixed(1) + " ";
+      plume = true;
+    });
+    return s.reel
+      ? `<path d="${path.trim()}" fill="none" stroke="${s.color}" stroke-width="2" stroke-dasharray="7,5" stroke-linejoin="round" stroke-linecap="round"/>`
+      : `<path d="${path.trim()}" fill="none" stroke="${s.color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
   }).join("");
 
-  const legende = valides.map(s =>
+  const legende = principales.map(s =>
     `<span style="display:inline-flex; align-items:center; gap:.35rem; margin-right:1.1rem">
       <span style="width:10px; height:10px; border-radius:50%; background:${s.color}; display:inline-block; flex:none"></span>${s.label}
-     </span>`).join("");
+     </span>`).join("")
+    + (reelles.length ? `<span style="display:inline-flex; align-items:center; gap:.35rem; margin-right:1.1rem">
+      <svg width="24" height="8" viewBox="0 0 24 8" aria-hidden="true" style="flex:none"><line x1="0" y1="4" x2="24" y2="4" stroke="var(--ink-dim)" stroke-width="2" stroke-dasharray="6,4"/></svg>trajectoire réelle (couleur de la stratégie)
+     </span>` : "");
 
   wrap.innerHTML = `
     <div class="chart-holder">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Bankroll médiane par stratégie">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Bankroll médiane par stratégie${reelles.length ? ", et trajectoire réelle en pointillés" : ""}">
         ${yticks}
         <line x1="${padL}" y1="${yDepart.toFixed(1)}" x2="${W-padR}" y2="${yDepart.toFixed(1)}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".55"/>
         ${lignes}
@@ -8557,7 +8482,7 @@ function drawFanChartMulti(series, wrapId) {
       <div class="chart-tooltip" hidden></div>
     </div>
     <p class="muted" style="margin:.6rem 0 .2rem; font-size:.78rem">${legende}</p>
-    <p class="muted" style="margin:0; font-size:.78rem">Courbes = bankroll <strong>médiane</strong> (P50) de chaque stratégie cochée ; le tableau au-dessus donne leur fourchette complète (P5 à P95).</p>`;
+    <p class="muted" style="margin:0; font-size:.78rem">Courbes pleines = bankroll <strong>médiane</strong> (P50) de chaque stratégie cochée ; le tableau au-dessus donne leur fourchette complète (P5 à P95).${reelles.length ? " Pointillés = ce qui s'est réellement passé avec la même mise : une seule trajectoire, qui s'arrête à la fin de l'historique." : ""}</p>`;
 
   const holder = wrap.querySelector(".chart-holder");
   const svg = holder.querySelector("svg");
@@ -8580,10 +8505,10 @@ function drawFanChartMulti(series, wrapId) {
     cursor.setAttribute("x2", px.toFixed(1));
     cursor.setAttribute("opacity", "1");
 
-    const lignesTip = valides.map(s =>
-      `<div class="tt-row"><span style="color:${s.color}">●</span> <span class="muted">${s.label}</span><strong>${s.pts[bestI].p50.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</strong></div>`
-    ).join("");
-    const dateAff = valides[0].pts[bestI].date === "Départ" ? "Départ" : valides[0].pts[bestI].date;
+    const ligneTip = (s, symbole) => `<div class="tt-row"><span style="color:${s.color}">${symbole}</span> <span class="muted">${s.label}</span><strong>${s.pts[bestI].p50.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</strong></div>`;
+    const lignesTip = principales.map(s => ligneTip(s, "●")).join("")
+      + reelles.filter(s => s.pts[bestI].p50 != null).map(s => ligneTip(s, "○")).join("");
+    const dateAff = principales[0].pts[bestI].date === "Départ" ? "Départ" : principales[0].pts[bestI].date;
     tip.innerHTML = `<div class="tt-date">${dateAff}</div>${lignesTip}`;
     tip.hidden = false;
 
@@ -8702,6 +8627,8 @@ function mcStrategiesActives() {
   const defs = [
     { id: "fixe", chk: "mcCmpFixe", label: "Montant fixe", color: cssVar("--gold"),
       lire: () => ({ type: "fixe", montant: parseFloat($("mcCmpFixeMontant") ? $("mcCmpFixeMontant").value : "10") || 0 }) },
+    { id: "pct", chk: "mcCmpPct", label: "% bankroll / jour", color: cssVar("--orchid"),
+      lire: () => ({ type: "pct", pct: Math.min(Math.max(parseFloat($("mcCmpPctVal") ? $("mcCmpPctVal").value : "15") || 0, 0), 100) / 100 }) },
     { id: "k8", chk: "mcCmpK8", label: "Kelly 1/8", color: cssVar("--ink-dim"),
       lire: () => ({ type: "kelly", frac: 0.125 }) },
     { id: "k4", chk: "mcCmpK4", label: "Kelly 1/4", color: cssVar("--violet"),
@@ -8746,6 +8673,71 @@ function majExplorateurPercentile() {
   }).join("");
 }
 
+// Mises (en €) engagées sur chaque pari d'UNE journée, selon la stratégie et la bankroll du
+// moment. Partagée par les trajectoires simulées et par la trajectoire réelle : c'est ce qui
+// garantit qu'elles appliquent exactement les mêmes règles de mise.
+//  - fixe  : le même montant sur chaque pari (l'exposition grandit avec le nombre de paris du jour) ;
+//  - pct   : une part fixe de la bankroll pour la journée, répartie également entre ses paris
+//            (l'exposition du jour est plafonnée d'avance, quel que soit le nombre de matchs) ;
+//  - kelly : une fraction propre à chaque pari (son edge, sa cote), plafonnée par kellyFraction() ;
+//            si le total du jour dépasse la bankroll, les mises sont réduites au prorata (on ne
+//            peut pas engager plus que ce qu'on a).
+function mcMises(strat, jour, bankroll) {
+  const k = jour.p.length;
+  if (strat.type === "kelly") {
+    const brutes = new Array(k);
+    let totalBrut = 0;
+    for (let i = 0; i < k; i++) {
+      const f = kellyFraction(jour.p[i], jour.cote[i], strat.frac) * bankroll;
+      brutes[i] = f; totalBrut += f;
+    }
+    const echelle = (totalBrut > bankroll && totalBrut > 0) ? bankroll / totalBrut : 1;
+    return brutes.map(x => x * echelle);
+  }
+  if (strat.type === "pct") return new Array(k).fill(bankroll * strat.pct / k);
+  return new Array(k).fill(strat.montant);
+}
+
+// Complément du libellé d'une stratégie dans les tableaux : son réglage numérique.
+function mcDetailStrategie(strat) {
+  if (strat.type === "fixe") return ` (${strat.montant} €)`;
+  if (strat.type === "pct") return ` (${+(strat.pct * 100).toFixed(2)} % / jour)`;
+  return "";
+}
+
+// La trajectoire RÉELLE : la stratégie rejouée une seule fois sur les `nJours` premiers jours de
+// l'historique filtré, avec les résultats réellement observés (profit unitaire du backtest) au
+// lieu de gagné/perdu tirés au sort. Mêmes règles que la simulation : la bankroll ne descend pas
+// sous 0 et, une fois à 0, la stratégie s'arrête (ruine).
+function mcTrajectoireReelle(strat, joursData, nJours, depart) {
+  let bk = depart, miseTot = 0, pic = 0, picJour = null, ruine = false;
+  const apres = new Array(nJours);
+  for (let d = 0; d < nJours; d++) {
+    const jour = joursData[d];
+    if (!ruine) {
+      const mises = mcMises(strat, jour, bk);
+      let res = 0, expo = 0;
+      for (let i = 0; i < mises.length; i++) { res += jour.profit[i] * mises[i]; expo += mises[i]; }
+      bk += res;
+      if (bk < 0) bk = 0;
+      if (bk <= 0) ruine = true;
+      miseTot += expo;
+      if (expo > pic) { pic = expo; picJour = jour.date; }
+    }
+    apres[d] = bk;
+  }
+  return { final: bk, apres, miseTot, pic, picJour, ruine };
+}
+
+// Dernières séries de l'éventail (simulées + réelles), gardées pour que la case « Superposer la
+// trajectoire réelle » redessine le graphique sans relancer le tirage au sort.
+let mcDernierEventail = null;
+function dessinerEventailMC() {
+  if (!mcDernierEventail) return;
+  const avecReel = !$("mcCmpReel") || $("mcCmpReel").checked;
+  drawFanChartMulti(avecReel ? mcDernierEventail.sim.concat(mcDernierEventail.reel) : mcDernierEventail.sim, "mcFanWrap");
+}
+
 function runMonteCarlo() {
   const empty = $("mcEmpty"), resultats = $("mcResults");
   if (!empty || !resultats) return;
@@ -8758,7 +8750,7 @@ function runMonteCarlo() {
   if ($("mcDepartAff")) $("mcDepartAff").textContent = depart.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
   if ($("mcNbParis")) $("mcNbParis").textContent = rows.length;
 
-  // Regroupement par jour, comme renderExposition() : les mises Kelly d'un
+  // Regroupement par jour : les mises Kelly d'un
   // même jour sont calculées ensemble et réduites au prorata si leur somme
   // dépasse la bankroll disponible (plusieurs matchs à fort edge le même
   // jour ne peuvent pas engager, ensemble, plus que ce qu'on a).
@@ -8771,6 +8763,7 @@ function runMonteCarlo() {
       date,
       p: paris.map(r => Math.min(Math.max(r.p_aff ?? r.p_model ?? 0, 0), 1)),
       cote: paris.map(r => r.cote),
+      profit: paris.map(r => Number(r.profit) || 0),   // résultat réellement observé (par € misé)
     };
   });
   const histJours = joursData.length;
@@ -8784,6 +8777,7 @@ function runMonteCarlo() {
     empty.style.display = "";
     resultats.style.display = "none";
     mcDernierSnapshot = null;
+    mcDernierEventail = null;
     return;
   }
   empty.style.display = "none";
@@ -8836,6 +8830,7 @@ function runMonteCarlo() {
   const maxDDs = strategies.map(() => new Float64Array(M));
   const nRuines = new Array(S).fill(0);
   const miseTotales = strategies.map(() => new Float64Array(M));
+  const picExpos = strategies.map(() => new Float64Array(M));
   const cpValeurs = strategies.map(() => cpIdx.map(() => new Float64Array(M)));
 
   for (let m = 0; m < M; m++) {
@@ -8845,6 +8840,7 @@ function runMonteCarlo() {
     const maxDDlocal = new Array(S).fill(0);
     const ruines = new Array(S).fill(false);
     const miseTot = new Array(S).fill(0);
+    const picExpo = new Array(S).fill(0);
     let cpPtr = 0;
 
     for (let d = 0; d < seq.length; d++) {
@@ -8859,19 +8855,7 @@ function runMonteCarlo() {
       for (let s = 0; s < S; s++) {
         if (ruines[s]) continue;
         const strat = strategies[s];
-        let mises;
-        if (strat.type === "kelly") {
-          const brutes = new Array(k);
-          let totalBrut = 0;
-          for (let i = 0; i < k; i++) {
-            const f = kellyFraction(jour.p[i], jour.cote[i], strat.frac) * bankrolls[s];
-            brutes[i] = f; totalBrut += f;
-          }
-          const echelle = (totalBrut > bankrolls[s] && totalBrut > 0) ? bankrolls[s] / totalBrut : 1;
-          mises = brutes.map(x => x * echelle);
-        } else {
-          mises = new Array(k).fill(strat.montant);
-        }
+        const mises = mcMises(strat, jour, bankrolls[s]);
         let resultatJour = 0, miseJour = 0;
         for (let i = 0; i < k; i++) {
           const profitUnite = gagneArr[i] ? (jour.cote[i] - 1) : -1;
@@ -8887,6 +8871,7 @@ function runMonteCarlo() {
         }
         if (bankrolls[s] <= 0) ruines[s] = true;
         miseTot[s] += miseJour;
+        if (miseJour > picExpo[s]) picExpo[s] = miseJour;
       }
 
       if (cpPtr < cpIdx.length && cpIdx[cpPtr] === d) {
@@ -8899,6 +8884,7 @@ function runMonteCarlo() {
       finales[s][m] = bankrolls[s];
       maxDDs[s][m] = maxDDlocal[s];
       miseTotales[s][m] = miseTot[s];
+      picExpos[s][m] = picExpo[s];
       if (ruines[s]) nRuines[s]++;
     }
   }
@@ -8919,7 +8905,21 @@ function runMonteCarlo() {
     const ddMediane = pctOf(ddSorted, 0.50);
     let sommeMise = 0; miseTotales[s].forEach(v => sommeMise += v);
     const miseMoyenne = sommeMise / M;
-    return { strat, mediane, p5, p95, probaPerte, probaRuine, ddMediane, miseMoyenne, nets: Array.from(finales[s], v => v - depart) };
+    const picSorted = Float64Array.from(picExpos[s]).sort();
+    return { strat, mediane, p5, p95, probaPerte, probaRuine, ddMediane, miseMoyenne,
+             picMed: pctOf(picSorted, 0.50), picP95: pctOf(picSorted, 0.95),
+             nets: Array.from(finales[s], v => v - depart) };
+  });
+
+  // Trajectoire réelle de chaque stratégie, sur la même fenêtre de jours que la simulation. Son
+  // rang parmi les trajectoires simulées (part de celles qu'elle bat) n'a de sens que si les
+  // deux portent sur la même durée : pas de rang quand l'horizon dépasse l'historique réel.
+  const reels = strategies.map((strat, s) => {
+    const x = mcTrajectoireReelle(strat, joursData, nReel, depart);
+    let nInf = 0, nEg = 0;
+    finales[s].forEach(v => { if (v < x.final) nInf++; else if (v === x.final) nEg++; });
+    x.rang = extrapole ? null : (nInf + nEg / 2) / M;
+    return x;
   });
 
   // Snapshot pour le curseur de percentile (voir sa déclaration plus haut) :
@@ -8937,8 +8937,9 @@ function runMonteCarlo() {
   if (body) {
     body.innerHTML = resultatsStrat.map(r => `
       <tr>
-        <td><span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${r.strat.color}; margin-right:.45rem"></span>${r.strat.label}${r.strat.type === "fixe" ? ` (${r.strat.montant} €)` : ""}</td>
+        <td><span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${r.strat.color}; margin-right:.45rem"></span>${r.strat.label}${mcDetailStrategie(r.strat)}</td>
         <td class="num">${eur(r.miseMoyenne)}</td>
+        <td class="num">${eur(r.picMed)}<span class="mc-sub">P95 : ${eur(r.picP95)}</span></td>
         <td class="num ${r.mediane >= depart ? "pos" : "neg"}">${eur(r.mediane)}</td>
         <td class="num ${r.p5 >= depart ? "pos" : "neg"}">${eur(r.p5)}</td>
         <td class="num ${r.p95 >= depart ? "pos" : "neg"}">${eur(r.p95)}</td>
@@ -8946,6 +8947,33 @@ function runMonteCarlo() {
         <td class="num ${r.probaRuine > 0 ? "neg" : "pos"}">${pct(r.probaRuine)}</td>
         <td class="num">-${pct(r.ddMediane)}</td>
       </tr>`).join("");
+  }
+
+  // --- Trajectoire réelle (tableau) ---
+  const reelBody = $("mcReelBody");
+  if (reelBody) {
+    reelBody.innerHTML = reels.map((x, s) => {
+      const strat = strategies[s];
+      const gain = x.final - depart;
+      const rang = x.rang;
+      return `
+      <tr>
+        <td><span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${strat.color}; margin-right:.45rem"></span>${strat.label}${mcDetailStrategie(strat)}</td>
+        <td class="num">${eur(x.miseTot)}</td>
+        <td class="num ${x.final >= depart ? "pos" : "neg"}">${eur(x.final)}${x.ruine ? ' <span class="neg">(ruine)</span>' : ""}</td>
+        <td class="num ${gain >= 0 ? "pos" : "neg"}">${fmtEur(gain)}</td>
+        <td class="num">${eur(x.pic)}</td>
+        <td class="mc-jour">${x.picJour ? fmtJourComplet(x.picJour) : "—"}</td>
+        <td class="num"${rang == null ? "" : ` title="Le réel finit au-dessus de ${Math.round(rang * 100)} % des ${M.toLocaleString("fr-FR")} trajectoires simulées"`}>${rang == null ? "—" : Math.round(rang * 100) + " %"}</td>
+      </tr>`;
+    }).join("");
+  }
+  const noteReel = $("mcReelNote");
+  if (noteReel) {
+    let t = "Mêmes paris et mêmes règles de mise que les trajectoires simulées ; seuls les gagné/perdu sont ceux qui ont réellement eu lieu. « Réel vs simulées » = part des trajectoires simulées que le réel a battues : autour de 50 %, le réel est conforme à ce que le modèle annonçait ; sous 5 % ou au-dessus de 95 %, il s'en écarte nettement (modèle bien trop optimiste, ou bien trop prudent, sur cet historique). Attention : les filtres sont réglés en regardant ce même historique, ce qui avantage mécaniquement le réel.";
+    if (extrapole) t += ` Horizon étendu : la trajectoire réelle s'arrête à la fin de l'historique (${histJours} jours), la comparaison n'est donc pas calculée.`;
+    else if (horizonJours < histJours) t += ` Limité aux ${horizonJours} premiers jours de l'historique filtré, comme la simulation.`;
+    noteReel.textContent = t;
   }
 
   // --- Courbes superposées (médiane par stratégie) ---
@@ -8962,7 +8990,17 @@ function runMonteCarlo() {
     });
     return { label: strat.label, color: strat.color, pts };
   });
-  drawFanChartMulti(serieParStrat, "mcFanWrap");
+  // Même trajectoire réelle, en pointillés dans la couleur de sa stratégie. Elle s'arrête à la
+  // fin de l'historique : au-delà (horizon étendu), les points sont nuls et la courbe s'interrompt.
+  const serieReelParStrat = strategies.map((strat, s) => ({
+    label: strat.label + " (réel)", color: strat.color, reel: true,
+    pts: [{date: "Départ", p50: depart}].concat(cpIdx.map(idxJour => ({
+      date: joursData[idxJour % histJours].date,
+      p50: idxJour < nReel ? reels[s].apres[idxJour] : null,
+    }))),
+  }));
+  mcDernierEventail = { sim: serieParStrat, reel: serieReelParStrat };
+  dessinerEventailMC();
 
   // --- Histogrammes côte à côte ---
   // Chaque histogramme est cadré sur SA PROPRE plage P1-P99 (voir
@@ -9021,13 +9059,14 @@ function runMonteCarlo() {
 }
 
 if ($("mcHorizon") || $("mcCmpFixe")) {
-  ["mcN", "mcHorizon", "mcCmpFixe", "mcCmpFixeMontant", "mcCmpK8", "mcCmpK4", "mcCmpK2", "mcCmpK1"].forEach(id => {
+  ["mcN", "mcHorizon", "mcCmpFixe", "mcCmpFixeMontant", "mcCmpPct", "mcCmpPctVal", "mcCmpK8", "mcCmpK4", "mcCmpK2", "mcCmpK1"].forEach(id => {
     if ($(id)) $(id).addEventListener("change", runMonteCarlo);
   });
-  // "change" seulement (pas "input") : contrairement à renderExposition (une
-  // seule repasse déterministe, quasi instantanée), Monte Carlo recalcule des
-  // milliers de trajectoires — le relancer à chaque frappe au clavier sur le
-  // montant de départ le rendrait perceptiblement saccadé.
+  // Superposer/retirer la trajectoire réelle : simple affichage, rien à recalculer.
+  if ($("mcCmpReel")) $("mcCmpReel").addEventListener("change", dessinerEventailMC);
+  // "change" seulement (pas "input") : Monte Carlo recalcule des milliers de
+  // trajectoires — le relancer à chaque frappe au clavier sur le montant de
+  // départ le rendrait perceptiblement saccadé.
   if ($("bkDepart")) $("bkDepart").addEventListener("change", runMonteCarlo);
   // Bankroll éditable directement sur cette page, sans repasser par la page
   // Bankroll : lierFiltres() synchronise mcBkDepart <-> bkDepart dans les
@@ -9045,15 +9084,70 @@ if ($("mcHorizon") || $("mcCmpFixe")) {
   if ($("mcPctSlider")) $("mcPctSlider").addEventListener("input", majExplorateurPercentile);
 }
 
+/* ---------- Réinitialisation des filtres (DC rétrospectif / Paris à venir) ---------- */
+// « Valeur d'origine » = l'état de chaque contrôle une fois la page entièrement initialisée
+// (plage de dates = toute la période, mouvement de la cote 0 → 0,5 %, catégories cochées par
+// défaut, listes de ligues/scores peuplées...). On le photographie ici, avant que quiconque y
+// touche, plutôt que de recopier les valeurs par défaut à la main : si un défaut change dans le
+// HTML, le bouton suit sans rien à mettre à jour.
+const FILTRES_ORIGINE = {};
+(function capturerFiltresOrigine() {
+  [["bt", "#btFilterSettings"], ["u", "#uFilterPanel"]].forEach(([pref, sel]) => {
+    const racine = document.querySelector(sel);
+    FILTRES_ORIGINE[pref] = racine
+      ? [...racine.querySelectorAll("input, select")].map(el => ({el, value: el.value, checked: el.checked}))
+      : [];
+  });
+})();
+
+// Remet chaque contrôle de la page "bt" ou "u" à sa valeur d'origine et renvoie le nombre de
+// réglages qui ont réellement changé. Chaque valeur est réécrite puis annoncée par les mêmes
+// événements qu'une saisie à la main : la synchro avec l'autre onglet, les libellés des menus,
+// les curseurs et le calendrier se mettent à jour sans code dédié. Seul le rendu est différé.
+function reinitialiserFiltres(pref) {
+  const etats = FILTRES_ORIGINE[pref] || [];
+  let nb = 0;
+  REINIT_FILTRES_EN_COURS = true;
+  try {
+    etats.forEach(({el, value, checked}) => {
+      if (el.disabled) return;
+      if (el.type === "checkbox" || el.type === "radio") {
+        if (el.checked === checked) return;
+        el.checked = checked;
+      } else {
+        if (el.value === value) return;
+        el.value = value;
+        el.dispatchEvent(new Event("input"));
+      }
+      el.dispatchEvent(new Event("change"));
+      nb++;
+    });
+    // Case choisie dans la grille « Historique » : filtre commun aux deux pages.
+    if (BT_HIST_SELECTION) { BT_HIST_SELECTION = null; nb++; }
+  } finally {
+    REINIT_FILTRES_EN_COURS = false;
+  }
+  renderBacktest();
+  renderUpcoming();
+  return nb;
+}
+document.querySelectorAll("[data-reset-filtres]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const nb = reinitialiserFiltres(btn.dataset.resetFiltres);
+    const msg = btn.parentElement.querySelector(".filter-reset-msg");
+    if (!msg) return;
+    msg.textContent = nb ? "Filtres remis à leur valeur d'origine."
+                         : "Déjà aux valeurs d'origine : rien à réinitialiser.";
+    clearTimeout(msg._efface);
+    msg._efface = setTimeout(() => { msg.textContent = ""; }, 4000);
+  });
+});
+
 /* ---------- Init ---------- */
 refresh();
 renderValueBets();
 renderUpcoming();
 renderBankroll();
-// Sans cet appel, le panneau "Simulation sur l'historique" restait vide
-// (tirets) tant qu'on n'avait pas soi-meme touche un de ses reglages —
-// il ne se rendait qu'au premier "change", jamais au chargement.
-if (typeof renderExposition === "function") renderExposition();
 // Même raison pour l'onglet Simulation (Monte Carlo) : sans cet appel il
 // resterait vide jusqu'au premier clic sur "Relancer".
 if (typeof runMonteCarlo === "function") runMonteCarlo();
