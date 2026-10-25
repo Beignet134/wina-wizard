@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261025101202">
+<link rel="stylesheet" href="style.css?v=20261025105150">
 </head>
 <body>
 <div class="topbar">
@@ -457,6 +457,14 @@
         <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </summary>
       <div class="panel-fold-body">
+      <div class="filter-reset-row">
+        <button type="button" class="btn filter-reset-btn" data-reset-filtres="bt" title="Remet tous les filtres de cette page à leur valeur d'origine. Ceux qu'elle partage avec « Paris à venir » y sont remis aussi.">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.6 10a6.4 6.4 0 1 0 2-4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.4 3.6v3.4h3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Réinitialiser les filtres
+        </button>
+        <span class="muted filter-reset-hint">Valeurs d'origine, y compris pour les réglages partagés avec « Paris à venir ».</span>
+        <span class="muted filter-reset-msg" role="status" aria-live="polite"></span>
+      </div>
       <div class="controls" style="margin-bottom:1.1rem">
         <div class="field">
           <label id="btCatLabel">Type de pari</label>
@@ -659,6 +667,13 @@
     <div class="panel filter-recap-panel">
       <h2>Filtres appliqués <span class="hint">— le périmètre utilisé par les KPI, le graphique et les tableaux</span></h2>
       <div class="active-filter-summary" id="btActiveFilters" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div class="filter-reset-row is-compact">
+        <button type="button" class="btn filter-reset-btn" data-reset-filtres="bt" title="Remet tous les filtres de cette page à leur valeur d'origine. Ceux qu'elle partage avec « Paris à venir » y sont remis aussi.">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.6 10a6.4 6.4 0 1 0 2-4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.4 3.6v3.4h3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Réinitialiser les filtres
+        </button>
+        <span class="muted filter-reset-msg" role="status" aria-live="polite"></span>
+      </div>
       <div class="bt-filter-impact" id="btFilterImpact">
         <div class="bt-filter-impact-head">
           <div>
@@ -1036,7 +1051,8 @@
       comme mauvaise, si le modèle est exactement aussi fiable qu'il le prétend ? Rejoue des
       milliers de fois l'historique de paris déjà testé, en tirant chaque résultat au hasard selon
       la probabilité du modèle plutôt que de ne regarder que ce qui s'est <em>réellement</em>
-      passé une fois.</p>
+      passé une fois — cette trajectoire réelle reste affichée à côté (pointillés et tableau
+      « Sur l'historique réel »), pour voir où elle se place dans la fourchette.</p>
     </div>
 
     <div class="warn pred">
@@ -1088,6 +1104,10 @@
             <input type="number" id="mcCmpFixeMontant" value="10" min="0" step="1" class="mc-strat-param" aria-label="Montant fixe en euros"><span class="mc-strat-unit">€/pari</span>
           </div>
           <div class="mc-strat-row">
+            <label class="mc-strat-check"><input type="checkbox" id="mcCmpPct"><span class="mc-strat-dot" data-c="orchid"></span>% de la bankroll par jour</label>
+            <input type="number" id="mcCmpPctVal" value="15" min="1" max="100" step="1" class="mc-strat-param" aria-label="Pourcentage de la bankroll engagé chaque jour, réparti également entre les paris du jour"><span class="mc-strat-unit">% / jour</span>
+          </div>
+          <div class="mc-strat-row">
             <label class="mc-strat-check"><input type="checkbox" id="mcCmpK8"><span class="mc-strat-dot" data-c="dim"></span>Kelly 1/8 <span class="muted">(très prudent)</span></label>
           </div>
           <div class="mc-strat-row">
@@ -1101,13 +1121,17 @@
           </div>
         </div>
         <p class="muted" style="margin:.5rem 0 0; font-size:.82rem">
-          Chaque stratégie Kelly compose réellement d'un pari au suivant (fraction de la bankroll
-          du moment), comme la simulation d'exposition de la page Bankroll — mais toutes les
-          stratégies cochées rejouent <strong>exactement le même monde simulé</strong> à chaque
+          Les stratégies composent réellement d'un jour au suivant, sur la bankroll du moment :
+          chaque pari Kelly reçoit une fraction selon son edge et sa cote (mises du jour réduites au
+          prorata si leur somme dépasse la bankroll), tandis que « % de la bankroll par jour » engage
+          une part fixe de la bankroll, répartie également entre les paris du jour — l'exposition
+          quotidienne y est plafonnée d'avance, quel que soit le nombre de matchs qualifiés. Toutes
+          les stratégies cochées rejouent <strong>exactement le même monde simulé</strong> à chaque
           trajectoire (mêmes journées, mêmes résultats gagné/perdu tirés au sort) : seule la mise
           change d'une stratégie à l'autre, pour que les écarts observés viennent du réglage de
           mise, pas d'un hasard de tirage différent.
         </p>
+        <label class="mc-strat-check mc-reel-opt"><input type="checkbox" id="mcCmpReel" checked>Superposer la trajectoire réelle du backtest <span class="muted">(pointillés, mêmes couleurs)</span></label>
       </div>
 
       <p class="muted" style="margin:.7rem 0 .9rem; font-size:.82rem">
@@ -1135,6 +1159,7 @@
               <tr>
                 <th scope="col">Stratégie</th>
                 <th scope="col" class="num">Mise totale <span class="hint">moyenne</span></th>
+                <th scope="col" class="num" title="Plus grosse somme engagée sur une même journée : médiane des trajectoires simulées, et son P95 en dessous.">Pic d'exposition <span class="hint">sur un jour</span></th>
                 <th scope="col" class="num">Bankroll médiane</th>
                 <th scope="col" class="num">Pire cas <span class="hint">P5</span></th>
                 <th scope="col" class="num">Meilleur cas <span class="hint">P95</span></th>
@@ -1146,6 +1171,27 @@
             <tbody id="mcCmpBody"></tbody>
           </table>
         </div>
+      </div>
+
+      <div class="panel" id="mcReelPanel">
+        <h2>Sur l'historique réel <span class="hint">— une seule trajectoire : les résultats réellement observés, pas tirés au hasard</span></h2>
+        <div class="tablewrap table-scroll">
+          <table class="mc-cmp-table">
+            <thead>
+              <tr>
+                <th scope="col">Stratégie</th>
+                <th scope="col" class="num">Mise totale</th>
+                <th scope="col" class="num">Bankroll finale</th>
+                <th scope="col" class="num">Gain net</th>
+                <th scope="col" class="num">Pic d'exposition <span class="hint">sur un jour</span></th>
+                <th scope="col">Jour du pic</th>
+                <th scope="col" class="num" title="Part des trajectoires simulées que le réel a battues (bankroll finale plus haute).">Réel vs simulées <span class="hint">part battue</span></th>
+              </tr>
+            </thead>
+            <tbody id="mcReelBody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="mcReelNote" style="margin:.7rem 0 0; font-size:.82rem"></p>
       </div>
 
       <div class="panel" id="mcPctPanel">
@@ -1175,7 +1221,10 @@
             (50ᵉ percentile) de cette stratégie, toutes calculées sur les mêmes journées et les mêmes
             résultats tirés au sort à chaque trajectoire — seule la mise diffère d'une ligne à
             l'autre. Le tableau au-dessus donne la fourchette complète (P5 à P95) que la courbe seule
-            ne montre pas.
+            ne montre pas. Les <strong>pointillés</strong> (case « Superposer la trajectoire réelle »)
+            rejouent, avec la même mise, les résultats réellement observés : une seule trajectoire,
+            pas une médiane. Tant qu'elle reste au voisinage des courbes pleines, le modèle tient ce
+            qu'il promettait ; si elle s'en écarte durablement par le bas, il était trop optimiste.
           </p>
         </details>
         <div id="mcFanWrap"></div>
@@ -1220,8 +1269,16 @@
       <em>pistes à vérifier</em> contre le contexte réel, jamais comme des paris sûrs. Joue avec modération.
     </div>
 
-    <div class="panel">
+    <div class="panel" id="uFilterPanel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Filtrer les recommandations</h2>
+      <div class="filter-reset-row">
+        <button type="button" class="btn filter-reset-btn" data-reset-filtres="u" title="Remet tous les filtres de cette page à leur valeur d'origine. Ceux qu'elle partage avec « DC rétrospectif » y sont remis aussi.">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.6 10a6.4 6.4 0 1 0 2-4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.4 3.6v3.4h3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Réinitialiser les filtres
+        </button>
+        <span class="muted filter-reset-hint">Valeurs d'origine, y compris pour les réglages partagés avec « DC rétrospectif ».</span>
+        <span class="muted filter-reset-msg" role="status" aria-live="polite"></span>
+      </div>
       <div class="controls">
         <div class="field">
           <label id="uCatLabel">Type de pari</label>
@@ -1575,64 +1632,6 @@
       <div id="cmpFiltres" class="cmp-filtres"></div>
       <div id="cmpCorps"><p class="muted">Calcul en cours…</p></div>
     </div>
-
-    <div class="panel">
-      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 15.5l4.5-6 3.5 3 6-8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Simulation sur l'historique (backtest) <span class="hint">— hypothétique, pas vos vrais paris</span></h2>
-      <p class="muted" style="margin:0 0 .8rem">Applique une stratégie de mise à <strong>tous les paris du backtest correspondant aux filtres de la page « DC rétrospectif »</strong> (les deux pages partagent ces réglages), pour voir l'exposition et l'évolution de bankroll que cette stratégie aurait donné — pas une prédiction de ce qui va arriver.</p>
-      <div class="controls">
-        <div class="field">
-          <label for="simStrategie">Stratégie de mise</label>
-          <select id="simStrategie">
-            <option value="fixe">Montant fixe par pari (€)</option>
-            <option value="pct">% de la bankroll par jour, réparti également</option>
-            <option value="kelly">Kelly — fraction par pari, selon son edge</option>
-          </select>
-        </div>
-        <div class="field" id="simFixeWrap">
-          <label for="simMontantFixe">Montant fixe (€)</label>
-          <input type="number" id="simMontantFixe" value="5" min="0" step="0.5">
-        </div>
-        <div class="field" id="simPctWrap" style="display:none">
-          <label for="simPct">% max de la bankroll par jour</label>
-          <input type="number" id="simPct" value="15" min="1" max="100" step="1">
-        </div>
-        <div class="field" id="simKellyWrap" style="display:none">
-          <label for="simKellyFrac">Fraction de Kelly</label>
-          <select id="simKellyFrac">
-            <option value="0.125">Kelly 1/8 (très prudent)</option>
-            <option value="0.25" selected>Kelly 1/4 (recommandé)</option>
-            <option value="0.5">Kelly 1/2 (agressif)</option>
-            <option value="1">Kelly entier (déconseillé)</option>
-          </select>
-        </div>
-      </div>
-      <p class="muted" id="simKellyNote" style="display:none; margin:0 0 .8rem; font-size:.82rem">
-        <strong>Ici, contrairement au tableau « DC rétrospectif »</strong>, la bankroll compose
-        vraiment : la mise de chaque jour se calcule sur la bankroll <em>telle qu'elle est après les
-        jours précédents</em>, pas sur un montant de référence figé. C'est ce qui rend visible l'intérêt
-        de Kelly — chaque pari reçoit une part proportionnelle à son edge et à sa cote, prélevée sur
-        cette bankroll qui grandit ou rétrécit au fil du temps.
-      </p>
-
-      <div class="kpis">
-        <div class="kpi"><div class="k">Bankroll finale simulée</div><div class="v" id="simFinale">—</div></div>
-        <div class="kpi"><div class="k">Pic d'exposition</div><div class="v" id="simPic">—</div></div>
-        <div class="kpi"><div class="k">Jour du pic</div><div class="v" id="simPicJour">—</div></div>
-        <div class="kpi"><div class="k">Jours actifs</div><div class="v" id="simJours">0</div></div>
-      </div>
-
-      <div id="simEvoWrap" style="margin-top:1rem"></div>
-
-      <div class="tablewrap" style="margin-top:1rem">
-        <table id="simTable" class="cardify">
-          <thead><tr>
-            <th>Date</th><th class="num">Nb paris</th><th class="num">Exposition</th>
-            <th class="num">Résultat du jour</th><th class="num">Bankroll après</th>
-          </tr></thead>
-          <tbody id="simBody"></tbody>
-        </table>
-      </div>
-    </div>
   </section>
 
   <!-- ================================================================= -->
@@ -1855,7 +1854,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261025101230"></script>
-<script src="app.js?v=20261025101202"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261025105214"></script>
+<script src="app.js?v=20261025105150"></script>
 </body>
 </html>
