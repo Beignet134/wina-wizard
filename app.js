@@ -2,7 +2,14 @@
 // chargé AVANT ce fichier dans index.html.
 const BETS = WIZARD_DATA.bets;
 const UNMATCHED = WIZARD_DATA.unmatched_examples;
-const VALUE_BETS = WIZARD_DATA.value_bets;
+// Lignes de la lecture actuelle (VALUE_BETS) et ensemble complet (…_COMPLET), qui
+// y ajoute les paris que SEULE la lecture « tous matchs » a retenus à la
+// collecte (champ seul_tm). Tout le site travaille sur la lecture actuelle ;
+// seule la chaîne lectureModele() puise dans l'ensemble complet, quand
+// « Forces d'équipe » est sur « Tous matchs ».
+const VALUE_BETS_COMPLET = WIZARD_DATA.value_bets;
+const VALUE_BETS = VALUE_BETS_COMPLET.some(v => v.seul_tm)
+  ? VALUE_BETS_COMPLET.filter(v => !v.seul_tm) : VALUE_BETS_COMPLET;
 const MIN_BETS = WIZARD_DATA.config.min_bets_for_verdict;
 const OOS_MIN = WIZARD_DATA.config.oos_min_test;
 const UPCOMING_DAYS = WIZARD_DATA.config.upcoming_days;
@@ -405,7 +412,7 @@ function remplirScoreExMsel(prefixe, rows) {
 }
 function remplirScoreExOptionsPartout() {
   if (!$("btScoreExOptions") && !$("uScoreExOptions")) return;
-  const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])];
+  const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])].filter(r => !r.seul_tm);
   remplirScoreExMsel("bt", toutes);
   remplirScoreExMsel("u", toutes);
 }
@@ -445,9 +452,9 @@ const CALIB_RATIO = (WIZARD_DATA.dc_stats || {}).calib_ratio || null;
 const NB_VALIDATION = (WIZARD_DATA.dc_stats || {}).nb_validation || null;
 const NB_R = (NB_VALIDATION && NB_VALIDATION.r_estime) || null;
 
-function calibrer(rows, actif) {
-  if (!actif || !CALIB_RATIO) return rows;
-  const k = CALIB_RATIO;
+function calibrer(rows, actif, ratio = CALIB_RATIO) {
+  if (!actif || !ratio) return rows;
+  const k = ratio;
   return rows.map(r => {
     const o = Object.assign({}, r);
     // La probabilité du MARCHÉ dévigué ne bouge pas : ce n'est pas elle
@@ -470,6 +477,94 @@ function calibrer(rows, actif) {
     }
     return o;
   });
+}
+
+// --- Lecture « forces sur tous les matchs » (option, désactivée par défaut) ---
+// La lecture actuelle estime séparément l'attaque et la défense « à domicile »
+// et « à l'extérieur » de chaque équipe (chacune sur la moitié des matchs). La
+// lecture « tous matchs » en estime UNE de chaque par équipe, sur l'ensemble
+// de ses matchs, avec une régularisation plus forte (k = 16 au lieu de 8). Sur
+// le banc d'essai elle se rapproche plus du marché que la lecture actuelle
+// (voir le tableau « Lectures du modèle — écart au marché » de DC rétrospectif).
+// Choisir cette lecture REMPLACE la lecture actuelle (et écarte l'xG et la
+// binomiale négative, dont les probabilités ne portent que sur l'ancienne) ;
+// ne rien choisir ne change strictement rien.
+//
+// Chaque ligne porte r.tm = [proba, λ dom., λ ext., att. dom., déf. dom.,
+// att. ext., déf. ext.] ; edge, edge dévigué et espérance se recalculent ici,
+// avec les mêmes formules que le reste du site, depuis la cote et le marché.
+// r.seul_tm marque les paris que SEULE cette lecture a retenus à la collecte :
+// ils n'apparaissent pas tant que la lecture actuelle est choisie.
+const SUIVI_FORCES = (WIZARD_DATA.dc_stats || {}).suivi_forces || null;
+const CALIB_RATIO_TM = (WIZARD_DATA.dc_stats || {}).calib_ratio_tm || null;
+const FORCES_TM_K = SUIVI_FORCES ? SUIVI_FORCES.k : null;
+const FORCES_TM_DISPO = (WIZARD_DATA.dc_backtest || []).some(r => r.tm)
+                     || (WIZARD_DATA.value_bets || []).some(r => r.tm);
+
+function forcesTmActif(prefixe) {
+  const s = $(prefixe + "Forces");
+  return !!(FORCES_TM_DISPO && s && s.value === "tm");
+}
+
+function appliquerForces(rows, actif) {
+  if (!FORCES_TM_DISPO || !actif) return rows;
+  return rows.filter(r => r.tm).map(r => {
+    const t = r.tm, p = t[0];
+    const pm = pMarche(r);
+    const o = {
+      ...r,
+      p_model: p, lam_home: t[1], lam_away: t[2],
+      force_att_dom: t[3], force_def_dom: t[4], force_att_ext: t[5], force_def_ext: t[6],
+      // Conservées à part pour l'infobulle et l'export, qui montrent les deux lectures.
+      p_model_actuelle: r.p_model, edge_actuelle: r.edge, edge_devig_actuelle: r.edge_devig,
+      lam_home_actuelle: r.lam_home, lam_away_actuelle: r.lam_away,
+      source_tm: true,
+    };
+    if (r.cote) {
+      o.edge = p - 1 / r.cote;
+      o.ev = p * (r.cote - 1) - (1 - p);
+      // Même pénalité d'absences que sur la lecture « buts » (côté Python).
+      if (r.penalite_absences) {
+        o.ev_brut = o.ev;
+        o.ev = o.ev * (1 - r.penalite_absences);
+      }
+    }
+    if (pm != null && (r.p_implied_devig != null || r.edge_devig != null)) o.edge_devig = p - pm;
+    return o;
+  });
+}
+
+// Chaîne complète de lecture du modèle, commune aux trois endroits qui
+// préparent les lignes (DC rétrospectif, Paris à venir, plage de cotes).
+function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg) {
+  if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif, CALIB_RATIO_TM);
+  return appliquerXg(appliquerNb(calibrer(appliquerForces(rows, false), calibActif), nbActif), modeXg);
+}
+
+// Désactive le sélecteur (avec la raison) quand la collecte ne contient pas la
+// lecture, et explique ce que le choix « Tous matchs » fait à l'échantillon.
+function majForcesNote(prefixe, nbLignes, nbTotal) {
+  const sel = $(prefixe + "Forces");
+  const note = $(prefixe + "ForcesNote");
+  if (!sel) return;
+  if (!FORCES_TM_DISPO) {
+    sel.value = "act";
+    sel.disabled = true;
+    sel.title = "Cette lecture n'est pas dans les données de cette collecte (relancez wina_wizard.py).";
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  if (sel.value !== "tm") {
+    note.style.display = "none";
+    return;
+  }
+  note.style.display = "";
+  note.innerHTML = `<strong>Forces « tous matchs » actives</strong> (test, k = ${FORCES_TM_K ?? "?"}) — une `
+    + `attaque et une défense par équipe, sur l'ensemble de ses matchs. Cette lecture remplace la lecture `
+    + `actuelle ; xG et binomiale négative sont sans effet. Comparaison des deux : panneau « Lectures du `
+    + `modèle » sur DC rétrospectif.`;
 }
 
 // Découpe "min-max" en bornes numériques. Les plages sont exclusives à
@@ -573,7 +668,7 @@ function initMeta() {
   // bas) échouerait silencieusement dès qu'une valeur de l'un est absente
   // de la liste de l'autre.
   if ($("btLigueOptions") || $("uLigueOptions")) {
-    const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])];
+    const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])].filter(r => !r.seul_tm);
     remplirLiguesMsel("bt", toutes);
     remplirLiguesMsel("u", toutes);
   }
@@ -1400,6 +1495,7 @@ document.querySelectorAll("#vTable th.sortable").forEach(th => {
 
 /* ================= PAGE 3 — PARIS À VENIR ================= */
 const UPCOMING = VALUE_BETS.filter(v => v.is_upcoming && v.days_until!=null && v.days_until <= UPCOMING_DAYS);
+const UPCOMING_COMPLET = VALUE_BETS_COMPLET.filter(v => v.is_upcoming && v.days_until!=null && v.days_until <= UPCOMING_DAYS);
 // Dernières pistes réellement visibles après les filtres de « Paris à venir ».
 // La Vue d'ensemble reprend le même périmètre pour éviter d'y afficher des
 // recommandations ou des verdicts qui ne correspondent pas à la sélection.
@@ -1707,7 +1803,7 @@ function renderPlacedExport() {
 const COTES_MANUELLES_LS_KEY = "wina_cotes_manuelles_v1";
 const COTE_MANUELLE_MIN = 1.01;
 const COTE_MANUELLE_MAX = 1000;
-const UPCOMING_PAR_CLE = new Map(UPCOMING.map(v => [betKey(v), v]));
+const UPCOMING_PAR_CLE = new Map(UPCOMING_COMPLET.map(v => [betKey(v), v]));
 const COTES_MANUELLES = new Map();   // clé du pari -> cote saisie
 
 (function chargerCotesManuelles() {
@@ -1796,9 +1892,9 @@ function avecCote(v, cote) {
 
 // Les paris à venir, avec les cotes saisies appliquées. Les lignes sans
 // saisie sont renvoyées telles quelles (même objet) : aucun coût sans saisie.
-function upcomingAvecCotesManuelles() {
-  if (!COTES_MANUELLES.size) return UPCOMING;
-  return UPCOMING.map(v => {
+function upcomingAvecCotesManuelles(source = UPCOMING) {
+  if (!COTES_MANUELLES.size) return source;
+  return source.map(v => {
     const c = COTES_MANUELLES.get(betKey(v));
     return c == null ? v : Object.assign(avecCote(v, c), {cote_manuelle: c});
   });
@@ -1877,7 +1973,11 @@ function renderUpcoming() {
   const nbActif = $("uLoi") && $("uLoi").value === "nbinom" && modeXg === "sans";
   // Cotes saisies à la main (voir « COTE SAISIE À LA MAIN ») : appliquées en
   // tout premier, pour que calibration, xG, NB et mélange partent de la bonne cote.
-  let source = appliquerXg(appliquerNb(calibrer(upcomingAvecCotesManuelles(), calibActif), nbActif), modeXg);
+  // Lecture « forces sur tous les matchs » (option) : prend le pas sur xG et NB.
+  const forcesTm = forcesTmActif("u");
+  let source = lectureModele(upcomingAvecCotesManuelles(forcesTm ? UPCOMING_COMPLET : UPCOMING),
+                             forcesTm, calibActif, nbActif, modeXg);
+  majForcesNote("u");
 
   // Filtre "historique" de la matrice (DC rétrospectif) — voir
   // BT_HIST_SELECTION / propagerFiltreHistorique(). Le champ
@@ -1993,7 +2093,7 @@ function renderUpcoming() {
   // aucune cote ne convient).
   const plageCotePour = (v0, evConcurrents = null) => {
     const echecsA = c => {
-      const r = appliquerXg(appliquerNb(calibrer([avecCote(v0, c)], calibActif), nbActif), modeXg)[0];
+      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg)[0];
       if (!r) return null;
       const a = calculerAff(r);
       const echecs = controlesCote(a);
@@ -2701,7 +2801,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uForces","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 
@@ -3376,7 +3476,7 @@ function cablerMenusDeroulants() {
 }
 cablerMenusDeroulants();
 
-[["btDevig","uDevig"], ["btAlpha","uAlpha"],
+[["btDevig","uDevig"], ["btAlpha","uAlpha"], ["btForces","uForces"],
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -3787,7 +3887,12 @@ function renderOverview() {
   coverage.innerHTML = html;
 }
 /* ================= PAGE — DIXON-COLES RÉTROSPECTIF ================= */
-const BT_ROWS = WIZARD_DATA.dc_backtest || [];
+// Lecture actuelle (BT_ROWS) et ensemble complet (BT_ROWS_COMPLET, avec les
+// paris que SEULE la lecture « tous matchs » a retenus, champ seul_tm) — voir
+// VALUE_BETS_COMPLET.
+const BT_ROWS_COMPLET = WIZARD_DATA.dc_backtest || [];
+const BT_ROWS = BT_ROWS_COMPLET.some(r => r.seul_tm)
+  ? BT_ROWS_COMPLET.filter(r => !r.seul_tm) : BT_ROWS_COMPLET;
 
 // Garantie 2 buts : sans chronologie des buts collectée (api_football_
 // collect.py, endpoint /fixtures/events), aucun pari ne porte l'indicateur
@@ -4173,7 +4278,9 @@ function btFiltered(opts) {
   // effet tant que l'enrichissement xG est actif, quelle que soit la valeur
   // du sélecteur.
   const nbActif = $("btLoi") && $("btLoi").value === "nbinom" && modeXg === "sans";
-  let source = appliquerXg(appliquerNb(calibrer(BT_ROWS, calibActif), nbActif), modeXg);
+  // Lecture « forces sur tous les matchs » (option) : prend le pas sur xG et NB.
+  const forcesTm = forcesTmActif("bt");
+  let source = lectureModele(forcesTm ? BT_ROWS_COMPLET : BT_ROWS, forcesTm, calibActif, nbActif, modeXg);
 
   // Edge minimum, plage de cotes, filtre marchés de queue, edge dévigué max
   // et garantie 2 buts sont désormais PROPRES À CHAQUE CATÉGORIE de pari
@@ -4343,7 +4450,7 @@ function btFiltered(opts) {
 // relance que si un filtre réellement utilisé par « Paris à venir » bouge.
 function verdictsFiltresAvenir() {
   const ids = [
-    "uDevig", "uAlpha", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uDevig", "uAlpha", "uForces", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
     "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
     "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
   ];
@@ -4832,6 +4939,7 @@ function renderBacktest() {
   }
 
   majLoiNote("bt");
+  majForcesNote("bt");
 
   // Le mélange avec le marché (alpha < 1) utilise TOUJOURS la probabilité
   // marché dévigée en interne (cf. blended()/pMarche()) — mélanger avec la
@@ -5058,6 +5166,7 @@ function renderBacktest() {
   renderBacktestRows();
   renderOosValidation();
   renderNbValidation();
+  renderLecturesForces();
   renderMouvement();
   drawCalibration();
   drawParCote();
@@ -6042,8 +6151,13 @@ function renderBacktestRows() {
         // L'infobulle sert à comparer — elle ne doit pas se limiter à ce
         // que montre le mode en cours (r.lam_home a pu être substitué par
         // btFiltered() si le mode « avec » est actif).
-        lhb: r.lam_home_buts ?? r.lam_home, lab: r.lam_away_buts ?? r.lam_away,
-        lhx: r.lam_home_xg, lax: r.lam_away_xg
+        lhb: r.lam_home_buts ?? r.lam_home_actuelle ?? r.lam_home,
+        lab: r.lam_away_buts ?? r.lam_away_actuelle ?? r.lam_away,
+        lhx: r.lam_home_xg, lax: r.lam_away_xg,
+        // Lecture « tous matchs » : affichée quand la ligne la porte, quelle
+        // que soit la lecture active ; ft = les forces ci-dessous sont les siennes.
+        lht: r.tm ? r.tm[1] : undefined, lat: r.tm ? r.tm[2] : undefined,
+        ft: r.source_tm ? 1 : undefined
       }))}">${r.match}</span></td>
       <td data-label="Score réel"><span class="pill">${r.score_reel}</span></td>
       <td data-label="Pari">${r.colonne}</td>
@@ -6135,6 +6249,10 @@ function exporterBacktestCsv() {
     "Hist. dom.", "Hist. ext.",
     "Cote ouverture", "Variation proba", "A raccourci", "Nb captures",
     "Edge affiché (site)", "Mise (€)", "Gain/perte (€)",
+    // Ajoutées en fin de ligne (les colonnes précédentes ne bougent pas) :
+    // lecture « forces sur tous les matchs », donnée quelle que soit la lecture active.
+    "Proba modèle (tous matchs)", "Edge brut (tous matchs)", "Edge dévigué (tous matchs)",
+    "Espérance (tous matchs)", "Lecture active",
   ];
   const lignes = rows.map(r => {
     // appliquerXg() (voir plus haut) substitue p_model/edge/edge_devig/
@@ -6143,15 +6261,17 @@ function exporterBacktestCsv() {
     // qui n'a pas de sauvegarde dédiée : on la recalcule nous-mêmes avec la
     // même formule qu'ailleurs dans ce fichier (ev = p·(cote−1) − (1−p)),
     // pour offrir les DEUX lectures ici comme pour proba/edge.
-    const probaButs = r.p_model_buts ?? r.p_model;
+    // Même principe pour la lecture « tous matchs » (appliquerForces) : la
+    // lecture actuelle est sauvegardée dans *_actuelle quand elle est active.
+    const probaButs = r.p_model_buts ?? r.p_model_actuelle ?? r.p_model;
     const probaXg = r.p_model_xg;
-    const edgeButs = r.edge_buts ?? r.edge;
+    const edgeButs = r.edge_buts ?? r.edge_actuelle ?? r.edge;
     const edgeXg = r.edge_xg;
-    const edgeDevigButs = r.edge_devig_buts ?? r.edge_devig;
+    const edgeDevigButs = r.edge_devig_buts ?? r.edge_devig_actuelle ?? r.edge_devig;
     const edgeDevigXg = r.edge_devig_xg;
-    const lamHomeButs = r.lam_home_buts ?? r.lam_home;
+    const lamHomeButs = r.lam_home_buts ?? r.lam_home_actuelle ?? r.lam_home;
     const lamHomeXg = r.lam_home_xg;
-    const lamAwayButs = r.lam_away_buts ?? r.lam_away;
+    const lamAwayButs = r.lam_away_buts ?? r.lam_away_actuelle ?? r.lam_away;
     const lamAwayXg = r.lam_away_xg;
     const evButs = probaButs != null ? probaButs * (r.cote - 1) - (1 - probaButs) : null;
     const evXg = probaXg != null ? probaXg * (r.cote - 1) - (1 - probaXg) : null;
@@ -6164,6 +6284,14 @@ function exporterBacktestCsv() {
     // choisie dans "Stratégie de mise" (fixe ou Kelly).
     const mise = btStakeFor(r);
     const gain = r.profit * mise;
+
+    // Lecture « tous matchs » : proba brute de la ligne, edge et espérance
+    // déduits de la cote et du marché dévigué (pMarche), comme appliquerForces.
+    const pTm = r.tm ? r.tm[0] : null;
+    const pmTm = pTm != null ? pMarche(r) : null;
+    const edgeTm = pTm != null && r.cote ? pTm - 1 / r.cote : null;
+    const edgeDevigTm = pTm != null && pmTm != null ? pTm - pmTm : null;
+    const evTm = pTm != null && r.cote ? pTm * (r.cote - 1) - (1 - pTm) : null;
 
     return [
       r.date, r.match, r.pays || "", r.ligue || "", r.categorie, r.colonne,
@@ -6178,6 +6306,8 @@ function exporterBacktestCsv() {
       num(r.cote_ouverture), pct(r.variation_proba),
       r.raccourcit == null ? "" : (r.raccourcit ? "Oui" : "Non"), r.n_captures ?? "",
       pct(edgeAffiche), num(mise), num(gain),
+      pct(pTm), pct(edgeTm), pct(edgeDevigTm), pct(evTm),
+      r.source_tm ? "Tous matchs" : "Actuelle",
     ].map(champ).join(";");
   });
   // ﻿ (BOM) : sans lui, Excel Windows interprète les caractères
@@ -6245,7 +6375,11 @@ function attachDcTooltips() {
         ${d.lhx != null ? `
         <div class="dc-tip-row"><span>Buts attendus (mélange xG)</span>
           <strong class="pos">${d.lhx} – ${d.lax}</strong></div>` : ""}
+        ${d.lht != null ? `
+        <div class="dc-tip-row"><span>Buts attendus (tous matchs)</span>
+          <strong class="pos">${d.lht} – ${d.lat}</strong></div>` : ""}
         <div class="dc-tip-sep"></div>
+        ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">tous matchs</strong></div>` : ""}
         <div class="dc-tip-row"><span>Domicile · attaque</span><strong>${d.ad}</strong></div>
         <div class="dc-tip-row"><span>Domicile · défense</span><strong>${d.dd}</strong></div>
         <div class="dc-tip-row"><span>Extérieur · attaque</span><strong>${d.ae}</strong></div>
@@ -6419,6 +6553,69 @@ function renderNbValidation() {
       ${v.conclusion} La loi active reste Poisson : ce panneau est un diagnostic, pas un
       changement automatique de modèle.
     </div>`;
+}
+
+/* Écart au marché des deux lectures des forces d'équipe (voir le panneau
+   « Lectures du modèle »). Les sommes viennent de Python (_agreger_suivi_forces) :
+   par famille, n matchs, somme des log-loss du marché / de la lecture actuelle /
+   de la lecture « tous matchs », et sommes des carrés des écarts appariés —
+   de quoi calculer ici un intervalle de confiance à 95 % sans les matchs un par un. */
+function renderLecturesForces() {
+  const box = $("btLecturesForces");
+  if (!box) return;
+  const s = SUIVI_FORCES;
+  if (!s || !s.familles || !s.familles.length) {
+    box.innerHTML = '<p class="muted">En attente de données : ce tableau se remplit au prochain ' +
+      'lancement de wina_wizard.py avec la lecture « tous matchs ».</p>';
+    return;
+  }
+  const f3 = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3).replace(".", ",");
+  // Moyenne par match et demi-largeur de l'intervalle à 95 % d'une somme d'écarts.
+  const stat = (somme, q, n) => {
+    const m = somme / n;
+    const v = n > 1 ? Math.max(0, (q / n - m * m) * n / (n - 1)) : 0;
+    return {m, h: 1.96 * Math.sqrt(v / n)};
+  };
+  const lignes = s.familles.map(f => {
+    const a = stat(f.actuelle - f.marche, f.q_act, f.n);
+    const t = stat(f.tm - f.marche, f.q_tm, f.n);
+    const d = stat(f.tm - f.actuelle, f.q_tm_act, f.n);
+    let verdict = "Indécis", cls = "";
+    if (d.m + d.h < 0) { verdict = "Plus proche du marché"; cls = "pos"; }
+    else if (d.m - d.h > 0) { verdict = "Plus loin du marché"; cls = "neg"; }
+    return `<tr>
+      <td data-label="Marché">${f.nom}</td>
+      <td data-label="Matchs" class="num">${f.n.toLocaleString("fr-FR")}</td>
+      <td data-label="Marché (log-loss)" class="num">${(f.marche / f.n).toFixed(4).replace(".", ",")}</td>
+      <td data-label="Actuelle · écart au marché" class="num">${f3(a.m)}</td>
+      <td data-label="Tous matchs · écart au marché" class="num">${f3(t.m)}</td>
+      <td data-label="Tous matchs − actuelle" class="num ${cls}">${f3(d.m)} <span class="muted">± ${d.h.toFixed(3).replace(".", ",")}</span></td>
+      <td data-label="Lecture" class="${cls}">${verdict}</td></tr>`;
+  }).join("");
+
+  // Régularité dans le temps : sur 1X2, combien de semaines la lecture « tous
+  // matchs » est-elle plus proche du marché que l'actuelle (semaines d'au moins
+  // 10 matchs) ?
+  const sem = (s.semaines || []).filter(w => w.nom === "1X2" && w.n >= 10);
+  const mieux = sem.filter(w => w.tm < w.actuelle).length;
+  const regularite = sem.length >= 4
+    ? `<p class="muted" style="margin:.8rem 0 0; font-size:.85rem">Régularité (1X2) : la lecture « tous matchs » est plus proche du marché ` +
+      `que l'actuelle dans <strong>${mieux} semaine${mieux > 1 ? "s" : ""} sur ${sem.length}</strong> ` +
+      `(semaines d'au moins 10 matchs).</p>`
+    : "";
+
+  box.innerHTML = `
+    <div class="tablewrap"><table class="cmp-table cardify">
+      <thead><tr><th>Marché</th><th class="num">Matchs</th><th class="num">Marché (log-loss)</th>
+        <th class="num">Actuelle · écart</th><th class="num">Tous matchs · écart (k = ${s.k})</th>
+        <th class="num">Tous matchs − actuelle (± IC 95 %)</th><th>Lecture</th></tr></thead>
+      <tbody>${lignes}</tbody></table></div>
+    ${regularite}
+    <p class="muted" style="margin:.8rem 0 0; font-size:.82rem">
+      Un écart négatif dans « Tous matchs − actuelle » signifie que la lecture « tous matchs » est
+      plus proche du marché. Les matchs sont comptés une fois par marché ; un même match nourrit donc
+      plusieurs lignes. Choisissez « Forces d'équipe » dans les filtres pour voir ce que l'une ou
+      l'autre donnerait sur les paris retenus.</p>`;
 }
 
 /* Comparaison : suivre le mouvement du marché est-il rentable ? */
@@ -7538,7 +7735,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
