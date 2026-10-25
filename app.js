@@ -1747,7 +1747,9 @@ function majInfoCoteJouee(carte, key) {
   if (!info) return;
   const {cote, valide} = lireChampCoteJouee(carte);
   const v0 = UPCOMING_PAR_CLE.get(key);
-  info.innerHTML = valide ? texteCoteJouee(v0 ? v0.cote : null, cote)
+  const site = cbkSiteDeCarte(carte);
+  const affichee = site !== "winamax" ? cbkCoteDuSite(key, site) : (v0 ? v0.cote : null);
+  info.innerHTML = valide ? texteCoteJouee(affichee, cote)
                           : "Cote invalide (entre 1,01 et 1000).";
 }
 
@@ -1757,10 +1759,15 @@ function infosPrisePari(carte, key) {
   const v0 = UPCOMING_PAR_CLE.get(key);
   const manuelle = champ && champ.dataset.manuelle === "1";
   const touche = champ && champ.dataset.touche === "1";
+  // Site où le pari est joué (« winamax » si la carte ne compare qu'un site) ;
+  // « cote capturée » = la cote affichée chez CE site, pour que l'écart avec
+  // l'écran compare deux cotes du même site.
+  const site = cbkSiteDeCarte(carte);
   return {
     cote: valide ? cote : null,
     cote_confirmee: !!(valide && cote != null && (manuelle || touche)),
-    cote_capturee: v0 ? v0.cote : null,
+    site,
+    cote_capturee: site !== "winamax" ? cbkCoteDuSite(key, site) : (v0 ? v0.cote : null),
     ts: isoLocalNaif(new Date()),
     kickoff: v0 ? (v0.kickoff || null) : null,
     capture_iso: WIZARD_DATA.generated_iso || null,
@@ -1930,6 +1937,280 @@ function fmtKickoff(iso) {
   if (!m) return String(iso).slice(0,10);
   const [_,Y,Mo,D,h,mi] = m;
   return `${D}/${Mo}` + (h ? ` à ${h}:${mi||"00"}` : "");
+}
+
+/* ============================================================
+   MEILLEURE COTE ENTRE BOOKMAKERS (page « Paris à venir »)
+   ------------------------------------------------------------
+   Le fichier de données joint à chaque pari (v.cb) les cotes du même pari chez
+   les autres bookmakers (Unibet, relevées par le collecteur dédié) ; la carte
+   affiche alors la MEILLEURE cote retenue, un petit tag coloré du site, un lien
+   vers le match chez ce site, et — au survol (ou au toucher sur mobile) — les
+   cotes de tous les sites.
+
+   Règle de fond : la SÉLECTION du pari reste faite sur la cote Winamax. L'edge,
+   l'espérance, les filtres, le mouvement de cote, la mise conseillée… sont
+   calculés sur elle et ne changent pas. Choisir les paris sur la plus haute des
+   cotes ramasserait le biais de sélection (une cote qui s'écarte du consensus
+   perd en moyenne) ; la meilleure cote sert uniquement à choisir OÙ placer.
+
+   Garde-fous : une cote n'est « retenue » que si son relevé est assez récent
+   (réglage « Relevé retenu s'il a moins de », 6 h par défaut) et non plafonnée
+   (Unibet plafonne les scores exacts à 100) ; un écart de plus de 10 % (30 % en
+   score exact) est signalé comme inhabituel (souvent une cote périmée) ; à
+   égalité (moins de 0,5 % d'écart) on garde Winamax.
+   ============================================================ */
+const CBK_LS_KEY = "wina_cotes_bookmakers_v1";
+const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet"};
+const CBK_EGALITE = 0.005;
+const CBK_SEUIL_INHABITUEL = 0.10;
+const CBK_SEUIL_INHABITUEL_SE = 0.30;
+const CBK_AGES = [3, 6, 12, 24];
+const CBK_ETAT = {mode: "best", ageMax: 6};
+const CBK_CTX = new Map();   // clé du pari -> {v, v0, a} de la dernière carte rendue
+
+(function chargerReglagesCbk() {
+  try {
+    const o = JSON.parse(localStorage.getItem(CBK_LS_KEY) || "null");
+    if (!o) return;
+    if (o.mode === "best" || o.mode === "ref") CBK_ETAT.mode = o.mode;
+    if (CBK_AGES.includes(o.ageMax)) CBK_ETAT.ageMax = o.ageMax;
+  } catch (e) { /* storage indisponible : réglages par défaut */ }
+})();
+function sauverReglagesCbk() {
+  try { localStorage.setItem(CBK_LS_KEY, JSON.stringify(CBK_ETAT)); } catch (e) { /* tant pis */ }
+}
+
+const cbkEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const cbkPct = (x, d = 1) => (x >= 0 ? "+" : "−") + (Math.abs(x) * 100).toFixed(d).replace(".", ",") + " %";
+const cbkCote = c => c.toFixed(2);
+function cbkAgeH(iso) {
+  const t = Date.parse(iso);
+  return isFinite(t) ? (Date.now() - t) / 3600000 : null;
+}
+function cbkFmtAge(h) {
+  if (h == null) return "heure inconnue";
+  const m = Math.max(0, Math.round(h * 60));
+  if (m < 60) return `il y a ${m} min`;
+  if (m < 1440) return `il y a ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+  return `il y a ${Math.floor(m / 1440)} j ${Math.floor((m % 1440) / 60)} h`;
+}
+
+// Cotes de tous les sites pour un pari, et choix de celle qui s'affiche.
+// v : ligne affichée (cote éventuellement saisie à la main) ; v0 : ligne telle
+// que capturée (porte les cotes des autres sites). Renvoie null si aucun autre
+// site ne cote ce pari : la carte reste alors exactement celle d'avant.
+function cbkAnalyser(v, v0) {
+  const src = v0 || v;
+  if (!src || !src.cb || !src.cb.length) return null;
+  const saisie = v.cote_manuelle != null;
+  const ref = {
+    bk: "winamax", nom: "Winamax", cote: v.cote, saisie, plafond: false,
+    age: saisie ? 0 : (src.tw ? cbkAgeH(src.tw) : null),
+    marge: src.mw != null ? src.mw : null, label: src.lm || "marge",
+    url: src.match_id ? `https://www.winamax.fr/paris-sportifs/match/${src.match_id}` : null,
+  };
+  const autres = src.cb.map(q => ({
+    bk: q.b, nom: CBK_NOMS[q.b] || q.b, cote: q.c, saisie: false, plafond: !!q.p,
+    age: cbkAgeH(q.t), marge: q.m != null ? q.m : null, label: src.lm || "marge", url: q.u || null,
+  }));
+  const tous = [ref].concat(autres);
+  tous.forEach(q => { q.retenue = !q.plafond && (q.age == null || q.age <= CBK_ETAT.ageMax); });
+  let best = ref;
+  autres.forEach(q => {
+    if (!q.retenue) return;
+    if (!best.retenue || q.cote > best.cote * (1 + CBK_EGALITE)) best = q;
+  });
+  const seuil = v.categorie === "Score exact" ? CBK_SEUIL_INHABITUEL_SE : CBK_SEUIL_INHABITUEL;
+  const gain = best.cote / ref.cote - 1;
+  const evRef = (v.ev_aff ?? v.ev);
+  return {
+    tous, ref, best, gain, evRef,
+    // espérance = p·cote − 1 : à probabilité égale, elle varie comme la cote.
+    evBest: (1 + evRef) * (best.cote / ref.cote) - 1,
+    inhabituel: best !== ref && gain > seuil,
+    refPerimee: !ref.retenue,
+  };
+}
+
+// Cote affichée chez un site donné (celle qu'on voit sur la carte) : sert de
+// « cote capturée » à l'enregistrement d'un pari joué.
+function cbkCoteDuSite(key, site) {
+  const ctx = CBK_CTX.get(key);
+  const v0 = UPCOMING_PAR_CLE.get(key);
+  if (site && site !== "winamax") {
+    const q = ((ctx && ctx.v0) || v0 || {}).cb;
+    const t = q && q.find(x => x.b === site);
+    if (t) return t.c;
+  }
+  return ctx ? ctx.v.cote : (v0 ? v0.cote : null);
+}
+
+function cbkTagHtml(q, lien) {
+  const inner = `<i class="dot"></i>${cbkEsc(q.nom)}${lien && q.url ? ' <span class="go" aria-hidden="true">↗</span>' : ""}`;
+  return (lien && q.url)
+    ? `<a class="cbk-tag cbk-${cbkEsc(q.bk)}" href="${cbkEsc(q.url)}" target="_blank" rel="noopener" title="Ouvrir la page du match chez ${cbkEsc(q.nom)}">${inner}</a>`
+    : `<span class="cbk-tag cbk-${cbkEsc(q.bk)}">${inner}</span>`;
+}
+
+// Morceaux de carte : zone de cote, ligne de référence, gain, avertissements,
+// liste des sites pour « pari joué ». coteNumHtml/coteBtnsHtml : cote Winamax
+// (ou saisie) et boutons crayon/↺ d'origine, conservés tels quels.
+function cbkRendu(a, v, coteNumHtml, coteBtnsHtml) {
+  const best = CBK_ETAT.mode === "best";
+  const q = best ? a.best : a.ref;
+  const nAutres = a.tous.length - 1;
+  const plus = `<button type="button" class="plus-n" aria-haspopup="dialog" aria-expanded="false" `
+    + `aria-label="Cote ${cbkCote(q.cote)} chez ${cbkEsc(q.nom)} : afficher les cotes de tous les bookmakers">`
+    + `${nAutres > 0 ? `+${nAutres} site${nAutres > 1 ? "s" : ""}` : "détail"}</button>`;
+  const num = q === a.ref ? coteNumHtml : `<strong class="cote-val">${cbkCote(q.cote)}</strong>`;
+  // Place comptée : avec le tag et le bouton « +n site », le crayon passe en icône seule
+  // (son infobulle explique toujours qu'il s'agit de la cote Winamax).
+  const zone = `${num}${cbkTagHtml(q, true)}${plus}${coteBtnsHtml.replace("<span>modifier</span>", "")}`;
+
+  const refTxt = a.ref.saisie
+    ? `${cbkEsc(a.ref.nom)} <strong>${cbkCote(a.ref.cote)}</strong> (saisie à la main)`
+    : `${cbkEsc(a.ref.nom)} <strong>${cbkCote(a.ref.cote)}</strong> · ${cbkFmtAge(a.ref.age)}`;
+  const ligneRef = best
+    ? `<div class="rec-ref">Cote de référence (sélection du pari) : ${refTxt}</div>`
+    : `<div class="rec-ref">Mode « référence seule » : les cotes des autres sites sont masquées (survolez pour les voir).</div>`;
+
+  let gain = "";
+  if (best && a.best !== a.ref && a.gain < 0) {
+    gain = `<div class="rec-gain none">Cote de référence trop ancienne : on affiche la cote la plus récente (${cbkEsc(a.best.nom)}, ${cbkCote(a.best.cote)}).</div>`;
+  } else if (best && a.best !== a.ref) {
+    gain = `<div class="rec-gain">Chez <strong class="cbk-nom">${cbkEsc(a.best.nom)}</strong> : cote <strong>${cbkPct(a.gain)}</strong>, `
+      + `espérance <strong>${cbkPct(a.evBest)}</strong> <span class="muted">(contre ${cbkPct(a.evRef)} à la cote de référence)</span></div>`;
+  } else if (best && !a.tous.some(x => x.retenue)) {
+    gain = `<div class="rec-gain none">Aucun relevé récent (plus de ${CBK_ETAT.ageMax} h) : vérifier les cotes sur les sites avant de parier.</div>`;
+  } else if (best) {
+    gain = `<div class="rec-gain none">${cbkEsc(a.ref.nom)} reste la meilleure cote retenue.</div>`;
+  }
+
+  const avert = [];
+  if (best && a.inhabituel) {
+    avert.push(`<div class="rec-pred neutral"><span class="pred-icon" aria-hidden="true">!</span>`
+      + `<span><strong>Écart inhabituel</strong> (${cbkPct(a.gain)} vs ${cbkEsc(a.ref.nom)}) — <span class="muted">vérifier la cote sur `
+      + `${cbkEsc(a.best.nom)} avant de parier : un écart de ce genre est souvent une cote périmée.</span></span></div>`);
+  }
+  if (a.refPerimee && !a.ref.saisie) {
+    avert.push(`<div class="rec-pred neutral"><span class="pred-icon" aria-hidden="true">!</span>`
+      + `<span><strong>Cote de référence ancienne</strong> (${cbkFmtAge(a.ref.age)}) — <span class="muted">le pari a été sélectionné sur un relevé qui date.</span></span></div>`);
+  }
+  const nonRetenues = a.tous.filter(x => !x.retenue && x !== a.ref);
+  if (best && nonRetenues.length) {
+    const t = nonRetenues.map(x => x.plafond ? `${x.nom} (cote plafonnée à 100)` : `${x.nom} (${cbkFmtAge(x.age)})`).join(", ");
+    avert.push(`<div class="rec-pred"><span class="pred-icon" aria-hidden="true">i</span><span>Non comparée : <span class="muted">${cbkEsc(t)}</span></span></div>`);
+  }
+  return {zone, ligneRef, gain, avert: avert.join(""), affichee: q};
+}
+
+// Site choisi sur une carte (select « Site joué ») ; winamax à défaut.
+function cbkSiteDeCarte(carte) {
+  const sel = carte && carte.querySelector(".site-joue");
+  return sel ? sel.value : "winamax";
+}
+
+/* ---- Infobulle : survol (souris), focus (clavier), toucher (mobile) ---- */
+const CBK_TIP = {zone: null, fermeture: null, epinglee: false};
+function cbkTipEl() {
+  let tip = document.getElementById("cbkTip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "cbkTip";
+    tip.className = "dc-tooltip";
+    tip.setAttribute("role", "dialog");
+    tip.setAttribute("aria-label", "Cotes de tous les bookmakers pour ce pari");
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    tip.addEventListener("mouseenter", () => clearTimeout(CBK_TIP.fermeture));
+    tip.addEventListener("mouseleave", () => { if (!CBK_TIP.epinglee) cbkFermerBientot(); });
+    tip.addEventListener("click", e => { if (e.target.closest(".dc-tip-close")) cbkFermerTip(); });
+  }
+  return tip;
+}
+function cbkContenuTip(ctx) {
+  const a = cbkAnalyser(ctx.v, ctx.v0);
+  if (!a) return "";
+  const lignes = a.tous.slice().sort((x, y) => (y.retenue - x.retenue) || (y.cote - x.cote)).map(q => {
+    const ecart = q.cote / a.ref.cote - 1;
+    const badges = [];
+    if (q === a.best && q.retenue) badges.push('<span class="cbk-badge best">meilleure</span>');
+    if (q === a.ref) badges.push('<span class="cbk-badge ref" title="Cote qui sert à sélectionner le pari">réf.</span>');
+    const ecartTxt = q === a.ref ? "" : `<span class="cbk-gap ${ecart > 0.0005 ? "pos" : ecart < -0.0005 ? "neg" : ""}">${cbkPct(ecart)}</span>`;
+    let l2 = q.saisie ? "saisie à la main" : `relevé ${cbkFmtAge(q.age)}`;
+    if (q.marge != null) l2 += ` · ${cbkEsc(q.label)} ${(q.marge * 100).toFixed(1).replace(".", ",")} %`;
+    if (q.plafond) l2 = "cote plafonnée à 100 par Unibet : non comparable";
+    else if (!q.retenue) l2 = `relevé trop ancien (${cbkFmtAge(q.age)}) : non retenu`;
+    return `<div class="cbk-row${q.retenue ? "" : " off"}">
+        <div class="l1">${cbkTagHtml(q, true)}${badges.join("")}${ecartTxt}<span class="px">${q.plafond ? "≥ 100" : cbkCote(q.cote)}</span></div>
+        <div class="l2">${l2}</div></div>`;
+  }).join("");
+  return `<button type="button" class="dc-tip-close" aria-label="Fermer">✕</button>
+    <div class="dc-tip-head">${cbkEsc(ctx.v.colonne)}</div>
+    <div class="dc-tip-sub">${cbkEsc(ctx.v.match)} · ${cbkEsc(ctx.v.categorie)}</div>
+    ${lignes}
+    <div class="dc-tip-note">La sélection du pari reste faite sur la cote de référence (${cbkEsc(a.ref.nom)}) : edge, espérance et filtres
+      ne changent pas. La meilleure cote sert uniquement à choisir où placer le pari. Les cotes bougent vite : vérifiez-la sur le site avant de parier.</div>`;
+}
+function cbkPositionner(zone) {
+  const tip = cbkTipEl();
+  if (window.matchMedia("(max-width:640px)").matches) { tip.style.left = ""; tip.style.top = ""; return; }   // feuille en bas d'écran (CSS)
+  const r = zone.getBoundingClientRect();
+  const tw = tip.offsetWidth || 320, th = tip.offsetHeight || 200;
+  let left = r.left + window.scrollX;
+  let top = r.bottom + window.scrollY + 8;
+  if (left + tw > window.innerWidth - 12) left = window.innerWidth - tw - 12;
+  if (r.bottom + th + 20 > window.innerHeight) top = r.top + window.scrollY - th - 8;
+  tip.style.left = Math.max(8, left) + "px";
+  tip.style.top = Math.max(8, top) + "px";
+}
+function cbkMarquer(zone, ouvert) {
+  zone.classList.toggle("ouverte", ouvert);
+  const bt = zone.querySelector(".plus-n");
+  if (bt) bt.setAttribute("aria-expanded", ouvert ? "true" : "false");
+}
+function cbkOuvrirTip(zone) {
+  const carte = zone.closest(".rec");
+  const ctx = carte && CBK_CTX.get(carte.dataset.key);
+  if (!ctx) return;
+  clearTimeout(CBK_TIP.fermeture);
+  if (CBK_TIP.zone && CBK_TIP.zone !== zone) cbkMarquer(CBK_TIP.zone, false);
+  const tip = cbkTipEl();
+  tip.innerHTML = cbkContenuTip(ctx);
+  tip.hidden = false;
+  cbkMarquer(zone, true);
+  CBK_TIP.zone = zone;
+  cbkPositionner(zone);
+}
+function cbkFermerTip() {
+  const tip = document.getElementById("cbkTip");
+  if (tip) tip.hidden = true;
+  CBK_TIP.epinglee = false;
+  if (CBK_TIP.zone) cbkMarquer(CBK_TIP.zone, false);
+  CBK_TIP.zone = null;
+}
+function cbkFermerBientot() {
+  clearTimeout(CBK_TIP.fermeture);
+  CBK_TIP.fermeture = setTimeout(() => { if (!CBK_TIP.epinglee) cbkFermerTip(); }, 180);
+}
+
+// Bandeau de réglages (visible seulement s'il existe des cotes d'un autre site).
+function cbkMajControles() {
+  const box = document.getElementById("cbkCtl");
+  if (!box) return;
+  const avec = UPCOMING_COMPLET.filter(v => v.cb && v.cb.length);
+  box.style.display = avec.length ? "" : "none";
+  if (!avec.length) return;
+  document.getElementById("cbkModeBest").setAttribute("aria-pressed", CBK_ETAT.mode === "best" ? "true" : "false");
+  document.getElementById("cbkModeRef").setAttribute("aria-pressed", CBK_ETAT.mode === "ref" ? "true" : "false");
+  document.getElementById("cbkAge").value = String(CBK_ETAT.ageMax);
+  const dernier = avec.reduce((m, v) => v.cb.reduce((mm, q) => (q.t > mm ? q.t : mm), m), "");
+  const info = document.getElementById("cbkInfo");
+  if (info) {
+    const j = dernier ? cbkFmtAge(cbkAgeH(dernier)) : "";
+    info.textContent = `${avec.length} pari${avec.length > 1 ? "s" : ""} comparé${avec.length > 1 ? "s" : ""} avec Unibet · dernier relevé Unibet ${j}`;
+  }
 }
 
 function renderUpcoming() {
@@ -2376,6 +2657,7 @@ function renderUpcoming() {
   }
   empty.style.display = "none";
 
+  CBK_CTX.clear();
   grid.innerHTML = rows.map(v => {
     const groupeKey = `${v.match}|${v.categorie}`;
     const groupeTaille = (groupes[groupeKey] || []).length;
@@ -2480,14 +2762,21 @@ function renderUpcoming() {
     const iconeCrayon = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true">`
       + `<path d="M11.2 2.3l2.5 2.5-8 8-3.2.7.7-3.2 8-8z" stroke="currentColor" stroke-width="1.4" `
       + `stroke-linejoin="round" stroke-linecap="round"/></svg>`;
-    const coteZone = v.cote_manuelle != null
+    const coteNumHtml = v.cote_manuelle != null
       ? `<strong class="cote-val cote-saisie">${v.cote.toFixed(2)}</strong>
          <s class="cote-capturee" title="Cote capturée à la dernière mise à jour">${v.cote_capturee.toFixed(2)}</s>
-         <span class="cote-badge">saisie</span>
-         <button type="button" class="cote-btn cote-reset" title="Revenir à la cote capturée" aria-label="Revenir à la cote capturée">↺</button>
-         <button type="button" class="cote-btn cote-edit-btn" title="Modifier la cote" aria-label="Modifier la cote">${iconeCrayon}</button>`
-      : `<strong class="cote-val">${v.cote.toFixed(2)}</strong>
-         <button type="button" class="cote-btn cote-edit-btn" title="La cote a changé sur Winamax ? Saisissez-la pour recalculer edge et espérance" aria-label="Modifier la cote">${iconeCrayon}<span>modifier</span></button>`;
+         <span class="cote-badge">saisie</span>`
+      : `<strong class="cote-val">${v.cote.toFixed(2)}</strong>`;
+    const coteBtnsHtml = v.cote_manuelle != null
+      ? `<button type="button" class="cote-btn cote-reset" title="Revenir à la cote capturée" aria-label="Revenir à la cote capturée">↺</button>
+         <button type="button" class="cote-btn cote-edit-btn" title="Modifier la cote Winamax (celle qui sert à sélectionner le pari)" aria-label="Modifier la cote">${iconeCrayon}</button>`
+      : `<button type="button" class="cote-btn cote-edit-btn" title="La cote a changé sur Winamax ? Saisissez-la pour recalculer edge et espérance" aria-label="Modifier la cote">${iconeCrayon}<span>modifier</span></button>`;
+    const coteZone = coteNumHtml + coteBtnsHtml;
+    // Meilleure cote entre bookmakers : null tant qu'aucun autre site ne cote ce
+    // pari, la carte est alors exactement celle d'avant.
+    const cbk = cbkAnalyser(v, v0);
+    if (cbk) CBK_CTX.set(key, {v, v0, a: cbk});
+    const cbkR = cbk ? cbkRendu(cbk, v, coteNumHtml, coteBtnsHtml) : null;
     const alerteHors = horsF
       ? `<div class="rec-alerte" role="alert"><strong>Ne plus parier à cette cote.</strong>
            À ${v.cote.toFixed(2)}, ce pari ne passe plus vos filtres : ${v.motifs_manuel.map(m => m.trim()).join(" ; ")}.</div>`
@@ -2513,9 +2802,12 @@ function renderUpcoming() {
     // sinon la cote affichée sur la carte (saisie à la main ou capturée), à
     // corriger si besoin. Un ancien pari joué sans cote reste vide : on ne
     // devine pas une cote qu'on ne connaît pas.
-    const coteJoueeNum = isPlaced ? (infoPlacee.cote ?? null) : v.cote;
+    const siteDefaut = isPlaced ? ((infoPlacee && infoPlacee.site) || "winamax") : (cbkR ? cbkR.affichee.bk : "winamax");
+    const coteJoueeNum = isPlaced ? (infoPlacee.cote ?? null) : (cbkR ? cbkR.affichee.cote : v.cote);
     const coteJoueeVal = coteJoueeNum != null ? fmtCoteFr(coteJoueeNum) : "";
-    const coteCaptureeCarte = (UPCOMING_PAR_CLE.get(key) || v).cote;
+    const coteCaptureeCarte = (cbkR && siteDefaut !== "winamax")
+      ? (cbkCoteDuSite(key, siteDefaut) ?? (UPCOMING_PAR_CLE.get(key) || v).cote)
+      : (UPCOMING_PAR_CLE.get(key) || v).cote;
     const classesLien = estLie ? (estMeilleur ? " lie-best" : " lie-alt") : "";
     // Une fois le pari joué, ce statut prime : le conseil sur les seuils
     // liés n'a plus d'utilité, on affiche le marqueur "joué" à la place.
@@ -2541,8 +2833,9 @@ function renderUpcoming() {
       <div class="rec-bet">
         <span class="rec-pill">${v.colonne}</span>
         <span class="muted">à la cote</span>
-        <span class="cote-zone">${coteZone}</span>
+        <span class="cote-zone"${cbkR ? ' data-cbk="1"' : ""}>${cbkR ? cbkR.zone : coteZone}</span>
       </div>
+      ${cbkR ? cbkR.ligneRef : ""}
       ${coteMiniHtml}
       ${alerteHors}
       <div class="rec-metrics">
@@ -2552,6 +2845,7 @@ function renderUpcoming() {
       </div>
       ${miseKelly != null ? `<div class="rec-kelly">Mise conseillée <strong>${miseKelly.toFixed(2)} €</strong>
         <span class="muted">(${(miseKelly/bankrollRef*100).toFixed(1)} % de ${bankrollRef.toFixed(0)} €)</span></div>` : ""}
+      ${cbkR ? cbkR.gain + cbkR.avert : ""}
       ${injuryBlock}
       ${predBlock}
       ${marcheBlock}
@@ -2576,12 +2870,16 @@ function renderUpcoming() {
         </span>
       </label>
       <div class="rec-jouee" style="${isPlaced ? "" : "display:none"}">
+        ${cbk ? `<label class="rec-jouee-lbl">Site joué
+          <select class="site-joue" aria-label="Site où le pari est joué">${cbk.tous.map(x =>
+            `<option value="${x.bk}"${x.bk === siteDefaut ? " selected" : ""}>${cbkEsc(x.nom)}</option>`).join("")}</select>
+        </label>` : ""}
         <label class="rec-jouee-lbl">Cote obtenue
           <input type="text" inputmode="decimal" class="cote-jouee" autocomplete="off" placeholder="2,05"
-                 value="${coteJoueeVal}" data-manuelle="${v.cote_manuelle != null ? 1 : 0}"
+                 value="${coteJoueeVal}" data-manuelle="${(v.cote_manuelle != null && siteDefaut === "winamax") ? 1 : 0}"
                  data-touche="${infoPlacee && infoPlacee.cote_confirmee ? 1 : 0}"
-                 aria-label="Cote réellement obtenue sur Winamax"
-                 title="Cote réellement obtenue sur Winamax au moment du pari. Corrigez-la si elle a bougé : elle sert au calcul du résultat réel et du CLV (page Bankroll).">
+                 aria-label="Cote réellement obtenue sur le site joué"
+                 title="Cote réellement obtenue sur le site joué au moment du pari. Corrigez-la si elle a bougé : elle sert au calcul du résultat réel et du CLV (page Bankroll).">
         </label>
         <span class="jouee-info muted">${texteCoteJouee(coteCaptureeCarte, coteJoueeNum)}</span>
       </div>
@@ -2647,6 +2945,28 @@ function renderUpcoming() {
       if (cote != null) e.target.value = fmtCoteFr(cote);
       if (PLACED.has(key)) {
         togglePlaced(key, true, null, {cote, cote_confirmee: cote != null});
+      }
+      majInfoCoteJouee(card, key);
+    });
+  });
+  // Site joué : changer de site met à jour la cote obtenue (celle affichée chez ce site).
+  grid.querySelectorAll(".site-joue").forEach(sel => {
+    sel.addEventListener("change", e => {
+      const card = e.target.closest(".rec");
+      const key = card.dataset.key;
+      const ctx = CBK_CTX.get(key);
+      const site = e.target.value;
+      const cote = cbkCoteDuSite(key, site);
+      const champ = card.querySelector(".cote-jouee");
+      const manuelle = !!(site === "winamax" && ctx && ctx.v.cote_manuelle != null);
+      if (cote != null && champ) {
+        champ.value = fmtCoteFr(cote);
+        champ.dataset.touche = "0";
+        champ.dataset.manuelle = manuelle ? "1" : "0";
+        champ.removeAttribute("aria-invalid");
+      }
+      if (PLACED.has(key)) {
+        togglePlaced(key, true, null, {site, cote, cote_capturee: cote, cote_confirmee: manuelle});
       }
       majInfoCoteJouee(card, key);
     });
@@ -2745,6 +3065,56 @@ function renderUpcoming() {
       msg.textContent = msg.dataset.aide || "";
     }
   });
+})();
+
+/* Infobulle « cotes de tous les bookmakers » et réglages de la meilleure cote.
+   Écouteurs DÉLÉGUÉS sur la grille, posés une seule fois (comme l'éditeur de
+   cote ci-dessus) : renderUpcoming() reconstruit toutes les cartes. */
+(function initCotesBookmakers() {
+  const grid = $("recGrid");
+  if (!grid) return;
+  const survol = () => window.matchMedia("(hover:hover)").matches;
+  // Zone de cote d'une carte comparée — sauf pendant la saisie d'une cote.
+  const zoneDe = el => {
+    const z = el && el.closest ? el.closest(".cote-zone[data-cbk]") : null;
+    return (z && !z.querySelector(".cote-input")) ? z : null;
+  };
+  grid.addEventListener("mouseover", e => {
+    if (!survol()) return;
+    const z = zoneDe(e.target);
+    if (!z) return;
+    if (z !== CBK_TIP.zone) cbkOuvrirTip(z); else clearTimeout(CBK_TIP.fermeture);
+  });
+  grid.addEventListener("mouseout", e => { if (zoneDe(e.target) && !CBK_TIP.epinglee) cbkFermerBientot(); });
+  grid.addEventListener("focusin", e => { const z = zoneDe(e.target); if (z) cbkOuvrirTip(z); });
+  grid.addEventListener("focusout", e => {
+    const z = zoneDe(e.target), vers = e.relatedTarget;
+    if (z && !CBK_TIP.epinglee && !(vers && vers.closest && (z.contains(vers) || vers.closest("#cbkTip")))) cbkFermerBientot();
+  });
+  grid.addEventListener("click", e => {
+    if (e.target.closest("button.cote-btn")) { cbkFermerTip(); return; }   // crayon / ↺ : l'éditeur de cote prend la main
+    if (e.target.closest("a.cbk-tag, a.rec-winamax-link, .cote-input")) return;   // les liens s'ouvrent normalement
+    const z = zoneDe(e.target);
+    if (!z) return;
+    if (CBK_TIP.zone === z && CBK_TIP.epinglee) cbkFermerTip();
+    else { cbkOuvrirTip(z); CBK_TIP.epinglee = true; }
+  });
+  document.addEventListener("click", e => {
+    const tip = document.getElementById("cbkTip");
+    if (tip && !tip.hidden && !e.target.closest("#cbkTip") && !e.target.closest(".cote-zone[data-cbk]")) cbkFermerTip();
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") cbkFermerTip(); });
+  window.addEventListener("scroll", () => { if (CBK_TIP.zone && !CBK_TIP.epinglee) cbkFermerTip(); }, {passive: true});
+
+  const choisirMode = mode => { CBK_ETAT.mode = mode; sauverReglagesCbk(); cbkFermerTip(); cbkMajControles(); renderUpcoming(); };
+  const btnBest = document.getElementById("cbkModeBest"), btnRef = document.getElementById("cbkModeRef");
+  if (btnBest) btnBest.addEventListener("click", () => choisirMode("best"));
+  if (btnRef) btnRef.addEventListener("click", () => choisirMode("ref"));
+  const selAge = document.getElementById("cbkAge");
+  if (selAge) selAge.addEventListener("change", e => {
+    CBK_ETAT.ageMax = +e.target.value; sauverReglagesCbk(); cbkFermerTip(); renderUpcoming();
+  });
+  cbkMajControles();
 })();
 
 /* Infobulle de la prévision indépendante d'API-Football sur la page
@@ -7966,7 +8336,7 @@ function renderBankroll() {
     const coteJouee = (info.cote != null && isFinite(info.cote)) ? Number(info.cote) : null;
     return {
       cle, date, match, pari, mise: info.mise || 0,
-      coteJouee, confirmee: !!info.cote_confirmee,
+      coteJouee, confirmee: !!info.cote_confirmee, site: info.site || null,
       coteCapturee: info.cote_capturee != null ? Number(info.cote_capturee) : null,
       coteCloture: ref ? ref.cote : null,
       ts: info.ts || null, kickoff: info.kickoff || null,
@@ -8095,9 +8465,11 @@ function renderBankroll() {
 
   const cellCote = l => {
     if (l.coteJouee == null) return `<span class="muted" title="Cote obtenue non renseignée : le résultat est calculé à la cote de clôture">—</span>`;
-    return l.confirmee
+    const autreSite = l.site && l.site !== "winamax"
+      ? ` <span class="cell-site" title="Pari joué chez ${cbkEsc(CBK_NOMS[l.site] || l.site)} : la clôture comparée est celle de Winamax">${cbkEsc(CBK_NOMS[l.site] || l.site)}</span>` : "";
+    return (l.confirmee
       ? l.coteJouee.toFixed(2)
-      : `<span class="muted" title="Cote affichée sur la carte, non saisie par vous : n'entre pas dans le CLV">${l.coteJouee.toFixed(2)}*</span>`;
+      : `<span class="muted" title="Cote affichée sur la carte, non saisie par vous : n'entre pas dans le CLV">${l.coteJouee.toFixed(2)}*</span>`) + autreSite;
   };
   const cellClv = l => {
     if (l.coteJouee == null || !l.confirmee || l.coteCloture == null) return "—";
