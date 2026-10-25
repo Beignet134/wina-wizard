@@ -369,6 +369,16 @@
   "mise": 5,
   "maj": 1792869094032
  },
+ "2026-10-25|Palerme - Carrarese|0 - 0": {
+  "cote": 14,
+  "cote_confirmee": false,
+  "cote_capturee": 14,
+  "ts": "2026-10-25T13:02:54",
+  "kickoff": "2026-10-25T15:00:00",
+  "capture_iso": "2026-10-25T12:54:45.188043",
+  "mise": 5,
+  "maj": 1792929774835
+ },
  "2026-10-25|Philadelphia Union - New England Revolution|0 - 0": {
   "cote": 18,
   "cote_confirmee": false,
@@ -388,5 +398,15 @@
   "capture_iso": "2026-10-24T20:29:45.559537",
   "mise": 5,
   "maj": 1792869091408
+ },
+ "2026-10-25|Sportivo Ameliano - Club Olimpia|0 - 0": {
+  "cote": 9,
+  "cote_confirmee": false,
+  "cote_capturee": 9,
+  "ts": "2026-10-25T13:02:53",
+  "kickoff": "2026-10-25T14:00:00",
+  "capture_iso": "2026-10-25T12:54:45.188043",
+  "mise": 5,
+  "maj": 1792929773959
  }
 }
