@@ -389,6 +389,16 @@
   "mise": 5,
   "maj": 1792869087991
  },
+ "2026-10-25|Sabah - Qarabag Agdam|draw": {
+  "cote": 3.45,
+  "cote_confirmee": false,
+  "cote_capturee": 3.45,
+  "ts": "2026-10-25T13:02:57",
+  "kickoff": "2026-10-25T15:00:00",
+  "capture_iso": "2026-10-25T12:54:45.188043",
+  "mise": 5,
+  "maj": 1792929777618
+ },
  "2026-10-25|San Diego FC - Seattle Sounders|0 - 0": {
   "cote": 18,
   "cote_confirmee": false,
