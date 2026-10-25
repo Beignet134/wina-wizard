@@ -2745,3 +2745,98 @@ details.panel-foldable[open] > summary::before {
 @media (max-width: 560px) {
   .filter-reset-btn { width: 100%; justify-content: center; min-height: 2.6rem; }
 }
+
+/* ---------------------------------------------------------------
+   Meilleure cote entre bookmakers (page « Paris à venir », 25/10/2026)
+   Tag coloré du site, cote la plus haute retenue, infobulle des cotes
+   de tous les sites. La couleur identifie le site mais n'est jamais
+   seule : le nom du site est toujours écrit à côté.
+   --------------------------------------------------------------- */
+.cbk-ctl {
+  margin: 1rem 0 0; padding: .7rem .9rem; border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm); background: rgba(128,175,255,.04);
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.2rem; font-size: .8rem;
+}
+.cbk-ctl .cbk-ctl-lbl { color: var(--ink-faint); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.cbk-ctl label { display: inline-flex; align-items: center; gap: .45rem; color: var(--ink-dim); }
+.cbk-ctl select {
+  background: var(--night-2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 8px; padding: .3rem .5rem; font: 500 .8rem var(--font-body); min-height: 30px;
+}
+.cbk-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.cbk-seg button {
+  background: transparent; color: var(--ink-dim); border: 0; padding: .38rem .75rem;
+  font: 600 .78rem var(--font-body); cursor: pointer; min-height: 30px;
+}
+.cbk-seg button[aria-pressed="true"] { background: rgba(128,175,255,.16); color: var(--ink); }
+.cbk-seg button:focus-visible, .cbk-ctl select:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.cbk-ctl .cbk-ctl-note { flex: 1 1 100%; color: var(--ink-faint); font-size: .74rem; line-height: 1.45; }
+
+.rec .cote-zone[data-cbk] { cursor: help; border-radius: 8px; padding: .12rem .3rem; margin: -.12rem -.3rem; transition: background .15s; }
+.rec .cote-zone[data-cbk]:hover, .rec .cote-zone.ouverte { background: rgba(128,175,255,.09); }
+.plus-n {
+  background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-dim);
+  font: 600 .68rem var(--font-mono); padding: .1rem .4rem; cursor: inherit;
+}
+.plus-n:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--violet-lo); }
+
+.cbk-tag {
+  --bk: #9aa7b8; display: inline-flex; align-items: center; gap: .34rem;
+  padding: .13rem .55rem .13rem .45rem; border-radius: 999px; font: 700 .7rem var(--font-body);
+  letter-spacing: .01em; color: var(--ink); text-decoration: none; white-space: nowrap;
+  background: color-mix(in srgb, var(--bk) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bk) 55%, transparent);
+}
+.cbk-tag .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--bk); flex: none; }
+a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
+.cbk-tag .go { font-size: .68rem; opacity: .7; }
+.cbk-winamax { --bk: #ff9f5a; } .cbk-unibet { --bk: #54d9ce; } .cbk-betclic { --bk: #d581d5; }
+
+.rec-ref { margin-top: .45rem; font-size: .74rem; color: var(--ink-faint); line-height: 1.4; }
+.rec-ref strong { color: var(--ink-dim); font-family: var(--font-mono); font-weight: 600; }
+.rec-gain {
+  margin-top: .5rem; padding: .42rem .55rem; border-radius: 8px; font-size: .76rem; line-height: 1.4;
+  background: rgba(55,217,155,.07); border: 1px solid rgba(55,217,155,.2); color: var(--ink-dim);
+}
+.rec-gain strong { color: var(--up); font-family: var(--font-mono); }
+.rec-gain strong.cbk-nom { font-family: var(--font-body); }
+.rec-gain.none { background: transparent; border-color: var(--line-soft); }
+
+#cbkTip { pointer-events: auto; min-width: 290px; max-width: 350px; }
+#cbkTip .dc-tip-head { padding-right: 1.4rem; margin-bottom: .1rem; }
+#cbkTip .dc-tip-sub { color: var(--ink-faint); font-size: .72rem; margin-bottom: .45rem; }
+#cbkTip .dc-tip-close {
+  position: absolute; top: .35rem; right: .4rem; background: transparent; border: 0;
+  color: var(--ink-dim); font-size: 1rem; cursor: pointer; padding: .2rem .4rem; display: none;
+}
+.cbk-row { padding: .38rem 0; border-top: 1px solid var(--line-soft); }
+.cbk-row:first-of-type { border-top: 0; }
+.cbk-row .l1 { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.cbk-row .l1 .px { margin-left: auto; font-family: var(--font-mono); font-weight: 700; font-size: .95rem; color: var(--ink); }
+.cbk-row .l2 { color: var(--ink-faint); font-size: .72rem; margin-top: .12rem; padding-left: .1rem; }
+.cbk-row.off .px { color: var(--ink-faint); text-decoration: line-through; font-weight: 500; }
+.cbk-row.off .l2 { color: var(--gold); }
+.cbk-badge {
+  font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: .08rem .38rem; border-radius: 5px; border: 1px solid var(--line); color: var(--ink-dim);
+}
+.cbk-badge.best { color: var(--up); border-color: rgba(55,217,155,.45); background: rgba(55,217,155,.08); }
+.cbk-badge.ref { color: var(--violet); border-color: rgba(128,175,255,.45); }
+.cbk-gap { font-family: var(--font-mono); font-size: .72rem; color: var(--ink-faint); }
+.cbk-gap.pos { color: var(--up); } .cbk-gap.neg { color: var(--down); }
+
+.site-joue {
+  background: var(--night-3); color: var(--ink); border: 1px solid var(--line-soft); border-radius: 5px;
+  font: 600 .78rem var(--font-body); padding: .22rem .35rem; min-height: 30px;
+}
+.site-joue:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.cell-site { color: var(--ink-faint); font-size: .72rem; }
+
+@media (max-width: 640px) {
+  #cbkTip {
+    position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto !important;
+    min-width: 0; max-width: none; max-height: 70vh; overflow: auto; padding-top: .9rem;
+  }
+  #cbkTip .dc-tip-close { display: block; }
+}
+@media (hover: none) { .rec .cote-zone[data-cbk] { cursor: pointer; } }
