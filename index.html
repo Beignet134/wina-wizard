@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261025191226">
+<link rel="stylesheet" href="style.css?v=20261025204304">
 </head>
 <body>
 <div class="topbar">
@@ -1555,6 +1555,27 @@
       </details>
     </div>
 
+    <div id="cbkCtl" class="cbk-ctl" style="display:none">
+      <span class="cbk-ctl-lbl">Cote affichée</span>
+      <div class="cbk-seg" role="group" aria-label="Cote affichée sur les cartes">
+        <button type="button" id="cbkModeBest" aria-pressed="true">Meilleure cote</button>
+        <button type="button" id="cbkModeRef" aria-pressed="false">Winamax seule</button>
+      </div>
+      <label>Relevé retenu s'il a moins de
+        <select id="cbkAge" aria-label="Âge maximal d'un relevé de cote retenu">
+          <option value="3">3 h</option>
+          <option value="6">6 h</option>
+          <option value="12">12 h</option>
+          <option value="24">24 h</option>
+        </select>
+      </label>
+      <span class="muted" id="cbkInfo"></span>
+      <p class="cbk-ctl-note">La <strong>sélection</strong> des paris reste faite sur la cote Winamax : edge, espérance, filtres et mise
+        conseillée ne changent pas. La meilleure cote ne sert qu'à choisir <strong>où placer</strong> le pari. Survolez (ou touchez) la cote d'une
+        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés Unibet viennent du
+        collecteur Unibet (lancé à la main) : plus ils sont anciens, moins la comparaison est fiable.</p>
+    </div>
+
     <p class="muted" id="uCoteAide" style="margin:1rem 0 0; font-size:.82rem">
       La cote a bougé sur Winamax depuis la dernière mise à jour ? Cliquez sur le crayon à côté de la
       cote d'une carte et saisissez la cote réelle : l'edge, l'espérance et la mise conseillée sont
@@ -1892,7 +1913,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261025191252"></script>
-<script src="app.js?v=20261025191226"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261025204338"></script>
+<script src="app.js?v=20261025204304"></script>
 </body>
 </html>
