@@ -399,6 +399,16 @@
   "mise": 5,
   "maj": 1792869087991
  },
+ "2026-10-25|River Plate - Racing Club|0 - 2": {
+  "cote": 30,
+  "cote_confirmee": false,
+  "cote_capturee": 30,
+  "ts": "2026-10-25T18:51:22",
+  "kickoff": "2026-10-25T23:15:00",
+  "capture_iso": "2026-10-25T16:13:32.005421",
+  "mise": 10,
+  "maj": 1792950682959
+ },
  "2026-10-25|Sabah - Qarabag Agdam|draw": {
   "cote": 3.45,
   "cote_confirmee": false,
