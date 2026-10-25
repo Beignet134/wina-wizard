@@ -31,6 +31,7 @@
   --coral-lo:  #da4c64;
   --gold:      #f4c067;   /* mises en avant, absences */
   --cyan:      #54d9ce;   /* accent secondaire, navigation */
+  --orchid:    #d581d5;   /* 6e série des comparaisons de stratégies (Simulation) */
 
   /* --- Typographie : Space Grotesk apporte du caractère aux titres
          (géométrique, détails inhabituels) sans revenir à une serif. --- */
@@ -2653,7 +2654,14 @@ details.panel-foldable[open] > summary::before {
 .mc-strat-dot[data-c="violet"] { background: var(--violet); }
 .mc-strat-dot[data-c="cyan"]   { background: var(--cyan); }
 .mc-strat-dot[data-c="coral"]  { background: var(--coral); }
+.mc-strat-dot[data-c="orchid"] { background: var(--orchid); }
+.mc-reel-opt { margin-top: .75rem; }
+/* Sous-ligne discrète dans une cellule de tableau (P95 sous la médiane...). */
+.mc-sub { display: block; font-size: .72rem; color: var(--ink-faint); font-weight: 400; }
+.mc-cmp-table td.mc-jour { white-space: nowrap; }
 .mc-strat-param { width: 72px; padding: .3rem .5rem; font-size: .85rem; font-family: var(--font-mono); }
+/* « .field input » (largeur 100 %) l'emportait : le montant fixe s'étalait sur toute la ligne. */
+.mc-strat-field .mc-strat-param { width: 72px; flex: none; }
 .mc-strat-unit { color: var(--ink-faint); font-size: .8rem; }
 
 /* Tableau comparatif des stratégies : réutilise .tablewrap/.table-scroll et
@@ -2724,4 +2732,16 @@ details.panel-foldable[open] > summary::before {
 
 @media (max-width: 560px) {
   .mc-pct-slider-row { flex-direction: column; align-items: stretch; gap: .5rem; }
+}
+/* Bouton « Réinitialiser les filtres » (DC rétrospectif et Paris à venir). */
+.filter-reset-row { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .8rem; margin: 0 0 1rem; }
+.filter-reset-row.is-compact { margin: .8rem 0 0; }
+.filter-reset-btn { display: inline-flex; align-items: center; gap: .45rem; min-height: 2.2rem; }
+.filter-reset-btn svg { width: 1rem; height: 1rem; flex: none; }
+.filter-reset-btn:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.filter-reset-hint, .filter-reset-msg { font-size: .78rem; }
+.filter-reset-msg { color: var(--cyan); }
+.filter-reset-msg:empty { display: none; }
+@media (max-width: 560px) {
+  .filter-reset-btn { width: 100%; justify-content: center; min-height: 2.6rem; }
 }
