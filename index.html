@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261025111309">
+<link rel="stylesheet" href="style.css?v=20261025125446">
 </head>
 <body>
 <div class="topbar">
@@ -570,6 +570,13 @@
             <option value="0.1">10 % — le marché domine</option>
           </select>
         </div>
+        <div class="field" id="btForcesField">
+          <label for="btForces">Forces d'équipe</label>
+          <select id="btForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs.">
+            <option value="act" selected>Actuelles</option>
+            <option value="tm">Tous matchs (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="btMise">Strategie de mise</label>
           <select id="btMise">
@@ -696,6 +703,7 @@
         <p class="bt-impact-note" id="btImpactNote">ROI comparé avec les mêmes réglages de modèle et de mise ; les filtres de sélection sont retirés pour établir la référence.</p>
       </div>
       <p class="muted" id="btEnrichiNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btForcesNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
     </div>
@@ -1028,7 +1036,29 @@
         soit le résultat, tant qu'un changement de défaut n'a pas été validé.
       </p>
       <div id="btNbValid"></div>
-    
+
+      </div>
+    </details>
+
+<details class="panel panel-foldable" id="panelLecturesForces">
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14.5h14M5.5 14.5V9m4.5 5.5V5m4.5 9.5v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Lectures du modèle <span class="hint">— lequel colle le mieux au marché ?</span></h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+      <p class="muted" style="margin:-.5rem 0 1rem; font-size:.85rem">
+        Compare la lecture <strong>actuelle</strong> des forces d'équipe (attaque et défense à
+        domicile et à l'extérieur estimées séparément) à la lecture <strong>« tous matchs »</strong>
+        (une attaque et une défense par équipe, sur l'ensemble de ses matchs), toutes deux
+        recalculées à chaque collecte, jour après jour, avec le seul passé connu à la date du match.
+        La mesure est la perte logarithmique (log-loss) de chaque probabilité sur le résultat réel,
+        <strong>sur toutes les issues du marché</strong> et non sur les seuls paris retenus — c'est
+        la seule façon de comparer des lectures sans biais de sélection. On la lit comme un écart au
+        marché dévigué : <strong>0 = aussi bon que le marché, plus l'écart est grand et positif,
+        plus la lecture est mauvaise</strong>. Se rapprocher du marché n'est pas le battre : cela
+        réduit les faux écarts, sans créer de pari gagnant à lui seul. Clubs uniquement
+        (sélections nationales exclues).
+      </p>
+      <div id="btLecturesForces"></div>
       </div>
     </details>
 
@@ -1368,6 +1398,13 @@
             <option value="0.1">10 % — le marché domine</option>
           </select>
         </div>
+        <div class="field" id="uForcesField">
+          <label for="uForces">Forces d'équipe</label>
+          <select id="uForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs.">
+            <option value="act" selected>Actuelles</option>
+            <option value="tm">Tous matchs (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="uMise2">Strategie de mise</label>
           <select id="uMise2">
@@ -1451,6 +1488,7 @@
         l'onglet « DC rétrospectif ». Edge minimum, espérance, espérance maximum, marchés de queue et
         edge dévigué maximum le sont aussi, mais catégorie par catégorie.</p>
       <p class="muted" id="uEnrichiNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uForcesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uCotesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -1854,7 +1892,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261025111340"></script>
-<script src="app.js?v=20261025111309"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261025125517"></script>
+<script src="app.js?v=20261025125446"></script>
 </body>
 </html>
