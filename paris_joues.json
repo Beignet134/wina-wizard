@@ -449,5 +449,16 @@
   "capture_iso": "2026-10-26T04:12:06.055474",
   "mise": 10,
   "maj": 1792994323488
+ },
+ "2026-10-26|Santa Clara - Benfica|0 - 0": {
+  "cote": 10,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 10,
+  "ts": "2026-10-26T06:59:05",
+  "kickoff": "2026-10-26T19:45:00",
+  "capture_iso": "2026-10-26T04:12:06.055474",
+  "mise": 10,
+  "maj": 1792994345274
  }
 }
