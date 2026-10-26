@@ -460,5 +460,16 @@
   "capture_iso": "2026-10-26T04:12:06.055474",
   "mise": 5,
   "maj": 1792994352537
+ },
+ "2026-10-28|Boyacá Chicó - Junior De Barranquilla|0 - 0": {
+  "cote": 7.75,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 7.75,
+  "ts": "2026-10-26T20:10:57",
+  "kickoff": "2026-10-28T02:05:00",
+  "capture_iso": "2026-10-26T19:13:03.699516",
+  "mise": 10,
+  "maj": 1793041857637
  }
 }
