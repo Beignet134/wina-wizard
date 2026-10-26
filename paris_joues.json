@@ -438,5 +438,16 @@
   "capture_iso": "2026-10-25T12:54:45.188043",
   "mise": 5,
   "maj": 1792929773959
+ },
+ "2026-10-26|Iberia 1999 - Torpedo Koutaïssi|0 - 0": {
+  "cote": 10,
+  "cote_confirmee": true,
+  "site": "winamax",
+  "cote_capturee": 10.5,
+  "ts": "2026-10-26T06:58:43",
+  "kickoff": "2026-10-26T16:00:00",
+  "capture_iso": "2026-10-26T04:12:06.055474",
+  "mise": 10,
+  "maj": 1792994323488
  }
 }
