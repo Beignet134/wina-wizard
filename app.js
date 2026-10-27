@@ -1943,7 +1943,7 @@ function fmtKickoff(iso) {
    MEILLEURE COTE ENTRE BOOKMAKERS (page « Paris à venir »)
    ------------------------------------------------------------
    Le fichier de données joint à chaque pari (v.cb) les cotes du même pari chez
-   les autres bookmakers (Unibet, relevées par le collecteur dédié) ; la carte
+   les autres bookmakers (Unibet, Betclic, relevées par les collecteurs dédiés) ; la carte
    affiche alors la MEILLEURE cote retenue, un petit tag coloré du site, un lien
    vers le match chez ce site, et — au survol (ou au toucher sur mobile) — les
    cotes de tous les sites.
@@ -1961,7 +1961,7 @@ function fmtKickoff(iso) {
    égalité (moins de 0,5 % d'écart) on garde Winamax.
    ============================================================ */
 const CBK_LS_KEY = "wina_cotes_bookmakers_v1";
-const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet"};
+const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic"};
 const CBK_EGALITE = 0.005;
 const CBK_SEUIL_INHABITUEL = 0.10;
 const CBK_SEUIL_INHABITUEL_SE = 0.30;
@@ -2140,7 +2140,7 @@ function cbkContenuTip(ctx) {
     const ecartTxt = q === a.ref ? "" : `<span class="cbk-gap ${ecart > 0.0005 ? "pos" : ecart < -0.0005 ? "neg" : ""}">${cbkPct(ecart)}</span>`;
     let l2 = q.saisie ? "saisie à la main" : `relevé ${cbkFmtAge(q.age)}`;
     if (q.marge != null) l2 += ` · ${cbkEsc(q.label)} ${(q.marge * 100).toFixed(1).replace(".", ",")} %`;
-    if (q.plafond) l2 = "cote plafonnée à 100 par Unibet : non comparable";
+    if (q.plafond) l2 = `cote plafonnée à 100 par ${cbkEsc(q.nom)} : non comparable`;
     else if (!q.retenue) l2 = `relevé trop ancien (${cbkFmtAge(q.age)}) : non retenu`;
     return `<div class="cbk-row${q.retenue ? "" : " off"}">
         <div class="l1">${cbkTagHtml(q, true)}${badges.join("")}${ecartTxt}<span class="px">${q.plafond ? "≥ 100" : cbkCote(q.cote)}</span></div>
@@ -2205,11 +2205,12 @@ function cbkMajControles() {
   document.getElementById("cbkModeBest").setAttribute("aria-pressed", CBK_ETAT.mode === "best" ? "true" : "false");
   document.getElementById("cbkModeRef").setAttribute("aria-pressed", CBK_ETAT.mode === "ref" ? "true" : "false");
   document.getElementById("cbkAge").value = String(CBK_ETAT.ageMax);
-  const dernier = avec.reduce((m, v) => v.cb.reduce((mm, q) => (q.t > mm ? q.t : mm), m), "");
+  const derniers = {};
+  avec.forEach(v => v.cb.forEach(q => { if (!derniers[q.b] || q.t > derniers[q.b]) derniers[q.b] = q.t; }));
   const info = document.getElementById("cbkInfo");
   if (info) {
-    const j = dernier ? cbkFmtAge(cbkAgeH(dernier)) : "";
-    info.textContent = `${avec.length} pari${avec.length > 1 ? "s" : ""} comparé${avec.length > 1 ? "s" : ""} avec Unibet · dernier relevé Unibet ${j}`;
+    const sites = Object.keys(derniers).map(b => `${CBK_NOMS[b] || b} : relevé ${cbkFmtAge(cbkAgeH(derniers[b]))}`).join(" · ");
+    info.textContent = `${avec.length} pari${avec.length > 1 ? "s" : ""} comparé${avec.length > 1 ? "s" : ""} — ${sites}`;
   }
 }
 
