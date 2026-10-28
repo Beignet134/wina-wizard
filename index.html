@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261028191351">
+<link rel="stylesheet" href="style.css?v=20261028204604">
 </head>
 <body>
 <div class="topbar">
@@ -42,6 +42,7 @@
       <button type="button" class="tab" data-page="bankroll" id="tab-bankroll" role="tab" aria-controls="page-bankroll" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="15" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8.5h15" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="12" r="1.4" fill="currentColor"/></svg><span class="label">Bankroll</span></button>
       <button type="button" class="tab" data-page="teams" id="tab-teams" role="tab" aria-controls="page-teams" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.3 16.3 4.7v5C16.3 14.1 13.5 16.5 10 18c-3.5-1.5-6.3-3.9-6.3-8.3v-5L10 2.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="label">Stats équipes</span></button>
       <button type="button" class="tab" data-page="marges" id="tab-marges" role="tab" aria-controls="page-marges" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5.5 14.5 14.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="6.8" cy="6.8" r="2.3" stroke="currentColor" stroke-width="1.6"/><circle cx="13.2" cy="13.2" r="2.3" stroke="currentColor" stroke-width="1.6"/></svg><span class="label">Marges</span></button>
+      <button type="button" class="tab" data-page="bookmakers" id="tab-bookmakers" role="tab" aria-controls="page-bookmakers" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v13.5M6 16.5h8M3.5 6h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M3.5 6 1.9 11a2.1 2.1 0 0 0 3.2 0L3.5 6ZM16.5 6 14.9 11a2.1 2.1 0 0 0 3.2 0L16.5 6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span class="label">Bookmakers</span></button>
       <button type="button" class="tab" data-page="tirs" id="tab-tirs" role="tab" aria-controls="page-tirs" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.8v2.6M10 14.6v2.6M2.8 10h2.6M14.6 10h2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="label">Tirs cadrés</span></button>
     </nav>
   </div>
@@ -1830,11 +1831,165 @@
   </section>
 
   <!-- ================================================================= -->
+  <!-- PAGE — BOOKMAKERS (Winamax / Unibet / Betclic comparés)            -->
+  <!-- ================================================================= -->
+  <section class="page" id="page-bookmakers" role="tabpanel" aria-labelledby="heading-bookmakers" tabindex="0">
+    <div class="page-heading">
+      <div class="page-heading-title"><p class="page-kicker">MARCHÉS · 10</p><h2 class="page-title" id="heading-bookmakers">Bookmakers</h2></div>
+      <p class="lead">Winamax, Unibet et Betclic face à face : dans quel cas chaque site offre-t-il la meilleure cote, et combien prélève-t-il sur chaque marché ? De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
+    </div>
+
+    <div id="cmpbVide" class="warn" style="display:none"></div>
+
+    <div id="cmpbCorps">
+      <div class="warn">
+        <strong>Comment lire cette page.</strong> Pour chaque match que Winamax et un autre site proposent, on compare
+        les <em>mêmes</em> cotes (1X2, les 2 marquent, Plus/Moins, scores exacts) relevées à des moments proches.
+        <strong>Meilleure cote</strong> : part des cas où le site offre la cote la plus haute (une égalité est partagée).
+        <strong>Écart vs Winamax</strong> : de combien sa cote est plus haute (+) ou plus basse (−) en moyenne.
+        La <strong>marge</strong> est ce que le site prélève sur un marché entier : plus elle est basse, moins vous payez
+        quelle que soit l'issue choisie. Un site peut gagner sur un marché et perdre sur un autre : c'est le détail qui compte.
+      </div>
+
+      <div class="panel">
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="5" r="1.7" fill="var(--night-2)" stroke="currentColor" stroke-width="1.5"/><circle cx="13" cy="10" r="1.7" fill="var(--night-2)" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="15" r="1.7" fill="var(--night-2)" stroke="currentColor" stroke-width="1.5"/></svg>Réglages</h2>
+        <div class="controls">
+          <div class="field">
+            <label for="cmpbMode">Sites comparés</label>
+            <select id="cmpbMode"></select>
+          </div>
+          <div class="field">
+            <label for="cmpbEcart">Écart maximal entre relevés</label>
+            <select id="cmpbEcart"></select>
+          </div>
+          <div class="field">
+            <label for="cmpbJours">Matchs</label>
+            <select id="cmpbJours">
+              <option value="7">des 7 derniers jours (et à venir)</option>
+              <option value="14">des 14 derniers jours (et à venir)</option>
+              <option value="30">des 30 derniers jours (et à venir)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="cmpbCat">Type de pari</label>
+            <select id="cmpbCat"></select>
+          </div>
+        </div>
+        <p class="muted" id="cmpbReglageNote" style="margin:.8rem 0 0; font-size:.82rem"></p>
+        <p class="muted" id="cmpbCouverture" style="margin:.5rem 0 0; font-size:.8rem"></p>
+      </div>
+
+      <div id="cmpbVerdict" class="verdict-box neutre" style="display:none"></div>
+
+      <div id="cmpbSansDonnees" class="warn" style="display:none"></div>
+
+      <div id="cmpbResultats">
+        <div class="panel">
+          <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.8 12.2 7.3l5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8l5-.7L10 2.8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Qui offre la meilleure cote, marché par marché</h2>
+          <div class="tablewrap table-scroll">
+            <table id="cmpbMarcheTable" class="cardify cmpb-table">
+              <thead id="cmpbMarcheHead"></thead>
+              <tbody id="cmpbMarcheBody"></tbody>
+            </table>
+          </div>
+          <div class="tablefoot"><span id="cmpbMarcheInfo"></span></div>
+        </div>
+
+        <div class="panel">
+          <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5.5 14.5 14.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="6.8" cy="6.8" r="2.3" stroke="currentColor" stroke-width="1.6"/><circle cx="13.2" cy="13.2" r="2.3" stroke="currentColor" stroke-width="1.6"/></svg>Marge prélevée par chaque site <span class="hint">— moins c'est cher, mieux c'est</span></h2>
+          <div class="tablewrap table-scroll">
+            <table id="cmpbMargeTable" class="cardify cmpb-table">
+              <thead id="cmpbMargeHead"></thead>
+              <tbody id="cmpbMargeBody"></tbody>
+            </table>
+          </div>
+          <div class="tablefoot"><span id="cmpbMargeInfo"></span></div>
+        </div>
+
+        <div class="panel">
+          <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 16.5h14M5 13V9M10 13V5M15 13v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Dans quel cas ? <span class="hint">— le même verdict, découpé autrement</span></h2>
+          <div class="controls" style="margin-bottom:1rem">
+            <div class="field">
+              <label for="cmpbDim">Découper par</label>
+              <select id="cmpbDim">
+                <option value="cote">Tranche de cote (Winamax)</option>
+                <option value="avance">Avance sur le coup d'envoi</option>
+                <option value="selection">Issue pariée</option>
+                <option value="ligue">Compétition</option>
+                <option value="pays">Pays</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cmpbLimite">Afficher</label>
+              <select id="cmpbLimite">
+                <option value="15">15 lignes</option>
+                <option value="30">30 lignes</option>
+                <option value="0">Toutes</option>
+              </select>
+            </div>
+          </div>
+          <p class="muted" id="cmpbDimNote" style="margin:-.3rem 0 .9rem; font-size:.85rem"></p>
+          <div class="tablewrap table-scroll">
+            <table id="cmpbDimTable" class="cardify cmpb-table">
+              <thead id="cmpbDimHead"></thead>
+              <tbody id="cmpbDimBody"></tbody>
+            </table>
+          </div>
+          <div class="tablefoot"><span id="cmpbDimInfo"></span></div>
+        </div>
+
+        <div class="panel">
+          <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3.2 17.4 16H2.6L10 3.2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 8.2v3.6M10 13.9h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Les plus gros écarts <span class="hint">— à vérifier avant de s'y fier</span></h2>
+          <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+            Les cotes les plus éloignées d'un site à l'autre. Un très gros écart est souvent une cote périmée ou
+            un relevé pris à un autre moment, pas une aubaine : l'écart entre les relevés est indiqué.
+          </p>
+          <div class="tablewrap table-scroll">
+            <table id="cmpbEcartTable" class="cardify cmpb-table">
+              <thead id="cmpbEcartHead"></thead>
+              <tbody id="cmpbEcartBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="cmpbAVenirPanel" style="display:none">
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Sur vos paris à venir <span class="hint">— les cotes actuelles</span></h2>
+        <div id="cmpbAVenir"></div>
+      </div>
+
+      <details class="panel cmpb-methode">
+        <summary>Méthode et limites</summary>
+        <ul>
+          <li><strong>Relevés rapprochés dans le temps.</strong> Winamax est relevé plusieurs fois par jour. Pour chaque cote
+            Unibet ou Betclic, on prend le relevé Winamax <em>le plus proche dans le temps</em> (toujours avant le coup d'envoi) ;
+            l'écart d'heure est conservé et le réglage « écart maximal » écarte les comparaisons trop espacées. Sans cela,
+            on mesurerait surtout le mouvement des cotes, pas la différence entre sites.</li>
+          <li><strong>Trois sites.</strong> En mode « les trois sites », seules comptent les cotes disponibles chez les trois,
+            dans un trio de relevés resserré ; en mode « deux sites », toutes les cotes communes aux deux sont utilisées.
+            Les trois modes ne portent donc pas sur exactement les mêmes matchs.</li>
+          <li><strong>Verdict.</strong> Le site « le plus avantageux » est celui dont la cote moyenne est la plus haute. Il n'est
+            annoncé que si l'écart avec le suivant est net (test statistique prudent, qui tient compte du fait que les cotes d'un même
+            match sont liées) ; sinon la page écrit « pas de différence nette ». « Indicatif » = moins de 30 matchs.</li>
+          <li><strong>Écarts plafonnés.</strong> Dans les moyennes, l'écart d'une cote est limité à ×3 / ÷3 pour que quelques
+            cotes aberrantes ne décident pas du résultat (la médiane est donnée en survol).</li>
+          <li><strong>Unibet</strong> plafonne ses scores exacts à 100 : ces cotes ne sont pas comparées, et la marge de son
+            marché « score exact » n'est donc pas calculable. <strong>Betclic</strong> ne relève ses scores exacts que pour
+            quelques matchs par passage : l'échantillon y est plus petit.</li>
+          <li><strong>Ce que la page ne dit pas.</strong> La sélection des paris reste faite sur la cote Winamax (voir « Paris à
+            venir ») ; ce tableau aide seulement à choisir <em>où</em> placer un pari. Il ne tient pas compte des limites de
+            mise, des bonus, de la rapidité de paiement ni du risque de voir un compte limité.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <!-- ================================================================= -->
   <!-- PAGE — TIRS CADRÉS (récap de l'historique collecté)                -->
   <!-- ================================================================= -->
   <section class="page" id="page-tirs" role="tabpanel" aria-labelledby="heading-tirs" tabindex="0">
     <div class="page-heading">
-      <div class="page-heading-title"><p class="page-kicker">DONNÉES · 10</p><h2 class="page-title" id="heading-tirs">Tirs cadrés</h2></div>
+      <div class="page-heading-title"><p class="page-kicker">DONNÉES · 11</p><h2 class="page-title" id="heading-tirs">Tirs cadrés</h2></div>
       <p class="lead">L'historique de tirs cadrés collecté par api_football_collect.py — la piste la plus
       prometteuse pour corriger le modèle, car trois fois plus fréquents que les buts et donc bien
       moins bruités. Cette page montre l'état réel de la collecte, équipe par équipe.</p>
@@ -1913,7 +2068,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261028191457"></script>
-<script src="app.js?v=20261028191351"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261028204643"></script>
+<script src="app.js?v=20261028204604"></script>
 </body>
 </html>
