@@ -2840,3 +2840,50 @@ a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
   #cbkTip .dc-tip-close { display: block; }
 }
 @media (hover: none) { .rec .cote-zone[data-cbk] { cursor: pointer; } }
+
+/* ---------------------------------------------------------------
+   Page « Bookmakers » (28/10/2026) : Winamax / Unibet / Betclic comparés.
+   Les couleurs des sites (.cbk-winamax, .cbk-unibet, .cbk-betclic) sont celles
+   de la carte « meilleure cote » ; elles identifient le site mais le nom est
+   toujours écrit à côté (jamais la couleur seule).
+   --------------------------------------------------------------- */
+.cmpb-table th { white-space: normal; }
+.cmpb-table th .hint {
+  white-space: normal; max-width: 9.5rem; margin-left: auto;
+  display: block; font-weight: 400; color: var(--ink-faint); font-size: .7rem;
+  letter-spacing: 0; text-transform: none; margin-top: .1rem;
+}
+.cmpb-table td.num strong { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.cmpb-table td .mc-sub { margin-top: .1rem; }
+.cmpb-table td.cmpb-gagne { background: rgba(55,217,155,.08); }
+.cmpb-table td.cmpb-gagne strong { color: var(--up); }
+.cmpb-table td .cmpb-bar {
+  display: block; height: 4px; border-radius: 3px; background: rgba(119,134,154,.18);
+  margin: .25rem 0 .15rem auto; max-width: 84px; overflow: hidden;
+}
+.cmpb-table td .cmpb-bar > i { display: block; height: 100%; background: var(--bk, var(--violet)); border-radius: 3px; min-width: 2px; }
+.cmpb-table td.cmpb-verdict { min-width: 10rem; }
+.cmpb-table td.cmpb-verdict .muted { font-size: .82rem; }
+.cmpb-table td .cmpb-best { color: var(--up); font-weight: 700; }
+.cmpb-table td .cmpb-flag {
+  display: inline-block; margin-left: .35rem; padding: .02rem .35rem; border-radius: 5px; font-size: .64rem; font-weight: 700;
+  letter-spacing: .03em; text-transform: uppercase; color: var(--gold); border: 1px solid rgba(244,192,103,.4);
+}
+.cmpb-table tr.cmpb-faible td { opacity: .72; }
+.cmpb-table td.cmpb-indic { color: var(--ink-faint); }
+.cmpb-ligne-sites { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .55rem; }
+.cmpb-avenir-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .8rem; margin: .2rem 0 .9rem; }
+.cmpb-avenir-cell { border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: .7rem .85rem; background: rgba(10,16,26,.3); }
+.cmpb-avenir-cell .v { font: 700 1.5rem var(--font-mono); color: var(--ink); display: block; margin-top: .2rem; }
+.cmpb-avenir-cell .t { font-size: .74rem; color: var(--ink-faint); display: block; }
+.cmpb-methode { margin-top: 1rem; }
+.cmpb-methode > summary { cursor: pointer; font-weight: 600; color: var(--ink-dim); }
+.cmpb-methode > summary:focus-visible { outline: 2px solid var(--violet); outline-offset: 3px; border-radius: 4px; }
+.cmpb-methode ul { margin: .8rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .55rem; color: var(--ink-dim); font-size: .86rem; line-height: 1.5; }
+.cmpb-methode li strong { color: var(--ink); }
+#cmpbVerdict ul { margin: .5rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
+.cmpb-table td .cbk-tag { flex: none; }
+@media (max-width: 640px) {
+  .cmpb-table td .cmpb-bar { display: none; }
+  .cmpb-table td.cmpb-verdict { min-width: 0; }
+}
