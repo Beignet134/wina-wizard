@@ -8233,6 +8233,551 @@ function renderMargeLigues() {
   if (el) { el.addEventListener("input", renderMargeLigues); el.addEventListener("change", renderMargeLigues); }
 });
 
+/* ================= PAGE — BOOKMAKERS (Winamax / Unibet / Betclic) =================
+   Ajoutée le 28/10/2026. Les données (WIZARD_DATA.comparaison_bk) viennent de
+   build_bookmaker_comparison() : pour chaque match commun à Winamax et à un autre
+   site, des « cellules » [colonne, cote Winamax, cote Unibet, cote Betclic, minutes
+   avant le coup d'envoi, écart d'heure Unibet, écart d'heure Betclic], choisies pour
+   que les relevés comparés soient les plus proches possible dans le temps.
+
+   Tout le calcul est fait ici, dans le navigateur, pour que les réglages (sites
+   comparés, écart maximal entre relevés, période, type de pari) répondent
+   immédiatement. Les fonctions « cmpb… » du haut sont pures (aucun accès au DOM) ;
+   celles du bas dessinent la page.
+
+   Mesures :
+   - meilleure cote : part des cas où le site offre la cote la plus haute (égalité
+     partagée à parts égales) ;
+   - écart vs Winamax : moyenne géométrique des rapports de cotes, chaque rapport
+     étant plafonné à ×3 / ÷3 ;
+   - verdict : le site à la cote moyenne la plus haute, annoncé seulement si
+     l'avantage sur le suivant est net (estimateur par grappes : les cotes d'un même
+     match sont liées, les compter comme indépendantes surestimerait la certitude) ;
+   - marge : somme des 1/cote d'un marché complet, moins 1. */
+const CMPB = WIZARD_DATA.comparaison_bk || {};
+const CMPB_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic"};
+const CMPB_MODES = {wu: ["winamax", "unibet"], wb: ["winamax", "betclic"], wub: ["winamax", "unibet", "betclic"]};
+const CMPB_MODES_LIB = {wu: "Winamax et Unibet", wb: "Winamax et Betclic", wub: "Les trois sites"};
+const CMPB_ECARTS = [[30, "30 min"], [60, "1 h"], [180, "3 h"], [360, "6 h"], [720, "12 h"], [1440, "24 h"], [-1, "sans limite"]];
+const CMPB_LS_KEY = "wina_cmpb_v1";
+const CMPB_COLS = CMPB.colonnes || [];
+const CMPB_GROUPES = CMPB.groupes || [];
+const CMPB_ENR = CMPB.matchs || [];
+const CMPB_CLAMP = Math.log(3);     // un écart de cote est plafonné à ×3 / ÷3 dans les moyennes
+const CMPB_T_NET = 2.5;             // seuil du verdict « net » (prudent : beaucoup de lignes sont testées)
+const CMPB_MIN_MATCHS_NET = 8;      // en dessous, jamais de verdict « net »
+const CMPB_MIN_MATCHS_FIABLE = 30;  // en dessous, « indicatif »
+const CMPB_MIN_CELLULES_AUTO = 150; // réglage automatique de l'écart maximal
+const CMPB_TR_COTE = [[1, 1.5, "moins de 1,50"], [1.5, 2, "1,50 à 2"], [2, 3, "2 à 3"], [3, 5, "3 à 5"],
+                      [5, 10, "5 à 10"], [10, 20, "10 à 20"], [20, 50, "20 à 50"], [50, 1e9, "50 et plus"]];
+const CMPB_TR_AVANCE = [[0, 180, "moins de 3 h"], [180, 720, "3 à 12 h"], [720, 1440, "12 à 24 h"],
+                        [1440, 2880, "1 à 2 jours"], [2880, 5760, "2 à 4 jours"], [5760, 1e12, "plus de 4 jours"]];
+const CMPB_ETAT = {mode: "", ecart: 0, jours: 30, cat: "", dim: "cote", limite: 15, auto: true};
+
+const CMPB_COL_GROUPE = [];
+CMPB_GROUPES.forEach(g => g.idx.forEach(i => { CMPB_COL_GROUPE[i] = g; }));
+const CMPB_CELLS = [];
+CMPB_ENR.forEach((m, r) => {
+  m.kd = Date.parse(m.k);
+  m.map = {};
+  (m.c || []).forEach(c => {
+    m.map[c[0]] = c;
+    CMPB_CELLS.push({r, ci: c[0], w: c[1], u: c[2], b: c[3], tw: c[4], du: c[5], db: c[6]});
+  });
+});
+
+/* ---------- outils ---------- */
+const cmpbVal = (c, s) => s === "winamax" ? c.w : (s === "unibet" ? c.u : c.b);
+const cmpbClamp = x => Math.max(-CMPB_CLAMP, Math.min(CMPB_CLAMP, x));
+const cmpbVirg = (x, d) => x.toFixed(d).replace(".", ",");
+const cmpbPc = (x, d = 1) => cmpbVirg(x * 100, d) + " %";
+const cmpbPcS = (x, d = 1) => (x >= 0 ? "+" : "−") + cmpbVirg(Math.abs(x) * 100, d) + " %";
+const cmpbInt = n => Math.round(n).toLocaleString("fr-FR");
+function cmpbDuree(min) {
+  const m = Math.round(Math.abs(min));
+  if (m < 60) return `${m} min`;
+  if (m < 1440) return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+  return `${Math.floor(m / 1440)} j ${Math.floor((m % 1440) / 60)} h`;
+}
+function cmpbLibColonne(ci) {
+  const c = CMPB_COLS[ci] || "";
+  if (c === "homeWin") return "Victoire domicile";
+  if (c === "draw") return "Match nul";
+  if (c === "awayWin") return "Victoire extérieur";
+  if (c === "BTTS Oui") return "Les 2 marquent : oui";
+  if (c === "BTTS Non") return "Les 2 marquent : non";
+  const m = c.match(/^(Plus|Moins) de ([\d.]+)$/);
+  if (m) return `${m[1]} de ${m[2].replace(".", ",")} buts`;
+  return `Score exact ${c}`;
+}
+function cmpbTag(s) {
+  return `<span class="cbk-tag cbk-${s}"><i class="dot"></i>${CMPB_NOMS[s]}</span>`;
+}
+
+/* ---------- sélection des cotes comparables ---------- */
+function cmpbDansReglages(c, etat) {
+  const lim = etat.ecart < 0 ? Infinity : etat.ecart;
+  if (etat.mode === "wu") { if (c.u == null || Math.abs(c.du) > lim) return false; }
+  else if (etat.mode === "wb") { if (c.b == null || Math.abs(c.db) > lim) return false; }
+  else if (c.u == null || c.b == null || Math.abs(c.du) > lim || Math.abs(c.db) > lim) return false;
+  return true;
+}
+function cmpbDansPeriode(r, etat) {
+  if (!(etat.jours > 0)) return true;
+  const kd = CMPB_ENR[r].kd;
+  return !(kd < Date.now() - etat.jours * 86400000);
+}
+function cmpbFiltrer(etat) {
+  return CMPB_CELLS.filter(c => {
+    if (!cmpbDansReglages(c, etat)) return false;
+    if (etat.cat) { const g = CMPB_COL_GROUPE[c.ci]; if (!g || g.cat !== etat.cat) return false; }
+    return cmpbDansPeriode(c.r, etat);
+  });
+}
+
+/* ---------- agrégation ---------- */
+function cmpbAgreger(cells, sites) {
+  const a = {n: cells.length, nm: 0, best: {}, lnd: {}, rel: {}};
+  sites.forEach(s => { a.best[s] = 0; a.lnd[s] = 0; a.rel[s] = []; });
+  const matchs = new Set();
+  cells.forEach(c => {
+    const v = sites.map(s => cmpbVal(c, s));
+    const max = Math.max.apply(null, v);
+    let k = 0;
+    v.forEach(x => { if (x >= max - 1e-9) k++; });
+    sites.forEach((s, i) => {
+      if (v[i] >= max - 1e-9) a.best[s] += 1 / k;
+      a.lnd[s] += cmpbClamp(Math.log(v[i] / c.w));
+      a.rel[s].push(v[i] / c.w - 1);
+    });
+    matchs.add(CMPB_ENR[c.r].i);
+  });
+  a.nm = matchs.size;
+  if (a.n) sites.forEach(s => { a.best[s] /= a.n; a.lnd[s] /= a.n; });
+  return a;
+}
+function cmpbMediane(t) {
+  if (!t.length) return 0;
+  const s = t.slice().sort((x, y) => x - y), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+// Le site à la cote moyenne la plus haute est-il nettement meilleur que le suivant ?
+function cmpbVerdict(cells, sites, a) {
+  if (!a.n || sites.length < 2) return null;
+  const ordre = sites.slice().sort((x, y) => a.lnd[y] - a.lnd[x]);
+  const A = ordre[0], B = ordre[1];
+  const grappes = new Map();
+  let somme = 0;
+  cells.forEach(c => {
+    const d = cmpbClamp(Math.log(cmpbVal(c, A) / cmpbVal(c, B)));
+    somme += d;
+    const o = grappes.get(c.r) || {n: 0, d: 0};
+    o.n++; o.d += d;
+    grappes.set(c.r, o);
+  });
+  const R = grappes.size, theta = somme / cells.length;
+  let ss = 0;
+  grappes.forEach(o => { const e = o.d - theta * o.n; ss += e * e; });
+  const se = R > 1 ? Math.sqrt(ss * R / (R - 1)) / cells.length : Infinity;
+  const t = se > 0 ? theta / se : (theta > 0 ? Infinity : 0);
+  return {gagnant: A, second: B, ecart: Math.exp(theta) - 1, t,
+          net: a.nm >= CMPB_MIN_MATCHS_NET && t >= CMPB_T_NET, indicatif: a.nm < CMPB_MIN_MATCHS_FIABLE};
+}
+
+/* ---------- marges (marchés complets) ---------- */
+function cmpbMarges(etat) {
+  const sites = CMPB_MODES[etat.mode];
+  const lim = etat.ecart < 0 ? Infinity : etat.ecart;
+  const lignes = CMPB_GROUPES.filter(g => !etat.cat || g.cat === etat.cat).map(g => ({
+    g, n: 0, matchs: new Set(), somme: {winamax: 0, unibet: 0, betclic: 0},
+  }));
+  CMPB_ENR.forEach((m, r) => {
+    if (!cmpbDansPeriode(r, etat)) return;
+    lignes.forEach(L => {
+      const cs = L.g.idx.map(i => m.map[i]);
+      if (cs.some(c => !c)) return;
+      // un seul relevé par site sur tout le marché (sinon la somme des probabilités ne veut rien dire)
+      if (cs.some(c => c[4] !== cs[0][4])) return;
+      const marge = {};
+      for (const s of sites) {
+        const col = s === "winamax" ? 1 : (s === "unibet" ? 2 : 3);
+        const dc = s === "unibet" ? 5 : 6;
+        if (cs.some(c => c[col] == null)) return;
+        if (s !== "winamax") {
+          if (cs.some(c => c[dc] !== cs[0][dc]) || Math.abs(cs[0][dc]) > lim) return;
+        }
+        marge[s] = cs.reduce((t, c) => t + 1 / c[col], 0) - 1;
+      }
+      L.n++;
+      L.matchs.add(m.i);
+      sites.forEach(s => { L.somme[s] += marge[s]; });
+    });
+  });
+  return lignes.filter(L => L.n > 0).map(L => {
+    const moy = {};
+    sites.forEach(s => { moy[s] = L.somme[s] / L.n; });
+    return {g: L.g, n: L.n, nm: L.matchs.size, moy};
+  });
+}
+
+/* ---------- découpages ---------- */
+function cmpbDecouper(cells, dim) {
+  const groupes = new Map();
+  const ajouter = (cle, label, ordre, c) => {
+    let o = groupes.get(cle);
+    if (!o) { o = {cle, label, ordre, cells: []}; groupes.set(cle, o); }
+    o.cells.push(c);
+  };
+  cells.forEach(c => {
+    const m = CMPB_ENR[c.r];
+    if (dim === "marche") {
+      const g = CMPB_COL_GROUPE[c.ci];
+      if (g) ajouter(g.id, g.nom, CMPB_GROUPES.indexOf(g), c);
+    } else if (dim === "cote") {
+      const i = CMPB_TR_COTE.findIndex(t => c.w >= t[0] && c.w < t[1]);
+      if (i >= 0) ajouter("c" + i, CMPB_TR_COTE[i][2], i, c);
+    } else if (dim === "avance") {
+      const i = CMPB_TR_AVANCE.findIndex(t => c.tw >= t[0] && c.tw < t[1]);
+      if (i >= 0) ajouter("a" + i, CMPB_TR_AVANCE[i][2], i, c);
+    } else if (dim === "selection") {
+      ajouter("s" + c.ci, cmpbLibColonne(c.ci), c.ci, c);
+    } else if (dim === "ligue") {
+      ajouter(m.p + "|" + m.l, ligueLabel(m.p, m.l) || "Compétition inconnue", 0, c);
+    } else if (dim === "pays") {
+      ajouter(m.p, m.p || "Pays inconnu", 0, c);
+    }
+  });
+  return Array.from(groupes.values());
+}
+
+/* ---------- lignes de tableau ---------- */
+function cmpbEntete(premiere, sites) {
+  return `<tr><th>${premiere}</th><th class="num">Cotes<span class="hint">comparées</span></th>` +
+    sites.map(s => `<th class="num">${CMPB_NOMS[s]}<span class="hint">meilleure cote · écart vs Winamax</span></th>`).join("") +
+    `<th>Le plus avantageux</th></tr>`;
+}
+function cmpbVerdictHtml(v) {
+  if (!v) return '<span class="muted">—</span>';
+  const indic = v.indicatif ? " · indicatif" : "";
+  if (v.net) {
+    return `${cmpbTag(v.gagnant)}<span class="mc-sub">${cmpbPcS(v.ecart)} de cote vs ${CMPB_NOMS[v.second]}${indic}</span>`;
+  }
+  if (Math.abs(v.ecart) < 0.0005) return `<span class="muted">pas de différence</span><span class="mc-sub">cotes identiques en moyenne${indic}</span>`;
+  return `<span class="muted">pas de différence nette</span><span class="mc-sub">${CMPB_NOMS[v.gagnant]} devant de ${cmpbPc(v.ecart)} seulement${indic}</span>`;
+}
+function cmpbLigneVerdict(label, labelCol, cells, sites, extra) {
+  const a = cmpbAgreger(cells, sites);
+  const v = cmpbVerdict(cells, sites, a);
+  const cellSites = sites.map(s => {
+    const gagne = v && v.net && v.gagnant === s;
+    const med = s === "winamax" ? "" : ` title="Médiane : ${cmpbPcS(cmpbMediane(a.rel[s]))}"`;
+    const sub = s === "winamax" ? "référence" : `${cmpbPcS(Math.exp(a.lnd[s]) - 1)} vs Winamax`;
+    return `<td data-label="${CMPB_NOMS[s]}" class="num cbk-${s}${gagne ? " cmpb-gagne" : ""}"${med}>` +
+      `<strong>${cmpbPc(a.best[s], 0)}</strong>` +
+      `<span class="cmpb-bar" aria-hidden="true"><i style="width:${(a.best[s] * 100).toFixed(0)}%"></i></span>` +
+      `<span class="mc-sub">${sub}</span></td>`;
+  }).join("");
+  const faible = a.nm < CMPB_MIN_MATCHS_FIABLE ? " cmpb-faible" : "";
+  return {html: `<tr class="${faible.trim()}"><td data-label="${labelCol}"><strong>${cbkEsc(label)}</strong>${extra || ""}</td>` +
+    `<td data-label="Cotes comparées" class="num">${cmpbInt(a.n)}<span class="mc-sub">${cmpbInt(a.nm)} match${a.nm > 1 ? "s" : ""}</span></td>` +
+    `${cellSites}<td data-label="Le plus avantageux" class="cmpb-verdict">${cmpbVerdictHtml(v)}</td></tr>`, a, v};
+}
+
+/* ---------- état, réglages ---------- */
+function cmpbChargerEtat() {
+  try {
+    const o = JSON.parse(localStorage.getItem(CMPB_LS_KEY) || "null");
+    if (!o) return;
+    if (CMPB_MODES[o.mode]) CMPB_ETAT.mode = o.mode;
+    if (CMPB_ECARTS.some(e => e[0] === o.ecart)) { CMPB_ETAT.ecart = o.ecart; CMPB_ETAT.auto = false; }
+    if ([7, 14, 30].includes(o.jours)) CMPB_ETAT.jours = o.jours;
+    if (typeof o.cat === "string") CMPB_ETAT.cat = o.cat;
+    if (["cote", "avance", "selection", "ligue", "pays"].includes(o.dim)) CMPB_ETAT.dim = o.dim;
+    if ([0, 15, 30].includes(o.limite)) CMPB_ETAT.limite = o.limite;
+  } catch (e) { /* stockage indisponible : réglages par défaut */ }
+}
+function cmpbSauverEtat() {
+  try { localStorage.setItem(CMPB_LS_KEY, JSON.stringify(CMPB_ETAT)); } catch (e) { /* tant pis */ }
+}
+// Écart maximal choisi tout seul : le plus serré qui laisse assez de cotes pour juger.
+function cmpbEcartAuto(mode, jours, cat) {
+  for (const [e] of CMPB_ECARTS) {
+    if (e < 0) return -1;
+    if (cmpbFiltrer({mode, ecart: e, jours, cat}).length >= CMPB_MIN_CELLULES_AUTO) return e;
+  }
+  return -1;
+}
+function cmpbModeAuto() {
+  const n = {};
+  Object.keys(CMPB_MODES).forEach(m => { n[m] = cmpbFiltrer({mode: m, ecart: 360, jours: CMPB_ETAT.jours, cat: ""}).length; });
+  if (n.wub >= 100) return "wub";
+  if (n.wu === 0 && n.wb === 0) {
+    Object.keys(CMPB_MODES).forEach(m => { n[m] = cmpbFiltrer({mode: m, ecart: -1, jours: CMPB_ETAT.jours, cat: ""}).length; });
+  }
+  return n.wb > n.wu ? "wb" : "wu";
+}
+
+/* ---------- dessin ---------- */
+function cmpbRemplirControles() {
+  const selMode = $("cmpbMode");
+  selMode.innerHTML = Object.keys(CMPB_MODES).map(m => {
+    const n = cmpbFiltrer(Object.assign({}, CMPB_ETAT, {mode: m})).length;
+    return `<option value="${m}">${CMPB_MODES_LIB[m]} (${cmpbInt(n)} cotes)</option>`;
+  }).join("");
+  selMode.value = CMPB_ETAT.mode;
+  $("cmpbEcart").innerHTML = CMPB_ECARTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  $("cmpbEcart").value = String(CMPB_ETAT.ecart);
+  $("cmpbJours").value = String(CMPB_ETAT.jours);
+  const cats = [];
+  CMPB_GROUPES.forEach(g => { if (!cats.includes(g.cat)) cats.push(g.cat); });
+  $("cmpbCat").innerHTML = '<option value="">Tous les paris</option>' + cats.map(c => `<option value="${cbkEsc(c)}">${cbkEsc(c)}</option>`).join("");
+  $("cmpbCat").value = CMPB_ETAT.cat;
+  $("cmpbDim").value = CMPB_ETAT.dim;
+  $("cmpbLimite").value = String(CMPB_ETAT.limite);
+}
+
+function cmpbCouverture() {
+  const el = $("cmpbCouverture");
+  const sites = CMPB.sites || {};
+  const morceaux = Object.keys(sites).map(k => {
+    const s = sites[k];
+    if (!s.fichiers) return `${s.nom} : aucun relevé trouvé`;
+    const age = s.dernier ? cbkFmtAge(cbkAgeH(s.dernier)) : "heure inconnue";
+    return `${s.nom} : ${cmpbInt(s.matchs)} matchs relevés, ${cmpbInt(s.apparies)} retrouvés chez Winamax (dernier relevé ${age})`;
+  });
+  const st = CMPB.stats || {};
+  let txt = morceaux.join(" · ");
+  if (st.ecart_median_min != null) txt += ` · écart médian entre deux relevés comparés : ${cmpbDuree(st.ecart_median_min)}`;
+  el.textContent = txt;
+}
+
+function cmpbVerdictGlobal(cells, sites, a, lignesMarche) {
+  // Pas de moyenne globale : elle serait dominée par les marchés qui comptent le plus de cotes (les 25 scores
+  // exacts) et ne dirait rien du 1X2. La synthèse reprend le verdict de chaque marché.
+  const box = $("cmpbVerdict");
+  if (!a.n) { box.style.display = "none"; return; }
+  const parSite = {}, egalite = [];
+  let fiable = true;
+  lignesMarche.forEach(L => {
+    if (L.v && L.v.net) { (parSite[L.v.gagnant] = parSite[L.v.gagnant] || []).push(L.nom + (L.v.indicatif ? " (indicatif)" : "")); if (L.v.indicatif) fiable = false; }
+    else egalite.push(L.nom);
+  });
+  const gagnants = sites.filter(s => parSite[s]);
+  let h = `<strong>En bref.</strong> `;
+  const nets = gagnants.reduce((t, s) => t + parSite[s].length, 0);
+  if (gagnants.length === 1 && nets === 1) {
+    h += `${cmpbInt(a.n)} cotes comparées sur ${cmpbInt(a.nm)} matchs : une seule différence nette apparaît, en faveur de <strong>${CMPB_NOMS[gagnants[0]]}</strong>, sur un marché précis ; ailleurs, rien ne distingue les sites pour l'instant.`;
+  } else if (gagnants.length === 1) {
+    h += `${cmpbInt(a.n)} cotes comparées sur ${cmpbInt(a.nm)} matchs : partout où une différence nette apparaît, c'est <strong>${CMPB_NOMS[gagnants[0]]}</strong> qui offre le plus.`;
+  } else if (gagnants.length > 1) {
+    h += `${cmpbInt(a.n)} cotes comparées sur ${cmpbInt(a.nm)} matchs : <strong>aucun site ne gagne partout</strong>, le meilleur choix dépend du marché.`;
+  } else {
+    h += `${cmpbInt(a.n)} cotes comparées sur ${cmpbInt(a.nm)} matchs : aucun site ne se détache nettement pour l'instant, quel que soit le marché.`;
+  }
+  if (!fiable) h += ` <em>Certains verdicts reposent sur moins de ${CMPB_MIN_MATCHS_FIABLE} matchs : à lire comme des tendances.</em>`;
+  const items = gagnants.map(s => `<li>${cmpbTag(s)} <span>${cbkEsc(parSite[s].join(", "))}</span></li>`);
+  if (egalite.length && (items.length || egalite.length < lignesMarche.length)) {
+    items.push(`<li><span class="muted">Pas de différence nette :</span> <span>${cbkEsc(egalite.join(", "))}</span></li>`);
+  }
+  if (items.length) h += `<ul>${items.join("")}</ul>`;
+  box.className = "verdict-box " + (gagnants.length ? "bon" : "neutre");
+  box.innerHTML = h;
+  box.style.display = "";
+}
+
+function cmpbRenderMarche(cells, sites) {
+  const lignes = cmpbDecouper(cells, "marche").sort((x, y) => x.ordre - y.ordre);
+  $("cmpbMarcheHead").innerHTML = cmpbEntete("Marché", sites);
+  const out = lignes.map(L => {
+    const r = cmpbLigneVerdict(L.label, "Marché", L.cells, sites);
+    return {nom: L.label, v: r.v, html: r.html, n: r.a.n};
+  });
+  $("cmpbMarcheBody").innerHTML = out.map(o => o.html).join("") ||
+    `<tr><td colspan="${sites.length + 3}" class="muted">Aucune cote comparable.</td></tr>`;
+  $("cmpbMarcheInfo").textContent = "Lignes grisées : moins de " + CMPB_MIN_MATCHS_FIABLE + " matchs, lecture indicative.";
+  return out;
+}
+
+function cmpbRenderMarges(sites) {
+  const lignes = cmpbMarges(CMPB_ETAT);
+  $("cmpbMargeHead").innerHTML = `<tr><th>Marché</th><th class="num">Matchs<span class="hint">marché complet</span></th>` +
+    sites.map(s => `<th class="num">${CMPB_NOMS[s]}<span class="hint">marge moyenne</span></th>`).join("") +
+    `<th>Le moins cher</th></tr>`;
+  $("cmpbMargeBody").innerHTML = lignes.map(L => {
+    const ordre = sites.slice().sort((x, y) => L.moy[x] - L.moy[y]);
+    const mini = L.moy[ordre[0]], ecart = L.moy[ordre[1]] - mini;
+    const net = ecart >= 0.003;     // moins de 0,3 point d'écart : égalité
+    const tds = sites.map(s => `<td data-label="${CMPB_NOMS[s]}" class="num${net && s === ordre[0] ? " cmpb-gagne" : ""}"><strong>${cmpbPc(L.moy[s])}</strong></td>`).join("");
+    const verdict = net
+      ? `${cmpbTag(ordre[0])}<span class="mc-sub">${cmpbVirg(ecart * 100, 1)} point${ecart * 100 >= 1.5 ? "s" : ""} de moins que ${CMPB_NOMS[ordre[1]]}</span>`
+      : `<span class="muted">équivalents</span><span class="mc-sub">moins de 0,3 point d'écart</span>`;
+    return `<tr class="${L.nm < CMPB_MIN_MATCHS_FIABLE ? "cmpb-faible" : ""}"><td data-label="Marché"><strong>${cbkEsc(L.g.nom)}</strong></td>` +
+      `<td data-label="Matchs" class="num">${cmpbInt(L.nm)}</td>${tds}<td data-label="Le moins cher" class="cmpb-verdict">${verdict}</td></tr>`;
+  }).join("") || `<tr><td colspan="${sites.length + 3}" class="muted">Aucun marché complet relevé au même moment chez les sites comparés.</td></tr>`;
+  const pl = CMPB_ETAT.cat === "" || CMPB_ETAT.cat === "Score exact";
+  $("cmpbMargeInfo").textContent = "Marge = somme des 1/cote de toutes les issues du marché, moins 1, sur un même relevé." +
+    (pl && sites.includes("unibet") ? " Score exact Unibet : cotes plafonnées à 100, marge non calculable." : "");
+}
+
+function cmpbRenderDim(cells, sites) {
+  const dim = CMPB_ETAT.dim;
+  const noms = {cote: "Tranche de cote", avance: "Avance sur le coup d'envoi", selection: "Issue pariée", ligue: "Compétition", pays: "Pays"};
+  const notes = {
+    cote: "Tranches définies sur la cote Winamax : les favoris (cotes basses) et les outsiders (cotes hautes) ne sont pas servis de la même façon.",
+    avance: "Temps entre le relevé Winamax et le coup d'envoi : la politique de cotes d'un site peut différer tôt dans la semaine et juste avant le match.",
+    selection: "Chaque issue séparément : victoire domicile, nul, Plus de 2,5 buts, tel score exact…",
+    ligue: "Seules les compétitions avec au moins 3 matchs comparés sont listées, les plus fournies d'abord.",
+    pays: "Seuls les pays avec au moins 3 matchs comparés sont listés, les plus fournis d'abord.",
+  };
+  $("cmpbDimNote").textContent = notes[dim];
+  $("cmpbDimHead").innerHTML = cmpbEntete(noms[dim], sites);
+  let groupes = cmpbDecouper(cells, dim);
+  const parN = dim === "ligue" || dim === "pays" || dim === "selection";
+  let rows = groupes.map(L => {
+    const r = cmpbLigneVerdict(L.label, noms[dim], L.cells, sites);
+    return {L, r};
+  });
+  if (dim === "ligue" || dim === "pays") rows = rows.filter(o => o.r.a.nm >= 3);
+  rows.sort((x, y) => parN ? (y.r.a.n - x.r.a.n) : (x.L.ordre - y.L.ordre));
+  const total = rows.length;
+  if (CMPB_ETAT.limite > 0) rows = rows.slice(0, CMPB_ETAT.limite);
+  $("cmpbDimBody").innerHTML = rows.map(o => o.r.html).join("") ||
+    `<tr><td colspan="${sites.length + 3}" class="muted">Pas assez de cotes comparables pour ce découpage.</td></tr>`;
+  $("cmpbDimInfo").textContent = `${rows.length} ligne${rows.length > 1 ? "s" : ""} affichée${rows.length > 1 ? "s" : ""} sur ${total}`;
+}
+
+function cmpbRenderEcarts(cells, sites) {
+  $("cmpbEcartHead").innerHTML = `<tr><th>Match</th><th>Pari</th>` +
+    sites.map(s => `<th class="num">${CMPB_NOMS[s]}</th>`).join("") + `<th class="num">Écart</th><th>Relevés</th></tr>`;
+  const lignes = cells.map(c => {
+    const v = sites.map(s => cmpbVal(c, s));
+    const mx = Math.max.apply(null, v), mn = Math.min.apply(null, v);
+    return {c, v, mx, ratio: mx / mn - 1};
+  }).sort((x, y) => y.ratio - x.ratio);
+  const par = new Map(), choisies = [];
+  for (const L of lignes) {
+    const k = L.c.r, n = par.get(k) || 0;
+    if (n >= 2) continue;
+    par.set(k, n + 1);
+    choisies.push(L);
+    if (choisies.length >= (window.matchMedia && window.matchMedia("(max-width: 640px)").matches ? 8 : 15)) break;
+  }
+  $("cmpbEcartBody").innerHTML = choisies.map(L => {
+    const m = CMPB_ENR[L.c.r], g = CMPB_COL_GROUPE[L.c.ci];
+    const seuil = g && g.cat === "Score exact" ? CBK_SEUIL_INHABITUEL_SE : CBK_SEUIL_INHABITUEL;
+    const cotes = sites.map((s, i) => `<td data-label="${CMPB_NOMS[s]}" class="num">${L.v[i] >= L.mx - 1e-9 ? `<span class="cmpb-best">${L.v[i].toFixed(2)}</span>` : L.v[i].toFixed(2)}</td>`).join("");
+    const ecarts = [];
+    if (sites.includes("unibet") && L.c.du != null) ecarts.push(Math.abs(L.c.du));
+    if (sites.includes("betclic") && L.c.db != null) ecarts.push(Math.abs(L.c.db));
+    const gap = ecarts.length ? Math.max.apply(null, ecarts) : 0;
+    return `<tr><td data-label="Match"><strong>${cbkEsc(m.m)}</strong><span class="mc-sub">${cbkEsc(fmtKickoff(m.k))} · ${cbkEsc(ligueLabel(m.p, m.l))}</span></td>` +
+      `<td data-label="Pari">${cbkEsc(cmpbLibColonne(L.c.ci))}</td>${cotes}` +
+      `<td data-label="Écart" class="num"><strong>${cmpbPcS(L.ratio, 0)}</strong>${L.ratio > seuil ? '<span class="cmpb-flag">inhabituel</span>' : ""}</td>` +
+      `<td data-label="Relevés" class="cmpb-indic">${cmpbDuree(gap)} d'écart<span class="mc-sub">${cmpbDuree(L.c.tw)} avant le match</span></td></tr>`;
+  }).join("") || `<tr><td colspan="${sites.length + 4}" class="muted">Aucune cote comparable.</td></tr>`;
+}
+
+function cmpbRenderAVenir() {
+  const panel = $("cmpbAVenirPanel"), box = $("cmpbAVenir");
+  let liste = [];
+  try { liste = (typeof UPCOMING_COMPLET !== "undefined" ? UPCOMING_COMPLET : []).filter(v => v.cb && v.cb.length); } catch (e) { liste = []; }
+  if (!liste.length) { panel.style.display = "none"; return; }
+  const comptes = {winamax: 0, unibet: 0, betclic: 0};
+  let n = 0, gains = [], autres = [], inhabituels = 0;
+  liste.forEach(v => {
+    let a = null;
+    try { a = cbkAnalyser(v, v); } catch (e) { a = null; }
+    if (!a) return;
+    n++;
+    comptes[a.best.bk] = (comptes[a.best.bk] || 0) + 1;
+    gains.push(a.gain);
+    if (a.best !== a.ref) autres.push(a.gain);
+    if (a.inhabituel) inhabituels++;
+  });
+  if (!n) { panel.style.display = "none"; return; }
+  const moy = t => t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0;
+  const cell = (titre, valeur) => `<div class="cmpb-avenir-cell"><span class="t">${titre}</span><span class="v">${valeur}</span></div>`;
+  box.innerHTML = `<div class="cmpb-avenir-grid">` +
+    cell("Paris à venir comparés", cmpbInt(n)) +
+    Object.keys(comptes).filter(s => comptes[s] > 0 || s === "winamax").map(s => cell(`Meilleure cote chez ${CMPB_NOMS[s]}`, `${cmpbInt(comptes[s])} <span class="t" style="display:inline">(${cmpbPc(comptes[s] / n, 0)})</span>`)).join("") +
+    cell("Gain de cote moyen", cmpbPcS(moy(gains))) +
+    `</div><p class="muted" style="margin:0; font-size:.85rem">` +
+    `Sur les paris actuellement proposés, jouer chez le site qui offre la meilleure cote apporte en moyenne ${cmpbPcS(moy(gains))} de cote par rapport à Winamax (relevés de plus de ${CBK_ETAT.ageMax} h ignorés, réglage de la page « Paris à venir »)` +
+    (autres.length ? ` (${cmpbPcS(moy(autres))} quand un autre site est meilleur, ce qui arrive dans ${cmpbPc(autres.length / n, 0)} des cas)` : "") +
+    (inhabituels ? `. ${cmpbInt(inhabituels)} écart${inhabituels > 1 ? "s" : ""} inhabituel${inhabituels > 1 ? "s" : ""} (souvent une cote périmée) : à vérifier sur la carte avant de jouer` : "") +
+    `.</p>`;
+  panel.style.display = "";
+}
+
+function renderBookmakers() {
+  if (!$("page-bookmakers")) return;
+  const vide = $("cmpbVide"), corps = $("cmpbCorps");
+  if (!CMPB_CELLS.length) {
+    const st = CMPB.sites || {};
+    const sansReleve = Object.keys(st).filter(k => !st[k].fichiers).map(k => st[k].nom);
+    vide.innerHTML = "<strong>Pas encore de comparaison possible.</strong> " +
+      (CMPB.version
+        ? "Aucun match n'a pu être rapproché entre Winamax et un autre site" + (sansReleve.length ? ` (aucun relevé trouvé pour ${sansReleve.join(" et ")})` : "") +
+          ". Lancez les collecteurs Unibet et Betclic, puis relancez le wizard."
+        : "Ces données apparaissent à la prochaine exécution complète du wizard (<code>python wina_wizard.py --complet</code>), une fois les relevés Unibet et Betclic collectés.");
+    vide.style.display = ""; corps.style.display = "none";
+    return;
+  }
+  vide.style.display = "none"; corps.style.display = "";
+  if (!CMPB_ETAT.mode) CMPB_ETAT.mode = cmpbModeAuto();
+  if (CMPB_ETAT.auto) CMPB_ETAT.ecart = cmpbEcartAuto(CMPB_ETAT.mode, CMPB_ETAT.jours, CMPB_ETAT.cat);
+  cmpbRemplirControles();
+  cmpbCouverture();
+  const sites = CMPB_MODES[CMPB_ETAT.mode];
+  const note = $("cmpbReglageNote");
+  note.textContent = CMPB_ETAT.auto
+    ? (CMPB_ETAT.ecart < 0
+        ? "Écart maximal réglé sur « sans limite » : les relevés sont encore trop espacés pour exiger mieux. Les écarts mesurés mélangent alors la différence entre sites et le mouvement des cotes dans le temps."
+        : "Écart maximal choisi automatiquement : le plus serré qui laisse assez de cotes à comparer. Modifiez-le pour voir autre chose.")
+    : (CMPB_ETAT.ecart < 0
+        ? "Sans limite d'écart, la comparaison mélange la différence entre sites et le mouvement des cotes dans le temps."
+        : "Seules les cotes relevées à moins de " + (CMPB_ECARTS.find(e => e[0] === CMPB_ETAT.ecart) || [0, ""])[1] + " d'écart du relevé Winamax sont comparées.");
+  const cells = cmpbFiltrer(CMPB_ETAT);
+  const sans = $("cmpbSansDonnees"), res = $("cmpbResultats");
+  if (!cells.length) {
+    const plus = cmpbFiltrer(Object.assign({}, CMPB_ETAT, {ecart: -1}));
+    const mini = plus.length ? Math.min.apply(null, plus.map(c => Math.min(c.du == null ? 1e9 : Math.abs(c.du), c.db == null ? 1e9 : Math.abs(c.db)))) : null;
+    sans.innerHTML = "<strong>Aucune cote comparable avec ces réglages.</strong>" +
+      (mini != null && mini < 1e9 ? ` Le plus petit écart disponible entre deux relevés est de ${cmpbDuree(mini)} : élargissez l'« écart maximal ».` : " Essayez un autre choix de sites ou de type de pari.");
+    sans.style.display = ""; res.style.display = "none";
+    $("cmpbVerdict").style.display = "none";
+    cmpbRenderAVenir();
+    return;
+  }
+  sans.style.display = "none"; res.style.display = "";
+  const a = cmpbAgreger(cells, sites);
+  const lignesMarche = cmpbRenderMarche(cells, sites);
+  cmpbVerdictGlobal(cells, sites, a, lignesMarche);
+  cmpbRenderMarges(sites);
+  cmpbRenderDim(cells, sites);
+  cmpbRenderEcarts(cells, sites);
+  cmpbRenderAVenir();
+}
+
+(function brancherBookmakers() {
+  cmpbChargerEtat();
+  const lire = () => {
+    const mode = $("cmpbMode").value, ecart = parseInt($("cmpbEcart").value, 10);
+    if (mode !== CMPB_ETAT.mode) { CMPB_ETAT.mode = mode; CMPB_ETAT.auto = true; CMPB_ETAT.ecart = 0; }
+    else if (ecart !== CMPB_ETAT.ecart) { CMPB_ETAT.ecart = ecart; CMPB_ETAT.auto = false; }
+    CMPB_ETAT.jours = parseInt($("cmpbJours").value, 10);
+    CMPB_ETAT.cat = $("cmpbCat").value;
+    CMPB_ETAT.dim = $("cmpbDim").value;
+    CMPB_ETAT.limite = parseInt($("cmpbLimite").value, 10);
+    cmpbSauverEtat();
+    renderBookmakers();
+  };
+  ["cmpbMode", "cmpbEcart", "cmpbJours", "cmpbCat", "cmpbDim", "cmpbLimite"].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener("change", lire);
+  });
+})();
+
 /* ================= PAGE — BANKROLL ================= */
 // Rapproche chaque pari coché « joué » du RÉSULTAT RÉEL du match, puis calcule
 // le gain avec la cote que vous avez réellement obtenue.
@@ -9868,6 +10413,7 @@ renderBacktest();
 drawShotsCoverage();
 renderTirsPage();
 renderMarges();
+try { renderBookmakers(); } catch (e) { console.error("Page Bookmakers :", e); }
 
 /* ================= SYNCHRONISATION DES PARIS JOUÉS (GitHub) =================
    Ajoutée le 24/10/2026. Avant : « Marquer comme joué » ne gardait la coche que
