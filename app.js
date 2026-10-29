@@ -2010,10 +2010,18 @@ function cbkAnalyser(v, v0) {
     marge: src.mw != null ? src.mw : null, label: src.lm || "marge",
     url: src.match_id ? `https://www.winamax.fr/paris-sportifs/match/${src.match_id}` : null,
   };
-  const autres = src.cb.map(q => ({
-    bk: q.b, nom: CBK_NOMS[q.b] || q.b, cote: q.c, saisie: false, plafond: !!q.p,
-    age: cbkAgeH(q.t), marge: q.m != null ? q.m : null, label: src.lm || "marge", url: q.u || null,
-  }));
+  const tW = src.tw ? Date.parse(src.tw) : NaN;
+  const autres = src.cb.map(q => {
+    const tQ = Date.parse(q.t);
+    return {
+      bk: q.b, nom: CBK_NOMS[q.b] || q.b, cote: q.c, saisie: false, plafond: !!q.p,
+      age: cbkAgeH(q.t), marge: q.m != null ? q.m : null, label: src.lm || "marge", url: q.u || null,
+      // Probabilités sans marge de cette issue (site / Winamax) et désaccord du match (1X2), calculés par Python.
+      pSite: q.q != null ? q.q : null, pW: q.w != null ? q.w : null, dm: q.dm != null ? q.dm : null,
+      // Écart entre le relevé de ce site et celui de Winamax : au-delà, on mesure un mouvement de marché, pas un désaccord.
+      ecartH: isFinite(tQ) && isFinite(tW) ? Math.abs(tQ - tW) / 3600000 : null,
+    };
+  });
   const tous = [ref].concat(autres);
   tous.forEach(q => { q.retenue = !q.plafond && (q.age == null || q.age <= CBK_ETAT.ageMax); });
   let best = ref;
@@ -2024,13 +2032,113 @@ function cbkAnalyser(v, v0) {
   const seuil = v.categorie === "Score exact" ? CBK_SEUIL_INHABITUEL_SE : CBK_SEUIL_INHABITUEL;
   const gain = best.cote / ref.cote - 1;
   const evRef = (v.ev_aff ?? v.ev);
+
+  // Meilleur prix « fiable » : même choix que ci-dessus, sans les cotes dont l'écart est inhabituel
+  // (souvent une cote périmée). C'est lui qui sert aux FILTRES, pour qu'un filtre « gain de cote » ou
+  // « espérance au meilleur prix » ne remonte pas en tête des cotes mortes.
+  let bestF = ref;
+  autres.forEach(q => {
+    if (!q.retenue || q.cote / ref.cote - 1 > seuil) return;
+    if (!bestF.retenue || q.cote > bestF.cote * (1 + CBK_EGALITE)) bestF = q;
+  });
+
+  // Désaccord : seuls comptent les sites retenus dont le relevé est assez proche de celui de Winamax.
+  const ecartMax = cbkEcartMaxH();
+  autres.forEach(q => {
+    const proche = q.retenue && q.ecartH != null && q.ecartH <= ecartMax;
+    q.mesure = proche && q.pSite != null && q.pW != null;
+    q.dp = q.mesure ? q.pSite - q.pW : null;            // > 0 : ce site donne plus de chances à l'issue que Winamax
+    q.dmOk = proche && q.dm != null;
+  });
+  const mes = autres.filter(q => q.mesure);
+  const dms = autres.filter(q => q.dmOk).map(q => q.dm);
   return {
     tous, ref, best, gain, evRef,
     // espérance = p·cote − 1 : à probabilité égale, elle varie comme la cote.
     evBest: (1 + evRef) * (best.cote / ref.cote) - 1,
     inhabituel: best !== ref && gain > seuil,
     refPerimee: !ref.retenue,
+    bestF, gainF: bestF.cote / ref.cote - 1, evBestF: (1 + evRef) * (bestF.cote / ref.cote) - 1,
+    nMes: mes.length,
+    dpMoy: mes.length ? mes.reduce((t, q) => t + q.dp, 0) / mes.length : null,
+    dpAbsMax: mes.length ? Math.max.apply(null, mes.map(q => Math.abs(q.dp))) : null,
+    dmMax: dms.length ? Math.max.apply(null, dms) : null,
+    ecartMax,
   };
+}
+
+// Écart maximal (heures) entre le relevé d'un site et celui de Winamax pour mesurer un désaccord.
+function cbkEcartMaxH() {
+  const el = document.getElementById("uCbkEcart");
+  const x = el ? parseFloat(el.value) : NaN;
+  return isFinite(x) && x > 0 ? x : 6;
+}
+const cbkPt = x => (x * 100).toFixed(1).replace(".", ",") + " pt";
+const cbkPtSigne = x => (x >= 0 ? "+" : "−") + (Math.abs(x) * 100).toFixed(1).replace(".", ",") + " pt";
+const cbkPc = x => (x * 100).toFixed(1).replace(".", ",") + " %";
+
+/* ---- Filtres « entre bookmakers » (panneau « Filtrer les recommandations ») ----
+   Ils RESTREIGNENT la liste déjà sélectionnée sur la cote Winamax : aucun pari n'entre grâce à eux.
+   Valeurs lues directement dans les contrôles (donc remises à zéro par « Réinitialiser les filtres »). */
+function cbkLireFiltres() {
+  const box = document.getElementById("cbkFiltres");
+  const lire = (id, def) => { const el = document.getElementById(id); return el ? el.value : def; };
+  const f = {
+    ev: parseFloat(lire("uCbkEv", "-999")),
+    gain: parseFloat(lire("uCbkGain", "0")),
+    desac: lire("uCbkDesac", ""),
+    desacSeuil: parseFloat(lire("uCbkDesacSeuil", "0.01")),
+    match: lire("uCbkMatch", ""),
+    matchSeuil: parseFloat(lire("uCbkMatchSeuil", "0.015")),
+  };
+  f.actif = !!box && box.style.display !== "none"
+    && (f.ev > -900 || f.gain > 0 || !!f.desac || !!f.match);
+  return f;
+}
+// Motifs d'échec d'un pari (liste vide = il passe). `a` : résultat de cbkAnalyser (null si aucun autre site ne cote ce pari).
+function cbkFiltresEchecs(a, f, evRef) {
+  const echecs = [];
+  // Sans autre site, le meilleur prix est celui de Winamax : on retombe sur l'espérance de référence.
+  const ev = a ? a.evBestF : evRef;
+  if (f.ev > -900) {
+    if (ev == null) echecs.push({sens: "fixe", texte: "espérance au meilleur prix indisponible"});
+    else if (f.ev === 0 ? ev <= 0 : ev < f.ev) {
+      echecs.push({sens: "fixe", texte: f.ev === 0
+        ? `espérance au meilleur prix ${cbkPct(ev)}, elle doit être positive`
+        : `espérance au meilleur prix ${cbkPct(ev)}, sous le minimum de ${cbkPct(f.ev, 0)}`});
+    }
+  }
+  if (f.gain > 0) {
+    if (!a) echecs.push({sens: "fixe", texte: "aucune cote d'un autre site pour ce pari"});
+    else if (a.gainF < f.gain) {
+      echecs.push({sens: "fixe", texte: a.bestF === a.ref
+        ? `aucun autre site ne paie plus que Winamax (relevés récents, écarts inhabituels exclus)`
+        : `gain de cote ${cbkPct(a.gainF)} chez ${a.bestF.nom}, sous le minimum de ${cbkPct(f.gain, 0)}`});
+    }
+  }
+  if (f.desac) {
+    const seuil = f.desacSeuil;
+    if (!a || a.nMes === 0) echecs.push({sens: "fixe", texte: "désaccord sur l'issue non mesurable (autre site absent, relevé trop ancien ou trop éloigné de celui de Winamax)"});
+    else if (f.desac === "plus" && a.dpMoy < seuil) {
+      echecs.push({sens: "fixe", texte: `les autres sites ne donnent pas plus de chances que Winamax à cette issue (écart ${cbkPtSigne(a.dpMoy)}, minimum +${cbkPt(seuil)})`});
+    } else if (f.desac === "moins" && a.dpMoy > -seuil) {
+      echecs.push({sens: "fixe", texte: `les autres sites ne donnent pas moins de chances que Winamax à cette issue (écart ${cbkPtSigne(a.dpMoy)}, minimum −${cbkPt(seuil)})`});
+    } else if (f.desac === "ecart" && a.dpAbsMax < seuil) {
+      echecs.push({sens: "fixe", texte: `écart de probabilité entre les sites de ${cbkPt(a.dpAbsMax)} seulement, sous le seuil de ${cbkPt(seuil)}`});
+    } else if (f.desac === "accord" && a.dpAbsMax >= seuil) {
+      echecs.push({sens: "fixe", texte: `les sites ne sont pas d'accord sur cette issue (écart ${cbkPt(a.dpAbsMax)}, seuil ${cbkPt(seuil)})`});
+    }
+  }
+  if (f.match) {
+    const seuil = f.matchSeuil;
+    if (!a || a.dmMax == null) echecs.push({sens: "fixe", texte: "désaccord du match non mesurable (1X2 d'un autre site absent, trop ancien ou trop éloigné de celui de Winamax)"});
+    else if (f.match === "agite" && a.dmMax < seuil) {
+      echecs.push({sens: "fixe", texte: `désaccord du match de ${cbkPt(a.dmMax)} seulement (1X2), sous le seuil de ${cbkPt(seuil)}`});
+    } else if (f.match === "calme" && a.dmMax >= seuil) {
+      echecs.push({sens: "fixe", texte: `désaccord du match de ${cbkPt(a.dmMax)} (1X2), au-dessus du seuil de ${cbkPt(seuil)}`});
+    }
+  }
+  return echecs;
 }
 
 // Cote affichée chez un site donné (celle qu'on voit sur la carte) : sert de
@@ -2087,6 +2195,18 @@ function cbkRendu(a, v, coteNumHtml, coteBtnsHtml) {
     gain = `<div class="rec-gain none">${cbkEsc(a.ref.nom)} reste la meilleure cote retenue.</div>`;
   }
 
+  // Désaccord entre les sites (probabilités sans marge) : information, jamais un critère de sélection.
+  if (best && (a.nMes || a.dmMax != null)) {
+    const morceaux = a.tous.filter(x => x.mesure).map(x =>
+      `${cbkEsc(x.nom)} <strong>${cbkPc(x.pSite)}</strong> contre ${cbkPc(x.pW)} chez Winamax (${cbkPtSigne(x.dp)})`);
+    const txt = [];
+    if (morceaux.length) {
+      txt.push(`Probabilité sans marge de cette issue${v.categorie === "Score exact" ? " (rapportée aux scores de la grille, hors « Autre »)" : ""} : ${morceaux.join(" · ")}`);
+    }
+    if (a.dmMax != null) txt.push(`désaccord du match (1X2) : <strong>${cbkPt(a.dmMax)}</strong>`);
+    gain += `<div class="rec-ref cbk-desac">${txt.join(" — ")}</div>`;
+  }
+
   const avert = [];
   if (best && a.inhabituel) {
     avert.push(`<div class="rec-pred neutral"><span class="pred-icon" aria-hidden="true">!</span>`
@@ -2140,6 +2260,10 @@ function cbkContenuTip(ctx) {
     const ecartTxt = q === a.ref ? "" : `<span class="cbk-gap ${ecart > 0.0005 ? "pos" : ecart < -0.0005 ? "neg" : ""}">${cbkPct(ecart)}</span>`;
     let l2 = q.saisie ? "saisie à la main" : `relevé ${cbkFmtAge(q.age)}`;
     if (q.marge != null) l2 += ` · ${cbkEsc(q.label)} ${(q.marge * 100).toFixed(1).replace(".", ",")} %`;
+    if (q.mesure) l2 += ` · probabilité sans marge ${cbkPc(q.pSite)} (Winamax ${cbkPc(q.pW)}, ${cbkPtSigne(q.dp)})`;
+    else if (q.retenue && q.pSite != null && q.ecartH != null && q.ecartH > a.ecartMax) {
+      l2 += ` · désaccord non mesuré : relevé à ${Math.round(q.ecartH)} h de celui de Winamax`;
+    }
     if (q.plafond) l2 = `cote plafonnée à 100 par ${cbkEsc(q.nom)} : non comparable`;
     else if (!q.retenue) l2 = `relevé trop ancien (${cbkFmtAge(q.age)}) : non retenu`;
     return `<div class="cbk-row${q.retenue ? "" : " off"}">
@@ -2150,6 +2274,7 @@ function cbkContenuTip(ctx) {
     <div class="dc-tip-head">${cbkEsc(ctx.v.colonne)}</div>
     <div class="dc-tip-sub">${cbkEsc(ctx.v.match)} · ${cbkEsc(ctx.v.categorie)}</div>
     ${lignes}
+    ${a.dmMax != null ? `<div class="dc-tip-note">Désaccord du match : <strong>${cbkPt(a.dmMax)}</strong> (plus grand écart de probabilité sans marge sur une issue du 1X2).</div>` : ""}
     <div class="dc-tip-note">La sélection du pari reste faite sur la cote de référence (${cbkEsc(a.ref.nom)}) : edge, espérance et filtres
       ne changent pas. La meilleure cote sert uniquement à choisir où placer le pari. Les cotes bougent vite : vérifiez-la sur le site avant de parier.</div>`;
 }
@@ -2201,6 +2326,16 @@ function cbkMajControles() {
   if (!box) return;
   const avec = UPCOMING_COMPLET.filter(v => v.cb && v.cb.length);
   box.style.display = avec.length ? "" : "none";
+  // Filtres « entre bookmakers » (panneau de filtres) et tri « espérance au meilleur prix » : seulement s'il existe des cotes d'un autre site.
+  const fbox = document.getElementById("cbkFiltres");
+  if (fbox) fbox.style.display = avec.length ? "" : "none";
+  const tri = document.getElementById("uSort");
+  if (tri && avec.length && !tri.querySelector('option[value="evbest"]')) {
+    const o = document.createElement("option");
+    o.value = "evbest";
+    o.textContent = "Espérance au meilleur prix (décroissant)";
+    tri.appendChild(o);
+  }
   if (!avec.length) return;
   document.getElementById("cbkModeBest").setAttribute("aria-pressed", CBK_ETAT.mode === "best" ? "true" : "false");
   document.getElementById("cbkModeRef").setAttribute("aria-pressed", CBK_ETAT.mode === "ref" ? "true" : "false");
@@ -2411,6 +2546,7 @@ function renderUpcoming() {
     return {min, max};
   };
 
+  const filtresCb = cbkLireFiltres();
   let rows = source.map(calculerAff).filter(v => {
     // Une carte à cote SAISIE ne disparaît jamais sur un critère qui dépend de
     // la cote : elle reste affichée avec le motif (voir controlesCote). Les
@@ -2421,6 +2557,15 @@ function renderUpcoming() {
     if (exclSel && estSelectionNationale(v.pays, v.ligue)) return false;
     const echecs = controlesCote(v);
     if (echecs.length && v.cote_manuelle == null) return false;   // cote capturée : on écarte, comme avant
+    // Filtres « entre bookmakers » : ils ne dépendent pas de la cote Winamax par une relation monotone (voir
+    // plageCotePour, qui les ignore) ; une carte à cote saisie qui ne les passe plus reste affichée, avec le motif.
+    if (filtresCb.actif) {
+      const echCb = cbkFiltresEchecs(cbkAnalyser(v, UPCOMING_PAR_CLE.get(betKey(v)) || v), filtresCb, v.ev_aff ?? v.ev);
+      if (echCb.length) {
+        if (v.cote_manuelle == null) return false;
+        echCb.forEach(e => echecs.push(e));
+      }
+    }
     // Marchés de queue — même portée (Intervalle de buts / Plus-Moins de
     // buts uniquement) que sur la page DC rétrospectif (btFiltered), lus
     // depuis le bloc de CETTE catégorie ; voir MARCHES_QUEUE en tête de fichier.
@@ -2501,7 +2646,16 @@ function renderUpcoming() {
     });
   }
 
+  // Tri « espérance au meilleur prix » : calculée une fois par pari (cbkAnalyser n'est pas gratuit).
+  const evMeilleurPrix = new Map();
+  if (sortBy === "evbest") {
+    rows.forEach(v => {
+      const a = cbkAnalyser(v, UPCOMING_PAR_CLE.get(betKey(v)) || v);
+      evMeilleurPrix.set(v, a ? a.evBestF : (v.ev_aff ?? v.ev));
+    });
+  }
   rows.sort((a,b) => {
+    if (sortBy==="evbest") return evMeilleurPrix.get(b) - evMeilleurPrix.get(a);
     if (sortBy==="kickoff") return String(a.kickoff).localeCompare(String(b.kickoff));
     // Trie sur les valeurs AFFICHÉES (mélangées si α<1), sinon l'ordre
     // contredirait les chiffres visibles sur les cartes.
@@ -3174,6 +3328,13 @@ function attachPredTooltips() {
 }
 ["uStake","uSort","uDevig","uAlpha","uForces","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
   const el=$(id); el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
+});
+// Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
+["uCbkEv","uCbkGain","uCbkDesac","uCbkDesacSeuil","uCbkMatch","uCbkMatchSeuil","uCbkEcart"].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  const maj = () => { cbkFermerTip(); renderUpcoming(); };
+  el.addEventListener("input", maj); el.addEventListener("change", maj);
 });
 
 // --- Liaison des filtres communs entre "DC rétrospectif" et "Paris à
