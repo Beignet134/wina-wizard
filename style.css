@@ -2887,3 +2887,376 @@ a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
   .cmpb-table td .cmpb-bar { display: none; }
   .cmpb-table td.cmpb-verdict { min-width: 0; }
 }
+
+/* =====================================================================
+   REFONTE MOBILE — 30/10/2026
+   Placé EN FIN de feuille : il prime sur les affinages précédents sans
+   les réécrire. Tout ce qui change l'affichage est dans la requête
+   ≤ 720 px (le même seuil que la transformation des tableaux en
+   cartes) : l'affichage bureau reste strictement inchangé.
+
+   Principes :
+   - le contenu utile avant le texte d'aide : titre court, explications
+     repliées (« Lire la suite »), réglages repliés derrière une ligne
+     « Filtres · n modifiés » ;
+   - une navigation à portée du pouce (barre basse + feuille « Plus »)
+     à la place d'une barre d'onglets qui défile et en cache huit ;
+   - un tableau = une carte COMPACTE (titre, chiffre clé, détails en
+     ligne) et 30 lignes à la fois, au lieu de 400 cartes de 320 px ;
+   - cibles tactiles de 44 px, libellés de champs lisibles (pas de
+     capitales espacées), 16 px dans les champs (pas de zoom iOS).
+   ===================================================================== */
+.mnav, .msheet, .m-ftog, .m-more, .m-voir-plus, .m-tri { display: none; }
+#metaAgo:empty { display: none; }
+#metaAgo::before { content: "("; }
+#metaAgo::after { content: ")"; }
+
+@media (max-width: 720px) {
+  :root {
+    --m-gutter: 14px;
+    --m-nav-h: 62px;
+    --m-safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  body { font-size: 15px; line-height: 1.5; }
+  .wrap { padding: 0 var(--m-gutter) calc(var(--m-nav-h) + var(--m-safe-b) + 32px); }
+
+  /* ---------- En-tête : une seule ligne, sans la barre d'onglets ---------- */
+  .topbar {
+    margin: 0 calc(-1 * var(--m-gutter)) .85rem;
+    padding: env(safe-area-inset-top, 0px) var(--m-gutter) 0;
+    background: rgba(10, 16, 26, .97);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    box-shadow: 0 1px 0 var(--line-soft);
+  }
+  header { flex-wrap: nowrap; gap: .5rem; padding: .55rem 0; }
+  .brand { gap: .55rem; min-width: 0; }
+  .brand-mark { width: 30px; height: 30px; flex: none; }
+  .brand h1 { font-size: 1.02rem; }
+  .brand-kicker { display: none; }
+  .freshness { flex: none; padding: .26rem .65rem; font-size: .7rem; white-space: nowrap; }
+  #metaGenerated { display: none; }
+  .freshness.no-rel #metaGenerated { display: inline; }
+  #metaAgo::before, #metaAgo::after { content: none; }
+  .tabs { display: none; }
+
+  /* ---------- Titre de page ---------- */
+  .page-heading { grid-template-columns: 1fr; min-height: 0; gap: .45rem; padding: .1rem 0 .7rem; margin: 0 0 .8rem; }
+  .page-kicker { display: none; }
+  .page-title { font-size: 1.6rem; padding-bottom: .4rem; }
+  .page-heading .lead { padding: .05rem 0 .05rem .75rem; font-size: .84rem; line-height: 1.5; }
+  .m-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+  .m-clamp[hidden] { display: none; }
+  .m-clamp.is-open { display: block; overflow: visible; }
+  .m-more {
+    display: inline-block; appearance: none; background: none; border: 0; cursor: pointer;
+    color: var(--cyan); font: 600 .78rem/1 var(--font-body);
+    padding: .5rem 0; min-height: 34px; margin: 0; justify-self: start;
+  }
+  .m-more[hidden] { display: none; }
+  .page-heading .m-more { margin-top: -.3rem; padding-left: .75rem; }
+  .warn { margin: .8rem 0 .15rem; padding: .7rem .9rem; font-size: .82rem; line-height: 1.5; }
+  .warn + .m-more { display: block; margin: 0 0 .5rem; }
+  .warn + .m-more[hidden] { display: none; }
+  #uCoteAide.m-clamp { margin-top: .8rem; font-size: .76rem; }
+
+  /* ---------- Panneaux ---------- */
+  .panel { margin: .8rem 0; padding: .9rem .9rem 1rem; border-radius: 14px; }
+  .panel h2 { margin: 0 0 .75rem; font-size: 1rem; gap: .4rem; }
+  .panel h2 .hint { display: block; flex-basis: 100%; margin-top: -.1rem; font-size: .74rem; }
+  .panel > .muted, .panel .tablefoot { font-size: .78rem; line-height: 1.45; }
+
+  /* Réglages repliables : un bouton pleine largeur remplace le bloc de champs */
+  .m-ftog {
+    display: flex; align-items: center; gap: .55rem; width: 100%; min-height: 48px; margin: 0;
+    padding: .55rem .8rem; cursor: pointer; text-align: left;
+    background: var(--night-3); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--ink); font: 600 .88rem/1.2 var(--font-body);
+  }
+  .m-ftog:active { background: var(--night-2); }
+  .m-ftog svg { width: 20px; height: 20px; flex: none; color: var(--violet); }
+  .m-ftog-t { flex: 1 1 auto; min-width: 0; }
+  .m-ftog-ch {
+    flex: none; width: 9px; height: 9px; margin: 0 .25rem 0 .1rem;
+    border-right: 2px solid var(--ink-faint); border-bottom: 2px solid var(--ink-faint);
+    transform: rotate(45deg) translateY(-2px); transition: transform .2s ease;
+  }
+  .m-ftog[aria-expanded="true"] { border-color: rgba(84, 217, 206, .45); margin-bottom: .85rem; }
+  .m-ftog[aria-expanded="true"] .m-ftog-ch { transform: rotate(-135deg) translateY(-2px); border-color: var(--cyan); }
+  .m-ftog:focus-visible, .m-more:focus-visible, .m-voir-plus:focus-visible, .mnav-btn:focus-visible, .msheet-item:focus-visible {
+    outline: 2px solid var(--cyan); outline-offset: 2px;
+  }
+  .m-badge {
+    flex: none; padding: .12rem .5rem; border-radius: 999px;
+    font: 600 .68rem/1.3 var(--font-body); color: var(--cyan);
+    background: rgba(84, 217, 206, .12); border: 1px solid rgba(84, 217, 206, .34);
+  }
+  .m-badge[hidden] { display: none; }
+  .m-folded .m-fc { display: none !important; }
+  .m-folded > .kpis { margin-top: .75rem; }
+  .panel h2.m-h2-off { display: none; }
+  /* Les cartes n'ont pas besoin du cadre de défilement du tableau d'origine */
+  .tablewrap:has(> table.cardify) { border: 0; background: none; box-shadow: none; border-radius: 0; padding: 0; overflow: visible; }
+
+  /* ---------- Champs : deux colonnes, libellés lisibles, 44 px ---------- */
+  .controls { grid-template-columns: 1fr 1fr; gap: .7rem .6rem; align-items: end; }
+  .field-wide { min-width: 0; }
+  .controls > .field-wide, .controls > .slider-pair-row, .controls > .mc-strat-field,
+  .controls > .field:has(input[type="date"]) { grid-column: 1 / -1; min-width: 0; }
+  .controls > .field:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .field label { font-size: .76rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink-dim); margin-bottom: .28rem; }
+  .field input, .field select { min-height: 44px; font-size: 16px; padding: .5rem .65rem; border-radius: 10px; }
+  .chk-cat, .msel-btn { min-height: 44px; }
+  .btn { min-height: 44px; }
+  .filter-reset-row .btn { width: 100%; justify-content: center; }
+  .filter-reset-hint { display: none; }
+
+  /* ---------- Indicateurs ---------- */
+  .kpis { gap: .5rem; margin-top: .75rem; }
+  .kpi { padding: .6rem .7rem; border-radius: 12px; }
+  .kpi .k { font-size: .62rem; letter-spacing: .04em; }
+  .kpi .v { font-size: 1.12rem; }
+  .kpi .kpi-sub { font-size: .66rem; margin-top: .2rem; }
+
+  /* ---------- Sélecteurs de période / de mode : une ligne qui défile ---------- */
+  .jour-modes { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .3rem; max-width: 100%; }
+  .jour-modes::-webkit-scrollbar { display: none; }
+  .jour-modes > * { flex: none; white-space: nowrap; min-height: 38px; }
+
+  /* ---------- Graphiques en SVG : textes à taille réelle ---------- */
+  .chart-tip { font-size: 11px; }
+  .chart-badge { font-size: 10px; }
+
+  /* ---------- Tableaux : une ligne = une carte compacte ---------- */
+  table.cardify, table.cardify tbody { display: block; width: 100%; }
+  table.cardify thead { display: none; }
+  table.cardify tr {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .14rem .6rem;
+    width: 100%; padding: .62rem .78rem .68rem; margin: 0 0 .45rem; border-radius: 12px;
+    background: var(--night-3); border: 1px solid var(--line-soft); color: var(--ink-dim);
+  }
+  table.cardify tr[hidden] { display: none !important; }
+  table.cardify tr::before, table.cardify tr::after { content: none; }
+  table.cardify td {
+    display: inline-flex; flex: none; align-items: baseline; justify-content: flex-start; gap: .32rem;
+    width: auto; max-width: 100%; min-width: 0; padding: 0; border: 0; text-align: left;
+    font-size: .8rem; line-height: 1.4; order: 5; white-space: normal; overflow-wrap: anywhere;
+  }
+  table.cardify td::before {
+    content: attr(data-label); flex: none; min-width: 0; margin: 0;
+    font: 500 .66rem/1.2 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--ink-faint);
+  }
+  table.cardify td[data-label=""]::before { display: none; }
+  table.cardify td.num, table.cardify td .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  table.cardify td:first-child { order: 0; flex: 1 1 100%; font-size: .93rem; font-weight: 600; color: var(--ink); }
+  table.cardify td:first-child::before { display: none; }
+  table.cardify td .pill { background: none; border: 0; padding: 0; border-radius: 0; font-family: var(--font-body); font-size: inherit; color: inherit; }
+  table.cardify td .chk { width: 22px; height: 22px; }
+
+  /* Listes de paris : 1re ligne = le match (gras) et le chiffre clé à droite ;
+     2e ligne = le pari, la cote, l'issue ; 3e ligne, en discret = les repères. */
+  #betTable tr::before, #vTable tr::before, #btTable tr::before, #bkTable tr::before, #margeLigueTable tr::before {
+    content: ""; order: 3; flex: 0 0 100%; height: 0; margin: 0; padding: 0;
+  }
+  #betTable tr::after, #vTable tr::after, #btTable tr::after, #bkTable tr::after {
+    content: ""; flex: 0 0 100%; height: 0; margin: 0; padding: 0;
+  }
+  #betTable tr::after, #btTable tr::after, #bkTable tr::after { order: 7; }
+  #vTable tr::after { order: 6; }
+
+  #betTable td[data-label="Match"], #vTable td[data-label="Match"], #btTable td[data-label="Match"], #bkTable td[data-label="Match"],
+  #margeLigueTable td[data-label="Ligue"] {
+    order: 1; flex: 1 1 0; min-width: 0; font-size: .93rem; font-weight: 600; color: var(--ink);
+  }
+  #betTable td[data-label="Match"]::before, #vTable td[data-label="Match"]::before, #btTable td[data-label="Match"]::before,
+  #bkTable td[data-label="Match"]::before, #margeLigueTable td[data-label="Ligue"]::before { display: none; }
+  #betTable td[data-label="Gain/perte"], #btTable td[data-label="Gain/perte"], #bkTable td[data-label="Résultat"],
+  #vTable td[data-label="Espérance"], #margeLigueTable td[data-label="Marge"] {
+    order: 2; flex: none; margin-left: auto; font: 700 .95rem/1.35 var(--font-mono); font-variant-numeric: tabular-nums;
+  }
+  #betTable td[data-label="Gain/perte"]::before, #btTable td[data-label="Gain/perte"]::before, #bkTable td[data-label="Résultat"]::before,
+  #vTable td[data-label="Espérance"]::before, #margeLigueTable td[data-label="Marge"]::before { display: none; }
+  #betTable td[data-label="Pari"], #vTable td[data-label="Pari"], #btTable td[data-label="Pari"], #bkTable td[data-label="Pari"] {
+    order: 4; font-size: .86rem; font-weight: 600; color: var(--ink);
+  }
+  #betTable td[data-label="Pari"]::before, #vTable td[data-label="Pari"]::before,
+  #btTable td[data-label="Pari"]::before, #bkTable td[data-label="Pari"]::before { display: none; }
+  #betTable td[data-label="Cote"], #vTable td[data-label="Cote"], #btTable td[data-label="Cote"], #bkTable td[data-label="Cote jouée"] {
+    order: 5; color: var(--ink); font-size: .84rem;
+  }
+  #betTable td[data-label="Cote"]::before, #vTable td[data-label="Cote"]::before, #btTable td[data-label="Cote"]::before { content: "@"; font-size: .8rem; }
+  #betTable td[data-label="Résultat"], #btTable td[data-label="Issue"], #bkTable td[data-label="Statut"] { order: 6; font-weight: 600; }
+  #betTable td[data-label="Résultat"]::before, #btTable td[data-label="Issue"]::before, #bkTable td[data-label="Statut"]::before { display: none; }
+
+  /* Case à cocher du pari (1re colonne du tableau « Détail des paris ») : zone tactile élargie */
+  #betTable td:first-child {
+    order: 0; flex: none; align-self: center; font-size: .8rem; padding: .5rem; margin: -.5rem 0 -.5rem -.5rem;
+  }
+  /* Repères : 3e ligne, discrets */
+  #betTable td[data-label="Date"] { order: 8; }
+  #betTable td[data-label="Ligue"] { order: 9; }
+  #betTable td[data-label="Catégorie"] { order: 10; }
+  #vTable td[data-label="Edge"] { order: 7; } #vTable td[data-label="Proba modèle"] { order: 8; } #vTable td[data-label="Proba cote"] { order: 9; }
+  #vTable td[data-label="Date"] { order: 10; } #vTable td[data-label="Ligue"] { order: 11; }
+  #btTable td[data-label="Proba modèle"] { order: 8; } #btTable td[data-label="Edge"] { order: 9; }
+  #btTable td[data-label="Score réel"] { order: 10; } #btTable td[data-label="Date"] { order: 11; }
+  #bkTable td[data-label="Mise"] { order: 8; } #bkTable td[data-label="Clôture"] { order: 9; }
+  #bkTable td[data-label="CLV"] { order: 10; } #bkTable td[data-label="Bankroll"] { order: 11; } #bkTable td[data-label="Date"] { order: 12; }
+  #betTable td[data-label="Date"], #betTable td[data-label="Ligue"], #betTable td[data-label="Catégorie"],
+  #vTable td[data-label="Date"], #vTable td[data-label="Ligue"], #btTable td[data-label="Date"], #bkTable td[data-label="Date"] {
+    flex: none; font-size: .72rem; font-weight: 400; color: var(--ink-faint);
+  }
+  #betTable td[data-label="Date"]::before, #betTable td[data-label="Ligue"]::before, #betTable td[data-label="Catégorie"]::before,
+  #vTable td[data-label="Date"]::before, #vTable td[data-label="Ligue"]::before, #btTable td[data-label="Date"]::before,
+  #bkTable td[data-label="Date"]::before { display: none; }
+  #vTable td:first-child, #btTable td:first-child, #bkTable td:first-child { flex: none; }
+  #vTable td[data-label="Espérance"] { font-size: .95rem; }
+
+  /* Marges par ligue : rang discret, ligue en titre, marge à droite */
+  #margeLigueTable td:first-child { order: 0; flex: none; font-size: .78rem; font-weight: 400; color: var(--ink-faint); }
+  #margeLigueTable td[data-label="Matchs"] { order: 4; } #margeLigueTable td[data-label="Niveau"] { order: 5; }
+
+  /* Comparaison réel / rétrospectif */
+  .cmp-table.cardify:not(.cmp-detail) td:first-child { display: inline-flex; flex: 1 1 100%; padding-left: 0; }
+  .cmp-table.cardify td.cmp-sous { padding-left: 0; font-weight: 500; color: var(--ink-dim); }
+  .cmp-table.cardify.cmp-detail td[data-label="Match"] { order: 0; flex: 1 1 100%; font-size: .93rem; font-weight: 600; color: var(--ink); }
+  .cmp-table.cardify.cmp-detail td[data-label="Match"]::before { display: none; }
+  .cmp-table.cardify.cmp-detail td[data-label="Pari"] { order: 1; flex: 1 1 100%; font-weight: 600; color: var(--ink); font-size: .86rem; }
+  .cmp-table.cardify.cmp-detail td[data-label="Pari"]::before { display: none; }
+  .cmp-table.cardify.cmp-detail td:first-child { order: 9; flex: none; font-size: .72rem; font-weight: 400; color: var(--ink-faint); }
+  .cmp-table.cardify.cmp-detail td:first-child::before { display: none; }
+  .cmp-detail td { font-size: .8rem; }
+  .cmp-table.cardify tr.cmp-total { border-color: var(--line); }
+
+  /* « Voir plus » sous les longues listes */
+  .m-voir-plus {
+    display: block; width: 100%; margin: .2rem 0 .6rem; min-height: 46px; cursor: pointer;
+    font: 600 .86rem var(--font-body); color: var(--ink);
+    background: var(--night-3); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .m-voir-plus:active { transform: scale(.985); }
+  .m-voir-plus[hidden] { display: none; }
+
+  /* Tableaux d'équipes (sans data-label) : une carte par équipe, les 4 forces côte à côte
+     au lieu d'un tableau de 8 colonnes dont les chiffres sortent de l'écran. */
+  #teamTable, #teamTable tbody, #tirsTable, #tirsTable tbody { display: block; width: 100%; }
+  #teamTable thead, #tirsTable thead { display: none; }
+  #teamTable tr, #tirsTable tr {
+    display: grid; gap: .2rem .5rem; width: 100%; padding: .62rem .78rem .68rem; margin: 0 0 .45rem;
+    background: var(--night-3); border: 1px solid var(--line-soft); border-radius: 12px;
+  }
+  #teamTable tr { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #tirsTable tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #teamTable tr[hidden], #tirsTable tr[hidden] { display: none; }
+  #teamTable td, #tirsTable td {
+    display: block; min-width: 0; padding: 0; border: 0; text-align: left; font-size: .9rem;
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums; position: static; background: none; box-shadow: none;
+  }
+  #teamTable td:nth-child(1), #teamTable td:nth-child(2), #tirsTable td:nth-child(1), #tirsTable td:nth-child(2) { grid-column: 1 / -1; font-family: var(--font-body); }
+  #teamTable td:nth-child(1), #tirsTable td:nth-child(1) { font-size: .93rem; font-weight: 600; color: var(--ink); }
+  #teamTable td:nth-child(2), #tirsTable td:nth-child(2) { margin-bottom: .3rem; font-size: .72rem; color: var(--ink-faint); }
+  #teamTable td:nth-child(2) .pill, #tirsTable td:nth-child(2) .pill { background: none; border: 0; padding: 0; border-radius: 0; font-family: var(--font-body); font-size: inherit; color: inherit; }
+  #teamTable td:nth-child(n+3)::before, #tirsTable td:nth-child(n+3)::before {
+    display: block; margin-bottom: 1px; font: 500 .62rem/1.2 var(--font-body); color: var(--ink-faint);
+  }
+  #teamTable td:nth-child(3)::before { content: "Attaque dom."; } #teamTable td:nth-child(4)::before { content: "Défense dom."; }
+  #teamTable td:nth-child(5)::before { content: "Attaque ext."; } #teamTable td:nth-child(6)::before { content: "Défense ext."; }
+  #teamTable td:nth-child(7), #teamTable td:nth-child(8) { grid-column: span 2; margin-top: .25rem; font-size: .78rem; color: var(--ink-dim); }
+  #teamTable td:nth-child(7)::before { content: "Matchs à domicile"; } #teamTable td:nth-child(8)::before { content: "Matchs à l'extérieur"; }
+  #tirsTable td:nth-child(3)::before { content: "Attaque (tirs)"; } #tirsTable td:nth-child(4)::before { content: "Défense (tirs)"; }
+  #tirsTable td:nth-child(5)::before { content: "Matchs"; }
+  #teamTable td[colspan], #tirsTable td[colspan] { grid-column: 1 / -1; font-family: var(--font-body); font-weight: 400; color: var(--ink-dim); font-size: .85rem; }
+  #teamTable td[colspan]::before, #tirsTable td[colspan]::before { content: none; }
+
+  /* Tri : les en-têtes de colonnes disparaissent dans les cartes, ce menu les remplace */
+  .m-tri { display: flex; align-items: center; gap: .5rem; margin: .1rem 0 .7rem; }
+  .m-tri-l { flex: none; font: 600 .76rem var(--font-body); color: var(--ink-dim); }
+  .m-tri-s {
+    flex: 1 1 auto; min-width: 0; min-height: 44px; padding: .4rem .6rem; font: 500 16px var(--font-body);
+    color: var(--ink); background: var(--night); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .m-tri-d {
+    flex: none; width: 44px; min-height: 44px; cursor: pointer; font-size: 1rem; line-height: 1;
+    color: var(--cyan); background: var(--night-3); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .m-tri-d:disabled { display: none; }
+  .m-tri-s:focus-visible, .m-tri-d:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  /* ---------- Cartes de paris à venir ---------- */
+  .rec-grid { gap: .6rem; margin-top: .7rem; }
+  .rec { padding: .75rem .8rem .7rem; border-radius: 14px; }
+  .rec:hover { transform: none; }
+  .rec-match { font-size: .95rem; line-height: 1.25; }
+  .rec-cotemini > span { display: none; }
+  .rec-metrics { gap: .4rem; margin-top: .6rem; }
+  .rec-metric { padding: .4rem .3rem; border-radius: 10px; }
+  .rec-metric .mk { font-size: .6rem; letter-spacing: .02em; text-transform: none; }
+  .rec-metric .mv { font-size: .98rem; }
+  .rec-check { min-height: 44px; margin-top: .5rem; font-size: .78rem; align-items: center; }
+  .rec-check .chk { width: 22px; height: 22px; }
+  .plus-n, .cote-btn { min-height: 32px; }
+  .cbk-ctl { margin: .6rem 0; padding: .6rem .7rem; }
+  .cbk-ctl-note { font-size: .74rem; }
+
+  /* ---------- Barre de navigation basse ---------- */
+  .mnav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+    padding: 7px 6px calc(7px + var(--m-safe-b));
+    background: rgba(12, 19, 30, .98); border-top: 1px solid var(--line);
+    box-shadow: 0 -10px 28px rgba(0, 6, 16, .5);
+  }
+  .mnav-btn {
+    appearance: none; background: none; border: 0; cursor: pointer; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    min-height: 48px; padding: 4px 2px; border-radius: 12px;
+    color: var(--ink-faint); font: 600 .66rem/1.1 var(--font-body);
+  }
+  .mnav-btn svg { width: 22px; height: 22px; flex: none; }
+  .mnav-btn:active { background: rgba(128, 175, 255, .1); }
+  .mnav-btn.is-active { color: var(--ink); }
+  .mnav-btn.is-active svg { color: var(--cyan); }
+  .mnav-btn.is-active::before {
+    content: ""; position: absolute; top: -8px; left: 28%; right: 28%; height: 3px; border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, var(--violet), var(--cyan));
+  }
+  .mnav-badge {
+    position: absolute; top: 1px; left: calc(50% + 5px); min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 9px; background: var(--cyan); color: #04211d;
+    font: 700 .62rem/17px var(--font-mono); text-align: center;
+  }
+  .mnav-badge[hidden] { display: none; }
+
+  .msheet:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 70; }
+  .msheet-bg { position: absolute; inset: 0; background: rgba(2, 6, 12, .62); }
+  .msheet-panel {
+    position: absolute; left: 0; right: 0; bottom: 0; max-height: 82vh; overflow: auto;
+    padding: .55rem var(--m-gutter) calc(var(--m-gutter) + var(--m-safe-b));
+    background: linear-gradient(165deg, #17263b, #101a27); border-top: 1px solid var(--line);
+    border-radius: 20px 20px 0 0; box-shadow: 0 -18px 44px rgba(0, 6, 16, .6);
+    animation: msheet-in .22s cubic-bezier(.22, 1, .36, 1);
+  }
+  @keyframes msheet-in { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .msheet-grip { width: 38px; height: 4px; border-radius: 4px; background: var(--line); margin: 0 auto .75rem; }
+  .msheet-title { margin: 0 0 .7rem; font: 700 1rem var(--font-display); letter-spacing: -.02em; }
+  .msheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .msheet-item {
+    appearance: none; cursor: pointer; display: flex; align-items: center; gap: .6rem; text-align: left;
+    min-height: 54px; padding: .55rem .8rem; border-radius: 12px;
+    background: var(--night-3); border: 1px solid var(--line-soft); color: var(--ink); font: 600 .84rem/1.2 var(--font-body);
+  }
+  .msheet-item svg { width: 22px; height: 22px; flex: none; color: var(--violet); }
+  .msheet-item.is-active { border-color: rgba(84, 217, 206, .55); background: rgba(84, 217, 206, .08); }
+  .msheet-item.is-active svg { color: var(--cyan); }
+  .msheet-item:active { transform: scale(.98); }
+  html.msheet-open, html.msheet-open body { overflow: hidden; }
+
+  footer { margin-top: 2rem; }
+}
+@media (max-width: 380px) {
+  .controls { grid-template-columns: 1fr; }
+  .mnav-btn { font-size: .6rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msheet-panel { animation: none; }
+  .m-ftog-ch { transition: none; }
+}
