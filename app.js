@@ -605,7 +605,12 @@ function relativeTime(isoString) {
 function initMeta() {
   const m = WIZARD_DATA.meta;
   const rel = relativeTime(WIZARD_DATA.generated_iso);
-  $("metaGenerated").textContent = WIZARD_DATA.generated + (rel ? ` (${rel})` : "");
+  // Date et ancienneté dans deux éléments : sur ordinateur l'affichage est identique
+  // (« date (il y a 3 h) », parenthèses ajoutées par la feuille de style) ; sur mobile
+  // seule l'ancienneté reste.
+  $("metaGenerated").textContent = WIZARD_DATA.generated;
+  $("metaAgo").textContent = rel || "";
+  document.querySelector(".freshness").classList.toggle("no-rel", !rel);
   $("metaOddsFiles").textContent = m.n_odds_files;
   $("metaResultsFiles").textContent = m.n_results_files;
   $("metaOddsDedup").textContent = m.n_odds_dedup;
@@ -707,6 +712,7 @@ function activerOnglet(tab) {
   const page = $(tab.getAttribute("aria-controls") || ("page-" + tab.dataset.page));
   if (page) page.classList.add("active");
   window.scrollTo({top:0, behavior:"instant"});
+  if (typeof majNavMobile === "function") majNavMobile();
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
 }
 tabs.forEach((tab, index) => {
@@ -850,6 +856,22 @@ function updateCategoryTable(rows, stake) {
 function arrMin(a) { return a.reduce((m, x) => x < m ? x : m, a[0]); }
 function arrMax(a) { return a.reduce((m, x) => x > m ? x : m, a[0]); }
 
+/* Largeur de tracé des graphiques en SVG : 1180 unités sur ordinateur (le tracé est
+   ensuite mis à l'échelle du conteneur). Sur téléphone, la largeur réelle du conteneur :
+   sinon 1180 unités sont écrasées dans ~330 px et les graduations deviennent illisibles. */
+function chartW() {
+  if (!window.matchMedia("(max-width: 720px)").matches) return 1180;
+  const vw = document.documentElement.clientWidth || window.innerWidth || 390;
+  return Math.max(290, Math.min(1180, vw - 60));
+}
+function chartNTicks(W) { return W < 600 ? 4 : 7; }
+function fmtEurAxe(v) {
+  const r = Math.round(v), a = Math.abs(r), s = r < 0 ? "−" : "";
+  if (a < 10000) return r.toLocaleString("fr-FR") + " €";
+  if (a >= 1e6) return s + (a / 1e6).toLocaleString("fr-FR", {maximumFractionDigits: 1}) + " M€";
+  return s + Math.round(a / 1000).toLocaleString("fr-FR") + " k€";
+}
+
 function fmtChartDate(value) {
   const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}` : String(value).slice(0, 10);
@@ -869,7 +891,7 @@ function drawChart(rows, stake, wrapId, height) {
     return {x:i+1, y:cum, date:b.date, match:b.match, col:b.col, cote:b.cote, won:b.won};
   });
 
-  const W = 1180, padL = 62, padR = 22, padT = 26, padB = 38;
+  const W = chartW(), padL = 62, padR = 22, padT = 26, padB = 38;
   const ys = pts.map(p=>p.y).concat([0]);
   const xMin = 1, xMax = Math.max(2, pts.length);
   let yMin = arrMin(ys), yMax = arrMax(ys);
@@ -894,12 +916,12 @@ function drawChart(rows, stake, wrapId, height) {
   for (let i=0;i<=4;i++) {
     const yv = yMin + (yMax-yMin)*i/4, yy = sy(yv);
     yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${Math.round(yv).toLocaleString("fr-FR")} €</text>`;
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${W < 600 ? fmtEurAxe(yv) : Math.round(yv).toLocaleString("fr-FR") + " €"}</text>`;
   }
   const zeroLine = (0>=yMin && 0<=yMax)
     ? `<line class="zeroline" x1="${padL}" y1="${sy(0).toFixed(1)}" x2="${W-padR}" y2="${sy(0).toFixed(1)}"/>` : "";
 
-  let xticks = ""; const step = Math.max(1, Math.floor(pts.length/7));
+  let xticks = ""; const step = Math.max(1, Math.floor(pts.length/chartNTicks(W)));
   for (let i=0;i<pts.length;i+=step) {
     xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${fmtChartDate(pts[i].date)}</text>`;
   }
@@ -7650,7 +7672,7 @@ function drawEvolution() {
             p_aff: r.p_aff, p_model: r.p_model};
   });
 
-  const W = 1180, H = 300, padL = 62, padR = 22, padT = 26, padB = 38;
+  const W = chartW(), H = 300, padL = 62, padR = 22, padT = 26, padB = 38;
   const ys = pts.map(p => p.y).concat([0]);
   const xMin = 1, xMax = Math.max(2, pts.length);
   let yMin = arrMin(ys), yMax = arrMax(ys);
@@ -7679,7 +7701,7 @@ function drawEvolution() {
   const zeroLine = (0 >= yMin && 0 <= yMax)
     ? `<line class="zeroline" x1="${padL}" y1="${sy(0).toFixed(1)}" x2="${W-padR}" y2="${sy(0).toFixed(1)}"/>` : "";
 
-  let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
+  let xticks = ""; const step = Math.max(1, Math.floor(pts.length / chartNTicks(W)));
   for (let i = 0; i < pts.length; i += step) {
     xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${fmtChartDate(pts[i].date)}</text>`;
   }
@@ -9215,7 +9237,7 @@ function drawBankrollChart(pts, wrapId) {
     wrap.innerHTML = '<p class="muted">Pas encore assez de paris résolus pour tracer une évolution.</p>';
     return;
   }
-  const W = 1180, H = 260, padL = 66, padR = 22, padT = 26, padB = 38;
+  const W = chartW(), H = 260, padL = 66, padR = 22, padT = 26, padB = 38;
   const ys = pts.map(p => p.y);
   const xMax = pts.length - 1;
   let yMin = arrMin(ys), yMax = arrMax(ys);
@@ -9237,9 +9259,9 @@ function drawBankrollChart(pts, wrapId) {
   for (let i = 0; i <= 4; i++) {
     const yv = yMin + (yMax - yMin) * i / 4, yy = sy(yv);
     yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0).toLocaleString("fr-FR")} €</text>`;
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${W < 600 ? fmtEurAxe(yv) : yv.toFixed(0).toLocaleString("fr-FR") + " €"}</text>`;
   }
-  let xticks = ""; const step = Math.max(1, Math.floor(pts.length / 7));
+  let xticks = ""; const step = Math.max(1, Math.floor(pts.length / chartNTicks(W)));
   for (let i = 0; i < pts.length; i += step) {
     xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${pts[i].date === "Départ" ? (pts[i].periode ? "Début" : "Départ") : fmtChartDate(pts[i].date)}</text>`;
   }
@@ -9696,7 +9718,7 @@ function drawFanChartMulti(series, wrapId) {
     return;
   }
   const nPts = principales[0].pts.length;
-  const W = 1180, H = 280, padL = 66, padR = 22, padT = 26, padB = 38;
+  const W = chartW(), H = 280, padL = 66, padR = 22, padT = 26, padB = 38;
   const xMax = nPts - 1;
   let yMin = Infinity, yMax = -Infinity;
   valides.forEach(s => s.pts.forEach(p => {
@@ -9716,9 +9738,9 @@ function drawFanChartMulti(series, wrapId) {
   for (let i = 0; i <= 4; i++) {
     const yv = yMin + (yMax - yMin) * i / 4, yy = sy(yv);
     yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
-      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${yv.toFixed(0).toLocaleString("fr-FR")} €</text>`;
+      <text x="${padL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${W < 600 ? fmtEurAxe(yv) : yv.toFixed(0).toLocaleString("fr-FR") + " €"}</text>`;
   }
-  let xticks = ""; const step = Math.max(1, Math.floor(nPts / 7));
+  let xticks = ""; const step = Math.max(1, Math.floor(nPts / chartNTicks(W)));
   for (let i = 0; i < nPts; i += step) {
     const d = principales[0].pts[i].date;
     xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${d === "Départ" ? "Départ" : fmtChartDate(d)}</text>`;
@@ -10419,6 +10441,375 @@ document.querySelectorAll("[data-reset-filtres]").forEach(btn => {
   });
 });
 
+/* ================= REFONTE MOBILE (≤ 720 px) =================
+   Tout ce qui suit ne sert qu'à l'affichage sur téléphone : aucun calcul n'est touché.
+   Sur ordinateur les éléments créés ici restent masqués par la feuille de style, et
+   chaque comportement se désactive de lui-même si la fenêtre repasse au-dessus de 720 px
+   (rotation, redimensionnement). Si ce module échouait, la page resterait utilisable
+   telle qu'avant : il est exécuté dans un try/catch en fin de script. */
+const MOB = window.matchMedia("(max-width: 720px)");
+
+const MOB_LIGNES_MAX = 30;      // lignes affichées d'abord dans un long tableau
+const MOB_LIGNES_PAS = 40;      // lignes ajoutées à chaque « Voir plus »
+const MOB_SVG = {
+  filtres: '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h2M9 10h8M3 14.5h9M16 14.5h1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="13" cy="5.5" r="1.9" stroke="currentColor" stroke-width="1.6"/><circle cx="7" cy="10" r="1.9" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="14.5" r="1.9" stroke="currentColor" stroke-width="1.6"/></svg>',
+  plus: '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="4.5" cy="10" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="15.5" cy="10" r="1.5" fill="currentColor"/></svg>'
+};
+/* Onglets épinglés dans la barre basse (les autres sont dans la feuille « Plus »). */
+const MOB_NAV_PRINCIPAUX = ["overview", "upcoming", "bankroll", "retro"];
+const MOB_NAV_LIBELLES = {overview: "Ensemble", upcoming: "À venir", bankroll: "Bankroll", retro: "Rétro"};
+
+/* Panneaux dont les réglages se replient. ref = id d'un champ du panneau (ou id du
+   panneau lui-même) ; cibles = ce qui se replie (sélecteurs relatifs au panneau) ;
+   le reste (indicateurs, tableau, bouton « Relancer »...) reste visible. */
+const MOB_PLIABLES = [
+  {ref: "uFilterPanel", panneau: true, titre: "Filtrer les recommandations", masqueH2: true,
+   cibles: ":scope > :not(h2):not(.kpis):not(.m-ftog)"},
+  {ref: "stake", titre: "Mise et filtres", cibles: ":scope > .controls"},
+  {ref: "vStake", titre: "Filtres", cibles: ":scope > .controls"},
+  {ref: "mcBkDepart", titre: "Paramètres de la simulation", masqueH2: true, cibles: ":scope > .controls, :scope > .field, :scope > p.muted"},
+  {ref: "bkDepart", titre: "Bankroll de départ et dates", cibles: ":scope > .controls"},
+  {ref: "tPays", titre: "Filtrer les équipes", cibles: ":scope > .controls"},
+  {ref: "margeSearch", titre: "Filtrer les ligues", cibles: ":scope > .controls"},
+  {ref: "cmpbMode", titre: "Réglages", cibles: ":scope > .controls, :scope > p.muted"},
+  {ref: "tiLigue", titre: "Filtrer les équipes", cibles: ":scope > .controls"},
+  {ref: "syncBox", panneau: true, titre: "Synchronisation des paris joués", masqueH2: true, sansBadge: true,
+   cibles: ":scope > :not(h2):not(.m-ftog)"},
+  {ref: "placedBox", panneau: true, titre: "Actions sur mes paris joués", sansBadge: true,
+   cibles: ":scope > :not(h2):not(.m-ftog)"}
+];
+
+function initMobile() {
+  const body = document.body;
+
+  /* ---------- 1. Barre de navigation basse + feuille « Plus » ---------- */
+  const nav = document.createElement("nav");
+  nav.className = "mnav"; nav.setAttribute("aria-label", "Navigation principale");
+  const feuille = document.createElement("div");
+  feuille.className = "msheet"; feuille.hidden = true;
+  feuille.innerHTML = '<div class="msheet-bg" data-m-ferme></div>' +
+    '<div class="msheet-panel" role="dialog" aria-modal="true" aria-label="Autres sections">' +
+    '<div class="msheet-grip" aria-hidden="true"></div><h2 class="msheet-title">Autres sections</h2>' +
+    '<div class="msheet-grid"></div></div>';
+  const grille = feuille.querySelector(".msheet-grid");
+  const boutons = {}, items = {};
+  const iconeDe = tab => { const s = tab.querySelector("svg"); return s ? s.outerHTML : ""; };
+  const libelleDe = tab => (tab.querySelector(".label") || tab).textContent.trim();
+
+  tabs.forEach(tab => {
+    const page = tab.dataset.page;
+    if (MOB_NAV_PRINCIPAUX.includes(page)) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "mnav-btn"; b.dataset.page = page;
+      b.innerHTML = iconeDe(tab) + "<span>" + (MOB_NAV_LIBELLES[page] || libelleDe(tab)) + "</span>" +
+        (page === "upcoming" ? '<span class="mnav-badge" id="mnavUpCount" hidden></span>' : "");
+      b.addEventListener("click", () => activerOnglet(tab));
+      boutons[page] = b;
+    } else {
+      const it = document.createElement("button");
+      it.type = "button"; it.className = "msheet-item"; it.dataset.page = page;
+      it.innerHTML = iconeDe(tab) + "<span>" + libelleDe(tab) + "</span>";
+      it.addEventListener("click", () => { fermerFeuille(); activerOnglet(tab); });
+      items[page] = it; grille.appendChild(it);
+    }
+  });
+  MOB_NAV_PRINCIPAUX.forEach(p => { if (boutons[p]) nav.appendChild(boutons[p]); });
+  const btnPlus = document.createElement("button");
+  btnPlus.type = "button"; btnPlus.className = "mnav-btn"; btnPlus.dataset.page = "_plus";
+  btnPlus.setAttribute("aria-haspopup", "dialog"); btnPlus.setAttribute("aria-expanded", "false");
+  btnPlus.innerHTML = MOB_SVG.plus + "<span>Plus</span>";
+  nav.appendChild(btnPlus);
+
+  function ouvrirFeuille() {
+    feuille.hidden = false; btnPlus.setAttribute("aria-expanded", "true");
+    document.documentElement.classList.add("msheet-open");
+    const actif = grille.querySelector(".is-active") || grille.querySelector(".msheet-item");
+    if (actif) actif.focus({preventScroll: true});
+  }
+  function fermerFeuille() {
+    if (feuille.hidden) return;
+    feuille.hidden = true; btnPlus.setAttribute("aria-expanded", "false");
+    document.documentElement.classList.remove("msheet-open");
+  }
+  btnPlus.addEventListener("click", () => feuille.hidden ? ouvrirFeuille() : fermerFeuille());
+  feuille.addEventListener("click", e => { if (e.target.hasAttribute("data-m-ferme")) fermerFeuille(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") fermerFeuille(); });
+  body.appendChild(nav); body.appendChild(feuille);
+
+  // Pastille « nombre de paris à venir » : recopie celle de l'onglet d'origine.
+  const pastilleSrc = $("tabUpCount"), pastille = $("mnavUpCount");
+  function majPastille() {
+    if (!pastilleSrc || !pastille) return;
+    const n = (pastilleSrc.textContent || "").trim();
+    pastille.textContent = n; pastille.hidden = !n || n === "0";
+  }
+  if (pastilleSrc) new MutationObserver(majPastille).observe(pastilleSrc, {childList: true, characterData: true, subtree: true});
+  majPastille();
+
+  window.majNavMobile = function () {
+    const actif = tabs.find(t => t.classList.contains("active"));
+    const page = actif ? actif.dataset.page : "";
+    Object.keys(boutons).forEach(p => {
+      const on = p === page;
+      boutons[p].classList.toggle("is-active", on);
+      if (on) boutons[p].setAttribute("aria-current", "page"); else boutons[p].removeAttribute("aria-current");
+    });
+    const dansPlus = !!items[page];
+    btnPlus.classList.toggle("is-active", dansPlus);
+    Object.keys(items).forEach(p => items[p].classList.toggle("is-active", p === page));
+    majPageMobile();
+  };
+
+  /* ---------- 2. Textes d'introduction repliés (« Lire la suite ») ---------- */
+  function preparerClamp(el) {
+    if (el._mClamp) return;
+    el._mClamp = true;
+    let cible = el;
+    if (el.classList.contains("warn")) {
+      // Un cadre à marge intérieure laisserait voir la 4e ligne dans cette marge : on replie
+      // le contenu du cadre, pas le cadre lui-même.
+      cible = document.createElement("div");
+      while (el.firstChild) cible.appendChild(el.firstChild);
+      el.appendChild(cible);
+    }
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "m-more"; b.textContent = "Lire la suite"; b.hidden = true;
+    b.setAttribute("aria-expanded", "false");
+    b.addEventListener("click", () => {
+      const ouvert = cible.classList.toggle("is-open");
+      b.textContent = ouvert ? "Réduire" : "Lire la suite";
+      b.setAttribute("aria-expanded", String(ouvert));
+    });
+    el.insertAdjacentElement("afterend", b);
+    el._mCible = cible; el._mBtn = b;
+  }
+  // Le repli ne s'applique qu'à un texte réellement affiché et mesuré : un texte dans un bloc
+  // fermé ou une page masquée reste entier (sans bouton) jusqu'à sa première mesure.
+  function majClamp(el) {
+    const c = el._mCible, b = el._mBtn;
+    if (!c || !b) return;
+    if (!MOB.matches) { c.classList.remove("m-clamp"); b.hidden = true; return; }
+    if (!c.getClientRects().length) return;                  // pas affiché : on ne touche à rien
+    const ouvert = c.classList.contains("is-open");
+    c.classList.add("m-clamp");
+    // scrollHeight > clientHeight : le texte dépasse réellement les 3 lignes affichées.
+    b.hidden = !(ouvert || c.scrollHeight > c.clientHeight + 2);
+  }
+  const clamps = [...document.querySelectorAll(".page-heading .lead, .page > .warn, .panel p.muted, #uCoteAide")];
+  clamps.forEach(preparerClamp);
+
+  /* ---------- 3. Réglages repliables ---------- */
+  const pliables = [];
+  MOB_PLIABLES.forEach(cfg => {
+    const ref = document.getElementById(cfg.ref);
+    const panneau = ref && (cfg.panneau ? ref : ref.closest(".panel"));
+    if (!panneau || panneau._mPliable) return;
+    const h2 = panneau.querySelector(":scope > h2");
+    panneau._mPliable = true;
+    const bouton = document.createElement("button");
+    bouton.type = "button"; bouton.className = "m-ftog";
+    bouton.innerHTML = MOB_SVG.filtres + '<span class="m-ftog-t"></span><span class="m-badge" hidden></span><span class="m-ftog-ch" aria-hidden="true"></span>';
+    bouton.querySelector(".m-ftog-t").textContent = cfg.titre;
+    if (h2) h2.insertAdjacentElement("afterend", bouton); else panneau.prepend(bouton);
+    if (cfg.masqueH2 && h2) h2.classList.add("m-h2-off");
+    const racine = panneau;
+    const cibles = () => [...racine.querySelectorAll(cfg.cibles)];
+    // « Valeur d'origine » : l'état des champs une fois la page initialisée, comme pour le
+    // bouton Réinitialiser (voir capturerFiltresOrigine) — c'est ce qui sert au compteur.
+    const champs = [...racine.querySelectorAll("input, select")]
+      .filter(el => cibles().some(c => c === el || c.contains(el)))
+      .map(el => ({el, value: el.value, checked: el.checked}));
+    const badge = bouton.querySelector(".m-badge");
+    const majBadge = () => {
+      if (cfg.sansBadge) return;
+      let n = 0;
+      champs.forEach(({el, value, checked}) => {
+        if (el.type === "checkbox" || el.type === "radio") { if (el.checked !== checked) n++; }
+        else if (el.value !== value) n++;
+      });
+      badge.hidden = !n;
+      badge.textContent = n + (n > 1 ? " modifiés" : " modifié");
+    };
+    const plier = (plie) => {
+      racine.classList.toggle("m-folded", plie);
+      bouton.setAttribute("aria-expanded", String(!plie));
+      cibles().forEach(c => c.classList.add("m-fc"));
+      // Les textes d'aide d'un bloc replié n'étaient pas mesurables : on les mesure à l'ouverture.
+      if (!plie) requestAnimationFrame(() => clamps.forEach(el => { if (racine.contains(el)) majClamp(el); }));
+    };
+    racine.classList.add("m-fold");
+    plier(true);
+    bouton.addEventListener("click", () => plier(!racine.classList.contains("m-folded")));
+    let t = 0;
+    const differe = () => { clearTimeout(t); t = setTimeout(majBadge, 80); };
+    racine.addEventListener("input", differe);
+    racine.addEventListener("change", differe);
+    racine.addEventListener("click", e => { if (e.target.closest("button, summary")) differe(); });
+    majBadge();
+    pliables.push({racine, plier, majBadge});
+  });
+
+  /* ---------- 4. Longs tableaux : 30 lignes, puis « Voir plus » ---------- */
+  const limites = new WeakMap();      // tbody -> {n: lignes affichées, total, bouton}
+  let registre = [];                  // tbody suivis, pour retirer le bouton d'un tableau remplacé
+  function limiter(tbody) {
+    if (!tbody || !tbody.isConnected) return;
+    const table = tbody.closest("table");
+    if (!table) return;
+    const lignes = tbody.rows;
+    const total = lignes.length;
+    let st = limites.get(tbody);
+    if (!st) { st = {n: MOB_LIGNES_MAX, sig: "", bouton: null}; limites.set(tbody, st); registre.push(tbody); }
+    const actif = MOB.matches && total > MOB_LIGNES_MAX + 10;
+    // Liste différente (filtre, tri : nombre de lignes ou première ligne changés) : on repart du début.
+    const sig = total + "|" + (total ? lignes[0].textContent + lignes[total >> 1].textContent + lignes[total - 1].textContent : "");
+    if (st.sig !== sig) { st.n = MOB_LIGNES_MAX; st.sig = sig; }
+    for (let i = 0; i < total; i++) {
+      const cacher = actif && i >= st.n;
+      if (lignes[i].hidden !== cacher) lignes[i].hidden = cacher;
+    }
+    const reste = actif ? Math.max(0, total - st.n) : 0;
+    if (reste && !st.bouton) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "m-voir-plus";
+      b.addEventListener("click", () => {
+        st.n += MOB_LIGNES_PAS;
+        limiter(tbody);
+      });
+      const ancre = table.closest(".tablewrap") || table;
+      ancre.insertAdjacentElement("afterend", b);
+      st.bouton = b;
+    }
+    if (st.bouton) {
+      st.bouton.hidden = !reste;
+      if (reste) st.bouton.textContent = "Voir " + Math.min(MOB_LIGNES_PAS, reste) + " de plus · " + reste + " restant" + (reste > 1 ? "s" : "");
+    }
+  }
+  const aLimiter = new Set();
+  let planifie = false;
+  function planifierLimites() {
+    if (planifie) return;
+    planifie = true;
+    requestAnimationFrame(() => {
+      planifie = false;
+      const lot = [...aLimiter]; aLimiter.clear();
+      lot.forEach(limiter);
+      // Un tableau remplacé (innerHTML d'un conteneur) laisse son bouton orphelin : on le retire.
+      registre = registre.filter(tb => {
+        if (tb.isConnected) return true;
+        const st = limites.get(tb);
+        if (st && st.bouton) st.bouton.remove();
+        return false;
+      });
+    });
+  }
+  function repererTbody(noeud) {
+    if (!noeud || noeud.nodeType !== 1) return;
+    if (noeud.classList && noeud.classList.contains("m-voir-plus")) return;
+    if (noeud.tagName === "TBODY") { aLimiter.add(noeud); return; }
+    const tb = noeud.closest ? noeud.closest("tbody") : null;
+    if (tb) { aLimiter.add(tb); return; }
+    if (noeud.querySelectorAll) noeud.querySelectorAll("tbody").forEach(t => aLimiter.add(t));
+  }
+  const racineObs = document.querySelector(".wrap") || body;
+  new MutationObserver(records => {
+    for (const r of records) {
+      if (r.target.nodeType === 1 && r.target.tagName === "TBODY") { aLimiter.add(r.target); continue; }
+      for (const n of r.addedNodes) repererTbody(n);
+    }
+    if (aLimiter.size) planifierLimites();
+  }).observe(racineObs, {childList: true, subtree: true});
+  document.querySelectorAll("tbody").forEach(t => aLimiter.add(t));
+  planifierLimites();
+
+  /* ---------- 4 bis. Tri (les en-têtes de colonnes disparaissent dans les cartes) ---------- */
+  function installerTri(table) {
+    const ths = [...table.querySelectorAll("thead th.sortable")];
+    if (ths.length < 2 || table._mTri) return;
+    table._mTri = true;
+    const id = "mtri-" + (table.id || Math.random().toString(36).slice(2, 7));
+    const barre = document.createElement("div");
+    barre.className = "m-tri";
+    barre.innerHTML = '<label class="m-tri-l" for="' + id + '">Trier par</label><select class="m-tri-s" id="' + id + '"></select>' +
+      '<button type="button" class="m-tri-d" aria-label="Inverser l\'ordre du tri"></button>';
+    const sel = barre.querySelector("select"), dir = barre.querySelector("button");
+    const vide = document.createElement("option"); vide.value = ""; vide.textContent = "Ordre actuel"; sel.appendChild(vide);
+    ths.forEach((th, i) => {
+      const o = document.createElement("option"); o.value = String(i);
+      o.textContent = th.textContent.replace(/[▲▼↑↓]/g, "").trim() || ("Colonne " + (i + 1));
+      sel.appendChild(o);
+    });
+    // Certains en-têtes affichent leur état (« ▲ » / « ▼ » dans .arrow) ; d'autres non : dans ce
+    // cas on retient la colonne choisie ici (au départ celle dont le texte porte déjà une flèche).
+    const fleche = th => { const a = th.querySelector(".arrow"); return a ? a.textContent.trim() : ""; };
+    const affiche = ths.some(th => th.querySelector(".arrow"));
+    let courant = ths.findIndex(th => /[▲▼]/.test(th.textContent));
+    const indice = () => affiche ? ths.findIndex(th => fleche(th)) : courant;
+    const maj = () => {
+      const i = indice();
+      sel.value = i >= 0 ? String(i) : "";
+      dir.textContent = i >= 0 ? (fleche(ths[i]) || "⇅") : "";
+      dir.disabled = i < 0;
+    };
+    sel.addEventListener("change", () => {
+      if (sel.value !== "") { courant = +sel.value; ths[courant].click(); }
+      maj();
+    });
+    dir.addEventListener("click", () => {
+      const i = indice();
+      if (i >= 0) ths[i].click();
+      maj();
+    });
+    (table.closest(".tablewrap") || table).insertAdjacentElement("beforebegin", barre);
+    if (table.tHead) new MutationObserver(maj).observe(table.tHead, {subtree: true, childList: true, characterData: true});
+    maj();
+  }
+  document.querySelectorAll("table").forEach(installerTri);
+
+  /* ---------- 5. Mise à jour à l'affichage d'une page / au changement de taille ---------- */
+  function majPageMobile() {
+    const page = document.querySelector(".page.active");
+    // Les blocs d'une page masquée n'ont pas de hauteur : on mesure à l'affichage.
+    requestAnimationFrame(() => clamps.forEach(el => { if (!page || page.contains(el)) majClamp(el); }));
+    if (typeof window.redessinerGraphiquesMobile === "function") window.redessinerGraphiquesMobile(page);
+  }
+  let dernierW = chartW();
+  const MAP_GRAPHIQUES = {
+    retro: () => { if (typeof updateAllButTable === "function") updateAllButTable(); },
+    backtest: () => { if (typeof drawEvolution === "function") drawEvolution(); },
+    bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
+    montecarlo: () => { if (typeof runMonteCarlo === "function") runMonteCarlo(); }
+  };
+  const aRedessiner = new Set();
+  window.redessinerGraphiquesMobile = function (page) {
+    const id = page ? page.id.replace("page-", "") : "";
+    if (aRedessiner.has(id) && MAP_GRAPHIQUES[id]) {
+      aRedessiner.delete(id);
+      try { MAP_GRAPHIQUES[id](); } catch (e) { /* le graphique garde son tracé précédent */ }
+    }
+  };
+  let tResize = 0;
+  const surTaille = () => {
+    clearTimeout(tResize);
+    tResize = setTimeout(() => {
+      const w = chartW();
+      if (Math.abs(w - dernierW) >= 24) {        // rotation ou fenêtre redimensionnée
+        dernierW = w;
+        Object.keys(MAP_GRAPHIQUES).forEach(k => aRedessiner.add(k));
+        window.redessinerGraphiquesMobile(document.querySelector(".page.active"));
+      }
+      registre.forEach(limiter);
+      clamps.forEach(majClamp);
+      if (!MOB.matches) fermerFeuille();
+    }, 180);
+  };
+  window.addEventListener("resize", surTaille);
+  window.addEventListener("orientationchange", surTaille);
+  if (MOB.addEventListener) MOB.addEventListener("change", surTaille);
+
+  window.majNavMobile();
+}
+
 /* ---------- Init ---------- */
 refresh();
 renderValueBets();
@@ -10429,6 +10820,7 @@ renderBankroll();
 if (typeof runMonteCarlo === "function") runMonteCarlo();
 renderTeams();
 renderOverview();
+try { initMobile(); } catch (e) { console.error("initMobile", e); }
 /* ================= PAGE — TIRS CADRÉS (récap) ================= */
 
 let tiSortKey = "n", tiSortDir = -1;
