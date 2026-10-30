@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261030200941">
+<link rel="stylesheet" href="style.css?v=20261030210743">
 </head>
 <body>
 <div class="topbar">
@@ -652,6 +652,81 @@
             <option value="1">Corrigée — surconfiance retirée</option>
           </select>
         </div>
+      </div>
+
+      <div id="btCbkFiltres" class="cbk-filtres" style="display:none">
+        <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .3rem">Filtres entre bookmakers</h3>
+        <p class="muted" style="margin:0 0 .8rem; font-size:.82rem">Les mêmes filtres que sur « Paris à venir » (réglages <strong>partagés</strong>), rejoués sur des paris <strong>déjà joués</strong>. Ils <strong>restreignent</strong> la liste déjà sélectionnée sur la cote Winamax : le profit de chaque pari reste celui de sa cote Winamax. Chaque pari est comparé au relevé d'Unibet / Betclic le plus proche dans le temps de celui de Winamax ; « Écart maximal entre relevés » décide quels sites comptent. Un match qu'aucun autre site n'a relevé avant le coup d'envoi n'est pas mesurable : il est écarté dès qu'un filtre demande une comparaison.</p>
+        <div class="controls">
+          <div class="field">
+            <label for="btCbkEv">Espérance au meilleur prix</label>
+            <select id="btCbkEv" title="Espérance du pari si on le joue chez le site qui paie le mieux (même probabilité du modèle).">
+              <option value="-999" selected>Peu importe</option>
+              <option value="0">Positive</option>
+              <option value="0.02">Au moins +2 %</option>
+              <option value="0.05">Au moins +5 %</option>
+              <option value="0.1">Au moins +10 %</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkGain">Gain de cote vs Winamax</label>
+            <select id="btCbkGain" title="De combien le meilleur site paie plus que Winamax, en % de la cote.">
+              <option value="0" selected>Peu importe</option>
+              <option value="0.01">Au moins +1 %</option>
+              <option value="0.02">Au moins +2 %</option>
+              <option value="0.03">Au moins +3 %</option>
+              <option value="0.05">Au moins +5 %</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkDesac">Désaccord sur l'issue</label>
+            <select id="btCbkDesac" title="Compare la probabilité sans marge de CETTE issue chez les autres sites et chez Winamax. « Plus confiants » : les autres sites donnent plus de chances à l'issue que Winamax (sa cote paraît alors longue). « Moins confiants » : l'inverse.">
+              <option value="" selected>Peu importe</option>
+              <option value="plus">Autres sites plus confiants</option>
+              <option value="moins">Autres sites moins confiants</option>
+              <option value="ecart">Écart marqué, dans les 2 sens</option>
+              <option value="accord">Sites d'accord</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkDesacSeuil">Seuil d'écart (issue)</label>
+            <select id="btCbkDesacSeuil">
+              <option value="0.005">0,5 point</option>
+              <option value="0.01" selected>1 point</option>
+              <option value="0.02">2 points</option>
+              <option value="0.03">3 points</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkMatch">Désaccord sur le match</label>
+            <select id="btCbkMatch" title="Plus grand écart de probabilité sans marge sur une issue du 1X2 (victoire domicile, nul, victoire extérieur) entre un autre site et Winamax. Un fort désaccord peut signaler une information que tous les sites n'ont pas encore intégrée.">
+              <option value="" selected>Peu importe</option>
+              <option value="agite">Désaccord marqué</option>
+              <option value="calme">Sites d'accord</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkMatchSeuil">Seuil d'écart (match)</label>
+            <select id="btCbkMatchSeuil">
+              <option value="0.01">1 point</option>
+              <option value="0.015" selected>1,5 point</option>
+              <option value="0.02">2 points</option>
+              <option value="0.03">3 points</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkEcart">Écart maximal entre relevés</label>
+            <select id="btCbkEcart" title="Au-delà, l'écart entre les deux cotes mesure surtout le mouvement du marché entre les deux relevés, pas un désaccord : le site est ignoré pour le désaccord.">
+              <option value="1">1 h</option>
+              <option value="3">3 h</option>
+              <option value="6" selected>6 h</option>
+              <option value="12">12 h</option>
+              <option value="24">24 h</option>
+            </select>
+          </div>
+        </div>
+        <p class="muted" id="btCbkNote" style="margin:.7rem 0 0; font-size:.82rem"></p>
+        <div class="warn" id="btCbkAlerte" style="display:none; margin:.6rem 0 0"></div>
       </div>
 
       <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .6rem">Filtres par catégorie de pari</h3>
@@ -2146,7 +2221,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261030201019"></script>
-<script src="app.js?v=20261030200941"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261030210811"></script>
+<script src="app.js?v=20261030210743"></script>
 </body>
 </html>
