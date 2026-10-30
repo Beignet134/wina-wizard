@@ -2044,8 +2044,15 @@ function cbkAnalyser(v, v0) {
       ecartH: isFinite(tQ) && isFinite(tW) ? Math.abs(tQ - tW) / 3600000 : null,
     };
   });
+  return cbkSynthese(v, ref, autres, CBK_ETAT.ageMax);
+}
+
+// Suite de l'analyse d'un pari : meilleur prix, gain de cote, désaccord entre sites. `ref` et `autres` portent déjà
+// leur âge (heures) et leur écart avec le relevé de Winamax ; ageMax décide quels sites comptent. Partagée avec
+// le rétrospectif (cbkAnalyserRetro), où l'« âge » d'un relevé est son écart avec celui de Winamax.
+function cbkSynthese(v, ref, autres, ageMax) {
   const tous = [ref].concat(autres);
-  tous.forEach(q => { q.retenue = !q.plafond && (q.age == null || q.age <= CBK_ETAT.ageMax); });
+  tous.forEach(q => { q.retenue = !q.plafond && (q.age == null || q.age <= ageMax); });
   let best = ref;
   autres.forEach(q => {
     if (!q.retenue) return;
@@ -2102,16 +2109,17 @@ const cbkPc = x => (x * 100).toFixed(1).replace(".", ",") + " %";
 /* ---- Filtres « entre bookmakers » (panneau « Filtrer les recommandations ») ----
    Ils RESTREIGNENT la liste déjà sélectionnée sur la cote Winamax : aucun pari n'entre grâce à eux.
    Valeurs lues directement dans les contrôles (donc remises à zéro par « Réinitialiser les filtres »). */
-function cbkLireFiltres() {
-  const box = document.getElementById("cbkFiltres");
+function cbkLireFiltres(pref) {
+  pref = pref || "u";
+  const box = document.getElementById(pref === "u" ? "cbkFiltres" : pref + "CbkFiltres");
   const lire = (id, def) => { const el = document.getElementById(id); return el ? el.value : def; };
   const f = {
-    ev: parseFloat(lire("uCbkEv", "-999")),
-    gain: parseFloat(lire("uCbkGain", "0")),
-    desac: lire("uCbkDesac", ""),
-    desacSeuil: parseFloat(lire("uCbkDesacSeuil", "0.01")),
-    match: lire("uCbkMatch", ""),
-    matchSeuil: parseFloat(lire("uCbkMatchSeuil", "0.015")),
+    ev: parseFloat(lire(pref + "CbkEv", "-999")),
+    gain: parseFloat(lire(pref + "CbkGain", "0")),
+    desac: lire(pref + "CbkDesac", ""),
+    desacSeuil: parseFloat(lire(pref + "CbkDesacSeuil", "0.01")),
+    match: lire(pref + "CbkMatch", ""),
+    matchSeuil: parseFloat(lire(pref + "CbkMatchSeuil", "0.015")),
   };
   f.actif = !!box && box.style.display !== "none"
     && (f.ev > -900 || f.gain > 0 || !!f.desac || !!f.match);
@@ -2161,6 +2169,38 @@ function cbkFiltresEchecs(a, f, evRef) {
     }
   }
   return echecs;
+}
+
+/* ---- Filtres « entre bookmakers » rejoués sur les paris du backtest (DC rétrospectif) ----
+   Chaque pari du backtest porte, quand un autre site cotait le match avant le coup d'envoi, un champ cbr :
+   [{b: site, c: cote, g: minutes entre son relevé et celui de Winamax, q, w, dm}] (voir apply_cotes_bookmakers_retro).
+   On reconstitue la même analyse que pour un pari à venir (cbkSynthese) : l'âge d'un relevé est ici son écart avec
+   celui de Winamax, et le réglage « Écart maximal entre relevés » sert de seuil pour toutes les comparaisons. */
+const CBK_RETRO_CACHE = new WeakMap();   // tableau cbr -> {ecartMax, a} : l'analyse ne dépend ni de l'espérance ni du mode du modèle
+function cbkAnalyserRetro(r) {
+  if (!r || !r.cbr || !r.cbr.length) return null;
+  const ecartMax = cbkEcartMaxH();
+  const en = CBK_RETRO_CACHE.get(r.cbr);
+  if (en && en.ecartMax === ecartMax) return en.a;
+  const ref = {bk: "winamax", nom: "Winamax", cote: r.cote, saisie: false, plafond: false, age: 0,
+               marge: null, label: "marge", url: null};
+  const autres = r.cbr.map(q => ({
+    bk: q.b, nom: CBK_NOMS[q.b] || q.b, cote: q.c, saisie: false, plafond: false,
+    age: Math.abs(q.g) / 60, marge: null, label: "marge", url: null,
+    pSite: q.q != null ? q.q : null, pW: q.w != null ? q.w : null, dm: q.dm != null ? q.dm : null,
+    ecartH: Math.abs(q.g) / 60,
+  }));
+  const a = cbkSynthese(r, ref, autres, ecartMax);
+  CBK_RETRO_CACHE.set(r.cbr, {ecartMax, a});
+  return a;
+}
+// Le pari passe-t-il les filtres « entre bookmakers » actifs ? L'espérance de référence suit le mode du modèle
+// (poids α du mélange avec le marché) comme les autres filtres d'espérance de la page.
+function passeCbkRetro(f, r, alpha) {
+  const evRef = alpha < 1 ? blended(r, alpha).ev : r.ev;
+  const a0 = cbkAnalyserRetro(r);
+  const a = a0 ? Object.assign({}, a0, {evBestF: (1 + evRef) * (a0.bestF.cote / a0.ref.cote) - 1}) : null;
+  return cbkFiltresEchecs(a, f, evRef).length === 0;
 }
 
 // Cote affichée chez un site donné (celle qu'on voit sur la carte) : sert de
@@ -4034,6 +4074,14 @@ cablerMenusDeroulants();
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
+
+// Filtres « entre bookmakers » : mêmes réglages sur « Paris à venir » (u…) et « DC rétrospectif » (bt…).
+["Ev", "Gain", "Desac", "DesacSeuil", "Match", "MatchSeuil", "Ecart"].forEach(s => {
+  const bt = $("btCbk" + s);
+  if (!bt) return;
+  bt.addEventListener("change", () => renderBacktest());
+  lierFiltres("btCbk" + s, "uCbk" + s);
+});
 lierCases("btExclSel", "uExclSel");
 
 // Mouvement de la cote / Plage de cotes : curseurs doubles indépendants des
@@ -4866,6 +4914,9 @@ function btFiltered(opts) {
   // normal tant que la collecte prospective n'a pas eu le temps de couvrir
   // suffisamment de matchs désormais joués.
   const pred = $("btPred") ? $("btPred").value : "";
+  // Filtres « entre bookmakers » (voir cbkLireFiltres) : rejoués sur les paris passés. Jamais en mode prospectif
+  // (verdicts de « Paris à venir »), ni pour mesurer la couverture elle-même (opts.sansCbk).
+  const filtresCbk = opts.prospectif || opts.sansCbk ? null : cbkLireFiltres("bt");
   // Espérance : un edge dévigué positif ne garantit PAS une espérance
   // positive. Sur une cote très basse, la marge du bookmaker peut dépasser
   // l'avantage du modèle — ex. cote 1.03 avec 91 % de probabilité : edge
@@ -4972,6 +5023,7 @@ function btFiltered(opts) {
     if (pred === "neutre" && !(r.prediction && !r.prediction_accord)) return false;
 
     if (!passeMvt(bornesMvt, r)) return false;
+    if (filtresCbk && filtresCbk.actif && !passeCbkRetro(filtresCbk, r, alpha)) return false;
     return true;
   });
 
@@ -5292,6 +5344,19 @@ function renderBtActiveFilters(rowsFiltrees) {
     }
   });
 
+  const fcb = cbkLireFiltres("bt");
+  if (fcb.actif) {
+    const morceaux = [];
+    if (fcb.ev > -900) morceaux.push(fcb.ev === 0 ? "espérance au meilleur prix > 0" : `espérance au meilleur prix ≥ ${fmtNum(fcb.ev * 100, 0)} %`);
+    if (fcb.gain > 0) morceaux.push(`gain de cote ≥ ${fmtNum(fcb.gain * 100, 0)} %`);
+    if (fcb.desac) {
+      const lib = {plus: "autres sites plus confiants", moins: "autres sites moins confiants", ecart: "écart marqué", accord: "sites d'accord"}[fcb.desac] || fcb.desac;
+      morceaux.push(`issue : ${lib} (${fmtNum(fcb.desacSeuil * 100, 1)} pt)`);
+    }
+    if (fcb.match) morceaux.push(`match : ${fcb.match === "agite" ? "désaccord marqué" : "sites d'accord"} (${fmtNum(fcb.matchSeuil * 100, 1)} pt)`);
+    add("Entre bookmakers", morceaux.join(" · "), "Filtres entre bookmakers (probabilités sans marge, relevés de Winamax et des autres sites proches dans le temps)");
+  }
+
   if (BT_HIST_SELECTION) {
     add("Historique", `dom. ${BT_HIST_SELECTION.dom} · ext. ${BT_HIST_SELECTION.ext}`);
   }
@@ -5431,6 +5496,68 @@ function texteCategorieSansPari(x) {
   return t + ".";
 }
 
+// Bloc « Filtres entre bookmakers » de DC rétrospectif : visible seulement si au moins un pari passé a la cote d'un autre
+// site ; la note dit combien de paris sont mesurables et prévient quand l'échantillon retenu est trop mince.
+let BT_CBR_INFO = null;
+function btCbrInfo() {
+  if (BT_CBR_INFO) return BT_CBR_INFO;
+  let n = 0, debut = null;
+  BT_ROWS_COMPLET.forEach(r => {
+    if (!r.cbr || !r.cbr.length) return;
+    n++;
+    if (debut == null || r.date < debut) debut = r.date;
+  });
+  BT_CBR_INFO = {n, debut};
+  return BT_CBR_INFO;
+}
+function majBlocCbkRetro(rowsFiltrees) {
+  const box = $("btCbkFiltres");
+  if (!box) return;
+  const info = btCbrInfo();
+  box.style.display = info.n ? "" : "none";
+  const note = $("btCbkNote"), alerte = $("btCbkAlerte");
+  if (!info.n || !note) return;
+  const f = cbkLireFiltres("bt");
+  // Périmètre choisi ailleurs (dates, catégories, cotes…) mais SANS les filtres entre bookmakers : c'est lui qui dit
+  // combien de paris étaient mesurables avant que ces filtres n'en retirent.
+  const base = f.actif ? btFiltered({sansCbk: true}) : rowsFiltrees;
+  const parSite = {};
+  let avec = 0, nIssue = 0, nMatch = 0;
+  base.forEach(r => {
+    if (!r.cbr || !r.cbr.length) return;
+    avec++;
+    r.cbr.forEach(q => { parSite[q.b] = (parSite[q.b] || 0) + 1; });
+    const a = cbkAnalyserRetro(r);
+    if (a && a.nMes > 0) nIssue++;
+    if (a && a.dmMax != null) nMatch++;
+  });
+  const fr = x => x.toLocaleString("fr-FR");
+  const jj = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : "";
+  const detail = Object.keys(parSite).map(b => `${CBK_NOMS[b] || b} ${fr(parSite[b])}`).join(" · ");
+  let txt = `<strong>Couverture</strong> — ${fr(avec)} des ${fr(base.length)} paris du périmètre ont la cote d'un autre site`
+    + (detail ? ` (${detail})` : "") + `, dont ${fr(nIssue)} avec un désaccord mesurable sur l'issue et ${fr(nMatch)} sur le match`
+    + ` (écart maximal entre relevés : ${cbkEcartMaxH()} h). Les relevés des autres sites ne remontent qu'au ${jj(info.debut)} : `
+    + `les paris plus anciens ne sont pas mesurables.`;
+  if (f.actif) txt += ` <strong>${fr(rowsFiltrees.length)}</strong> pari${rowsFiltrees.length > 1 ? "s" : ""} retenu${rowsFiltrees.length > 1 ? "s" : ""} avec ces filtres.`;
+  note.innerHTML = txt;
+  if (alerte) {
+    const n = rowsFiltrees.length;
+    if (f.actif && n < MIN_BETS) {
+      alerte.style.display = "";
+      alerte.innerHTML = `<strong>Échantillon insuffisant</strong> — ${fr(n)} pari${n > 1 ? "s" : ""} seulement (moins de ${MIN_BETS}). `
+        + `Le ROI affiché n'apprend rien à cette taille : un seul résultat suffit à le renverser. Attendre que les relevés s'accumulent `
+        + `(l'idéal est plus de ${MIN_BETS * 3} paris retenus) avant de conclure que ces filtres améliorent quoi que ce soit.`;
+    } else if (f.actif && n < MIN_BETS * 3) {
+      alerte.style.display = "";
+      alerte.innerHTML = `<strong>Échantillon encore mince</strong> — ${fr(n)} paris retenus. Au-dessus de ${MIN_BETS} on peut commencer à regarder, `
+        + `mais l'écart de ROI reste fragile avant ${MIN_BETS * 3} paris.`;
+    } else {
+      alerte.style.display = "none";
+      alerte.innerHTML = "";
+    }
+  }
+}
+
 function renderBacktest() {
   if (REINIT_FILTRES_EN_COURS) return;
   // Les agrégats sont recalculés sur l'ensemble filtré : la déduplication
@@ -5451,6 +5578,7 @@ function renderBacktest() {
   // anticipé juste en dessous) — voir le commentaire sur btFiltered(opts).
   renderHistMatrix(btFiltered({sansHist: true}));
   renderBtActiveFilters(rowsFiltrees);
+  majBlocCbkRetro(rowsFiltrees);
   renderBtFilterImpact(rowsFiltrees, rowsReferenceComplete);
   // La page Bankroll compare vos paris réels à ces mêmes lignes filtrées.
   if (typeof renderComparaison === "function") renderComparaison(rowsFiltrees);
