@@ -2121,13 +2121,26 @@ function cbkLireFiltres(pref) {
     match: lire(pref + "CbkMatch", ""),
     matchSeuil: parseFloat(lire(pref + "CbkMatchSeuil", "0.015")),
   };
+  // « Paris sans autre site » n'existe que dans DC rétrospectif : un pari passé qui n'a que la cote Winamax
+  // (relevés des autres sites pas encore collectés) y est GARDÉ par défaut, et écarté si on le demande.
+  // Sur « Paris à venir », un pari sans autre site échoue aux filtres de comparaison, comme avant.
+  f.ecarteSans = pref !== "u" && lire(pref + "CbkSans", "garder") === "ecarter";
+  f.garder = pref !== "u" && !f.ecarteSans;
   f.actif = !!box && box.style.display !== "none"
-    && (f.ev > -900 || f.gain > 0 || !!f.desac || !!f.match);
+    && (f.ev > -900 || f.gain > 0 || !!f.desac || !!f.match || f.ecarteSans);
   return f;
 }
 // Motifs d'échec d'un pari (liste vide = il passe). `a` : résultat de cbkAnalyser (null si aucun autre site ne cote ce pari).
+function cbkAutreUtilisable(a) {
+  return !!a && a.tous.some(q => q !== a.ref && q.retenue);
+}
 function cbkFiltresEchecs(a, f, evRef) {
   const echecs = [];
+  // Aucun autre site utilisable : pas de relevé d'un autre site, ou relevé trop éloigné de celui de Winamax.
+  const sansAutre = !cbkAutreUtilisable(a);
+  if (f.ecarteSans && sansAutre) {
+    echecs.push({sens: "fixe", texte: "aucun autre site utilisable pour ce pari (cote Winamax seule), écarté par le réglage « Paris sans autre site »"});
+  }
   // Sans autre site, le meilleur prix est celui de Winamax : on retombe sur l'espérance de référence.
   const ev = a ? a.evBestF : evRef;
   if (f.ev > -900) {
@@ -2138,7 +2151,8 @@ function cbkFiltresEchecs(a, f, evRef) {
         : `espérance au meilleur prix ${cbkPct(ev)}, sous le minimum de ${cbkPct(f.ev, 0)}`});
     }
   }
-  if (f.gain > 0) {
+  // f.garder (DC rétrospectif) : une mesure indisponible ne fait pas échouer le pari, il garde sa cote Winamax.
+  if (f.gain > 0 && !(f.garder && sansAutre)) {
     if (!a) echecs.push({sens: "fixe", texte: "aucune cote d'un autre site pour ce pari"});
     else if (a.gainF < f.gain) {
       echecs.push({sens: "fixe", texte: a.bestF === a.ref
@@ -2146,7 +2160,7 @@ function cbkFiltresEchecs(a, f, evRef) {
         : `gain de cote ${cbkPct(a.gainF)} chez ${a.bestF.nom}, sous le minimum de ${cbkPct(f.gain, 0)}`});
     }
   }
-  if (f.desac) {
+  if (f.desac && !(f.garder && (!a || a.nMes === 0))) {
     const seuil = f.desacSeuil;
     if (!a || a.nMes === 0) echecs.push({sens: "fixe", texte: "désaccord sur l'issue non mesurable (autre site absent, relevé trop ancien ou trop éloigné de celui de Winamax)"});
     else if (f.desac === "plus" && a.dpMoy < seuil) {
@@ -2159,7 +2173,7 @@ function cbkFiltresEchecs(a, f, evRef) {
       echecs.push({sens: "fixe", texte: `les sites ne sont pas d'accord sur cette issue (écart ${cbkPt(a.dpAbsMax)}, seuil ${cbkPt(seuil)})`});
     }
   }
-  if (f.match) {
+  if (f.match && !(f.garder && (!a || a.dmMax == null))) {
     const seuil = f.matchSeuil;
     if (!a || a.dmMax == null) echecs.push({sens: "fixe", texte: "désaccord du match non mesurable (1X2 d'un autre site absent, trop ancien ou trop éloigné de celui de Winamax)"});
     else if (f.match === "agite" && a.dmMax < seuil) {
@@ -4082,6 +4096,8 @@ cablerMenusDeroulants();
   bt.addEventListener("change", () => renderBacktest());
   lierFiltres("btCbk" + s, "uCbk" + s);
 });
+// « Paris sans autre site » : propre à DC rétrospectif, rien à synchroniser.
+if ($("btCbkSans")) $("btCbkSans").addEventListener("change", () => renderBacktest());
 lierCases("btExclSel", "uExclSel");
 
 // Mouvement de la cote / Plage de cotes : curseurs doubles indépendants des
@@ -5354,6 +5370,7 @@ function renderBtActiveFilters(rowsFiltrees) {
       morceaux.push(`issue : ${lib} (${fmtNum(fcb.desacSeuil * 100, 1)} pt)`);
     }
     if (fcb.match) morceaux.push(`match : ${fcb.match === "agite" ? "désaccord marqué" : "sites d'accord"} (${fmtNum(fcb.matchSeuil * 100, 1)} pt)`);
+    if (fcb.ecarteSans) morceaux.push("paris sans autre site écartés");
     add("Entre bookmakers", morceaux.join(" · "), "Filtres entre bookmakers (probabilités sans marge, relevés de Winamax et des autres sites proches dans le temps)");
   }
 
@@ -5522,26 +5539,36 @@ function majBlocCbkRetro(rowsFiltrees) {
   // combien de paris étaient mesurables avant que ces filtres n'en retirent.
   const base = f.actif ? btFiltered({sansCbk: true}) : rowsFiltrees;
   const parSite = {};
-  let avec = 0, nIssue = 0, nMatch = 0;
+  let avec = 0, utilisables = 0, nIssue = 0, nMatch = 0;
   base.forEach(r => {
     if (!r.cbr || !r.cbr.length) return;
     avec++;
     r.cbr.forEach(q => { parSite[q.b] = (parSite[q.b] || 0) + 1; });
     const a = cbkAnalyserRetro(r);
+    if (cbkAutreUtilisable(a)) utilisables++;
     if (a && a.nMes > 0) nIssue++;
     if (a && a.dmMax != null) nMatch++;
   });
   const fr = x => x.toLocaleString("fr-FR");
   const jj = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : "";
   const detail = Object.keys(parSite).map(b => `${CBK_NOMS[b] || b} ${fr(parSite[b])}`).join(" · ");
+  const sansAutre = base.length - utilisables;
   let txt = `<strong>Couverture</strong> — ${fr(avec)} des ${fr(base.length)} paris du périmètre ont la cote d'un autre site`
-    + (detail ? ` (${detail})` : "") + `, dont ${fr(nIssue)} avec un désaccord mesurable sur l'issue et ${fr(nMatch)} sur le match`
-    + ` (écart maximal entre relevés : ${cbkEcartMaxH()} h). Les relevés des autres sites ne remontent qu'au ${jj(info.debut)} : `
-    + `les paris plus anciens ne sont pas mesurables.`;
-  if (f.actif) txt += ` <strong>${fr(rowsFiltrees.length)}</strong> pari${rowsFiltrees.length > 1 ? "s" : ""} retenu${rowsFiltrees.length > 1 ? "s" : ""} avec ces filtres.`;
+    + (detail ? ` (${detail})` : "") + `, dont ${fr(utilisables)} avec un relevé à moins de ${cbkEcartMaxH()} h de celui de Winamax, `
+    + `${fr(nIssue)} avec un désaccord mesurable sur l'issue et ${fr(nMatch)} sur le match. `
+    + `Les relevés des autres sites ne remontent qu'au ${jj(info.debut)} : les ${fr(sansAutre)} autres paris n'ont que la cote Winamax.`;
+  let nComp = 0;
+  if (f.actif) {
+    rowsFiltrees.forEach(r => { if (cbkAutreUtilisable(cbkAnalyserRetro(r))) nComp++; });
+    const n = rowsFiltrees.length;
+    txt += ` <strong>${fr(n)}</strong> pari${n > 1 ? "s" : ""} retenu${n > 1 ? "s" : ""} avec ces filtres`
+      + (f.ecarteSans ? `, tous comparés à un autre site.`
+        : `, dont ${fr(nComp)} comparé${nComp > 1 ? "s" : ""} à un autre site et ${fr(n - nComp)} gardé${n - nComp > 1 ? "s" : ""} avec leur seule cote Winamax.`);
+  }
   note.innerHTML = txt;
   if (alerte) {
     const n = rowsFiltrees.length;
+    const comparaison = f.gain > 0 || !!f.desac || !!f.match;
     if (f.actif && n < MIN_BETS) {
       alerte.style.display = "";
       alerte.innerHTML = `<strong>Échantillon insuffisant</strong> — ${fr(n)} pari${n > 1 ? "s" : ""} seulement (moins de ${MIN_BETS}). `
@@ -5551,11 +5578,324 @@ function majBlocCbkRetro(rowsFiltrees) {
       alerte.style.display = "";
       alerte.innerHTML = `<strong>Échantillon encore mince</strong> — ${fr(n)} paris retenus. Au-dessus de ${MIN_BETS} on peut commencer à regarder, `
         + `mais l'écart de ROI reste fragile avant ${MIN_BETS * 3} paris.`;
+    } else if (f.actif && f.garder && comparaison && nComp < MIN_BETS && n > nComp) {
+      alerte.style.display = "";
+      alerte.innerHTML = `<strong>Peu de paris réellement comparés</strong> — ces filtres ne s'appliquent qu'à ${fr(nComp)} pari${nComp > 1 ? "s" : ""} `
+        + `(moins de ${MIN_BETS}) ; les ${fr(n - nComp)} autres passent faute de comparaison possible. Le ROI d'ensemble bouge à peine et ne dit rien sur l'effet `
+        + `des filtres : choisir « Les écarter » dans « Paris sans autre site » pour ne juger que les paris comparés.`;
     } else {
       alerte.style.display = "none";
       alerte.innerHTML = "";
     }
   }
+}
+
+/* ---- Winamax seule ou meilleur bookmaker (panneau de DC rétrospectif) ----
+   Les MÊMES paris que les KPI (rowsFiltrees), à mise égale, rejoués à la cote du site qui paie le plus. Le résultat
+   du pari ne change pas, seul le prix. Le « meilleur » site est celui que les filtres appellent « fiable » (cbkSynthese :
+   bestF) : relevé proche de celui de Winamax et écart de cote non inhabituel, une cote très supérieure étant presque
+   toujours une cote périmée que personne n'aurait pu jouer. Un pari sans autre site utilisable reste à sa cote Winamax. */
+
+// Profit (unités de mise) d'un pari du backtest joué à `cote` chez un autre site. La garantie 2 buts est propre à
+// Winamax : un pari que seule la garantie a sauvé est perdu ailleurs.
+function bkProfitAilleurs(r, cote) {
+  const gagne = r.gagne_sans_garantie !== undefined ? r.gagne_sans_garantie : r.gagne;
+  return gagne ? cote - 1 : -1;
+}
+function bkLigne(r) {
+  const m = btStakeFor(r);
+  const a = cbkAnalyserRetro(r);
+  const autres = a ? a.tous.filter(q => q !== a.ref && q.retenue) : [];
+  const autre = a && a.bestF !== a.ref ? a.bestF : null;
+  const pW = r.profit * m;
+  return {r, m, autres, comparable: autres.length > 0, autre,
+          pW, pB: autre ? bkProfitAilleurs(r, autre.cote) * m : pW};
+}
+function bkComparer(rows) {
+  const vide = () => ({n: 0, nComp: 0, mise: 0, netW: 0, netB: 0, nMieux: 0, sommeGain: 0});
+  const tout = vide(), comp = vide(), seul = vide(), parSite = {}, parCat = {};
+  let ecartes = 0;
+  const ajoute = (t, L) => {
+    t.n++; t.mise += L.m; t.netW += L.pW; t.netB += L.pB;
+    if (L.comparable) t.nComp++;
+    if (L.autre) { t.nMieux++; t.sommeGain += L.autre.cote / L.r.cote - 1; }
+  };
+  const lignes = rows.map(bkLigne);
+  lignes.forEach(L => {
+    ajoute(tout, L);
+    ajoute(L.comparable ? comp : seul, L);
+    ajoute(parCat[L.r.categorie] || (parCat[L.r.categorie] = vide()), L);
+    const seuil = L.r.categorie === "Score exact" ? CBK_SEUIL_INHABITUEL_SE : CBK_SEUIL_INHABITUEL;
+    L.autres.forEach(q => {
+      if (q.cote / L.r.cote - 1 > seuil) { ecartes++; return; }
+      const s = parSite[q.bk] || (parSite[q.bk] = {nom: q.nom, n: 0, netW: 0, netS: 0, nPlus: 0, nMeilleur: 0, sommeEcart: 0});
+      s.n++; s.netW += L.pW; s.netS += bkProfitAilleurs(L.r, q.cote) * L.m;
+      s.sommeEcart += q.cote / L.r.cote - 1;
+      if (q.cote > L.r.cote * (1 + CBK_EGALITE)) s.nPlus++;
+      if (L.autre === q) s.nMeilleur++;
+    });
+  });
+  return {lignes, tout, comp, seul, parSite, parCat, ecartes};
+}
+
+function majBlocMeilleurBk(rowsFiltrees) {
+  const panel = $("btMeilleurBkPanel");
+  if (!panel) return;
+  const lien = $("btNavMeilleurBk");
+  const visible = btCbrInfo().n > 0;
+  panel.style.display = visible ? "" : "none";
+  if (lien) lien.style.display = visible ? "" : "none";
+  if (!visible) return;
+  const vide = $("btMbkVide"), contenu = $("btMbkContenu");
+  if (!rowsFiltrees.length) {
+    vide.style.display = "";
+    vide.textContent = "Aucun pari avec les filtres actuels : rien à comparer.";
+    contenu.style.display = "none";
+    return;
+  }
+  vide.style.display = "none";
+  contenu.style.display = "";
+
+  const C = bkComparer(rowsFiltrees);
+  const fr = x => x.toLocaleString("fr-FR");
+  const roi = (net, mise) => mise > 0 ? net / mise : null;
+  const cls = x => x == null ? "" : (x >= 0 ? "pos" : "neg");
+  const t = C.tout;
+  const rW = roi(t.netW, t.mise), rB = roi(t.netB, t.mise);
+
+  // Tuiles
+  const tuile = (lib, val, c, sub, titre) =>
+    `<div class="score-tile"${titre ? ` title="${titre}"` : ""}><div class="st-label">${lib}</div>`
+    + `<div class="st-value ${c}">${val}</div><div class="st-sub">${sub}</div></div>`;
+  const gainMoy = t.nMieux ? t.sommeGain / t.nMieux : null;
+  $("btMbkTiles").innerHTML =
+    tuile("Net · Winamax seule", fmtEur(t.netW), cls(t.netW), `ROI ${fmtPct(rW)} · ${fr(t.n)} paris`)
+    + tuile("Net · meilleur bookmaker", fmtEur(t.netB), cls(t.netB), `ROI ${fmtPct(rB)}`)
+    + tuile("Gain supplémentaire", fmtEur(t.netB - t.netW), cls(t.netB - t.netW),
+            rW != null ? `${cbkPtSigne(rB - rW)} de ROI` : "—",
+            "Différence de résultat net, à mise égale, entre jouer chaque pari au meilleur site et le jouer chez Winamax.")
+    + tuile("Mieux payés ailleurs", fr(t.nMieux), "",
+            t.nComp ? `${cbkPc(t.nMieux / t.nComp)} des ${fr(t.nComp)} comparés${gainMoy != null ? ` · cote ${fmtPct(gainMoy)} en moy.` : ""}` : "aucun pari comparé",
+            "Paris pour lesquels un autre site paie plus de 0,5 % de mieux que Winamax (écarts inhabituels exclus).");
+
+  // Résumé par périmètre
+  const ligneRes = (lib, sous, x) => {
+    const w = roi(x.netW, x.mise), b = roi(x.netB, x.mise), dn = x.netB - x.netW;
+    return `<tr>
+      <td data-label=""><div><strong>${lib}</strong>${sous ? `<span class="muted mbk-sous">${sous}</span>` : ""}</div></td>
+      <td data-label="Paris" class="num">${fr(x.n)}</td>
+      <td data-label="Net Winamax" class="num ${cls(x.netW)}">${fmtEur(x.netW)}</td>
+      <td data-label="ROI Winamax" class="num ${cls(w)}">${fmtPct(w)}</td>
+      <td data-label="Net meilleur bookmaker" class="num ${cls(x.netB)}">${fmtEur(x.netB)}</td>
+      <td data-label="ROI meilleur bookmaker" class="num ${cls(b)}">${fmtPct(b)}</td>
+      <td data-label="Écart net" class="num ${cls(dn)}"><strong>${fmtEur(dn)}</strong></td>
+      <td data-label="Écart ROI" class="num">${w != null ? cbkPtSigne(b - w) : "—"}</td>
+    </tr>`;
+  };
+  $("btMbkResume").innerHTML =
+    ligneRes("Tous les paris retenus", "", t)
+    + ligneRes("Comparés à un autre site", "au moins un autre site utilisable", C.comp)
+    + ligneRes("Winamax seule", "aucun autre site : même résultat", C.seul);
+
+  // Site par site
+  const sites = Object.keys(C.parSite).map(k => C.parSite[k]).sort((x, y) => (y.netS - y.netW) - (x.netS - x.netW));
+  $("btMbkSite").innerHTML = sites.length ? sites.map(s => `<tr>
+      <td data-label=""><strong>${s.nom}</strong></td>
+      <td data-label="Paris cotés" class="num">${fr(s.n)}</td>
+      <td data-label="Cote moy. vs Winamax" class="num ${cls(s.sommeEcart)}">${fmtPct(s.sommeEcart / s.n)}</td>
+      <td data-label="Paie plus que Winamax" class="num">${fr(s.nPlus)} · ${cbkPc(s.nPlus / s.n)}</td>
+      <td data-label="Meilleur prix retenu" class="num">${fr(s.nMeilleur)}</td>
+      <td data-label="Net Winamax" class="num ${cls(s.netW)}">${fmtEur(s.netW)}</td>
+      <td data-label="Net chez ce site" class="num ${cls(s.netS)}">${fmtEur(s.netS)}</td>
+      <td data-label="Écart" class="num ${cls(s.netS - s.netW)}"><strong>${fmtEur(s.netS - s.netW)}</strong></td>
+    </tr>`).join("") : '<tr><td colspan="8" class="muted">Aucun autre site utilisable sur ces paris.</td></tr>';
+
+  // Par catégorie
+  const cats = Object.keys(C.parCat).sort((x, y) => C.parCat[y].n - C.parCat[x].n);
+  $("btMbkCat").innerHTML = cats.map(c => {
+    const x = C.parCat[c], w = roi(x.netW, x.mise), b = roi(x.netB, x.mise), dn = x.netB - x.netW;
+    return `<tr>
+      <td data-label=""><strong>${c}</strong></td>
+      <td data-label="Paris" class="num">${fr(x.n)}</td>
+      <td data-label="Comparés" class="num">${fr(x.nComp)}</td>
+      <td data-label="Net Winamax" class="num ${cls(x.netW)}">${fmtEur(x.netW)}</td>
+      <td data-label="Net meilleur bookmaker" class="num ${cls(x.netB)}">${fmtEur(x.netB)}</td>
+      <td data-label="Écart" class="num ${cls(dn)}"><strong>${fmtEur(dn)}</strong></td>
+      <td data-label="ROI Winamax" class="num ${cls(w)}">${fmtPct(w)}</td>
+      <td data-label="ROI meilleur bookmaker" class="num ${cls(b)}">${fmtPct(b)}</td>
+    </tr>`;
+  }).join("");
+
+  // Courbe
+  dessinerMeilleurBk(C);
+
+  // Notes
+  const garantieTouchee = C.lignes.some(L => L.r.gagne_sans_garantie !== undefined);
+  let txt = `<strong>À savoir</strong> — mise de chaque pari inchangée (réglage « Mise »), calculée sur la cote Winamax. `
+    + `Un autre site n'est préféré que s'il paie plus de ${(CBK_EGALITE * 100).toLocaleString("fr-FR")} % de mieux, et seulement si son relevé est à moins de `
+    + `${cbkEcartMaxH()} h de celui de Winamax (réglage « Écart maximal entre relevés »). `
+    + `Les cotes qui dépassent celle de Winamax de plus de ${CBK_SEUIL_INHABITUEL * 100} % (${CBK_SEUIL_INHABITUEL_SE * 100} % au score exact) sont ignorées : `
+    + `c'est presque toujours une cote périmée${C.ecartes ? ` (${fr(C.ecartes)} cote${C.ecartes > 1 ? "s" : ""} écartée${C.ecartes > 1 ? "s" : ""} ici)` : ""}. `
+    + (garantieTouchee ? `La garantie 2 buts n'existe que chez Winamax : un pari qu'elle a sauvé est perdu chez un autre site. ` : "")
+    + `Comparaison théorique : elle suppose qu'on ait pu miser chez le site le plus généreux au moment du relevé, sans plafond de mise ni bonus ni délai, `
+    + `et le gain mesuré vient du seul prix — il ne dit rien de plus sur la qualité du modèle.`;
+  $("btMbkNotes").innerHTML = txt;
+}
+
+function dessinerMeilleurBk(C) {
+  const wrap = $("btMbkChartWrap");
+  if (!wrap) return;
+  if (!C.tout.nComp) {
+    wrap.innerHTML = '<p class="muted">Aucun pari de ce périmètre n\'a la cote d\'un autre site utilisable : les deux scénarios sont identiques, il n\'y a rien à tracer.</p>';
+    return;
+  }
+  if (C.lignes.length < 2) {
+    wrap.innerHTML = '<p class="muted">Pas assez de paris pour tracer une évolution avec ces filtres.</p>';
+    return;
+  }
+  const L = C.lignes.slice().sort((a, b) => a.r.date < b.r.date ? -1 : (a.r.date > b.r.date ? 1 : 0));
+  let cw = 0, cb = 0;
+  const pts = L.map((l, i) => { cw += l.pW; cb += l.pB; return {x: i + 1, w: cw, b: cb, d: cb - cw, l}; });
+  const W0 = chartW();
+  // Deux zones sur le même axe des paris : en haut les deux gains cumulés, en bas leur écart (le gain que
+  // rapporte le meilleur prix), invisible à l'échelle du haut tant que l'écart reste petit devant les aléas du jeu.
+  const W = W0, H = 440, padL = 66, padR = W0 < 600 ? 68 : 86, padT = 26;
+  const yb = 262, d0 = 318, d1 = 392, yx = H - 14;
+  const ys = [0];
+  pts.forEach(p => { ys.push(p.w); ys.push(p.b); });
+  let yMin = arrMin(ys), yMax = arrMax(ys);
+  if (yMin === yMax) { yMin -= 1; yMax += 1; }
+  const pad = (yMax - yMin) * 0.12; yMin -= pad; yMax += pad;
+  const ds = pts.map(p => p.d).concat([0]);
+  let dMin = arrMin(ds), dMax = arrMax(ds);
+  if (dMax - dMin < 0.01) { dMin -= 0.5; dMax += 0.5; }
+  dMax += (dMax - dMin) * 0.08;
+  const xMax = Math.max(2, pts.length);
+  const sx = x => padL + (x - 1) / (xMax - 1) * (W - padL - padR);
+  const sy = y => padT + (yMax - y) / (yMax - yMin) * (yb - padT);
+  const sd = y => d0 + (dMax - y) / (dMax - dMin) * (d1 - d0);
+  // Au-delà de ~2 500 paris, un point sur N suffit à l'écran (le survol, lui, garde tous les paris) : on évite un SVG d'1 Mo.
+  const saut = Math.max(1, Math.floor(pts.length / 2500));
+  const tracees = saut === 1 ? pts : pts.filter((p, i) => i % saut === 0 || i === pts.length - 1);
+  const chemin = (cle, f) => tracees.map((p, i) => (i ? "L" : "M") + sx(p.x).toFixed(1) + " " + f(p[cle]).toFixed(1)).join(" ");
+  const fmtAxeD = v => (Math.abs(v) < 100 ? v.toFixed(1).replace(".", ",") : Math.round(v).toLocaleString("fr-FR")) + " €";
+  // Lisibilité d'un texte posé sur les courbes : contour de la couleur du fond.
+  const halo = 'style="paint-order:stroke;stroke:var(--night-2);stroke-width:4px;stroke-linejoin:round"';
+
+  let yticks = "";
+  for (let i = 0; i <= 4; i++) {
+    const yv = yMin + (yMax - yMin) * i / 4, yy = sy(yv);
+    yticks += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/>
+      <text x="${padL - 10}" y="${(yy + 4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${fmtEurAxe(yv)}</text>`;
+  }
+  const zeroLine = (0 >= yMin && 0 <= yMax)
+    ? `<line class="zeroline" x1="${padL}" y1="${sy(0).toFixed(1)}" x2="${W - padR}" y2="${sy(0).toFixed(1)}"/>` : "";
+  const dTicks = [0, dMax - (dMax - dMin) * 0.08].concat(dMin < 0 ? [dMin] : []);
+  let dgrid = "";
+  dTicks.forEach(v => {
+    const yy = sd(v);
+    dgrid += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" class="${v === 0 ? "zeroline" : "chart-grid-line"}"/>
+      <text x="${padL - 10}" y="${(yy + 4).toFixed(1)}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${fmtAxeD(v)}</text>`;
+  });
+  let xticks = ""; const pas = Math.max(1, Math.floor(pts.length / chartNTicks(W)));
+  for (let i = 0; i < pts.length; i += pas) {
+    xticks += `<text x="${sx(pts[i].x).toFixed(1)}" y="${yx}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${fmtChartDate(pts[i].l.r.date)}</text>`;
+  }
+  const dernier = pts[pts.length - 1];
+  const xe = sx(dernier.x);
+  // Valeur finale de chaque courbe, à droite du tracé (le point de la couleur de la série la désigne). Si les deux
+  // valeurs sont trop proches pour tenir l'une au-dessus de l'autre, on les écarte.
+  let yW = sy(dernier.w) + 4, yB = sy(dernier.b) + 4;
+  if (Math.abs(yW - yB) < 15) {
+    const mid = (yW + yB) / 2, haut = dernier.b >= dernier.w;   // le plus gros gain s'affiche au-dessus
+    yB = mid + (haut ? -7.5 : 7.5); yW = mid + (haut ? 7.5 : -7.5);
+  }
+  const etiquette = (cle, txt, y) =>
+    `<text data-fin="${cle}" x="${(xe + 9).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="start" class="chart-tip" ${halo}>${txt}</text>`;
+
+  wrap.innerHTML = `
+    <div class="chart-holder">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Gain cumulé en euros : Winamax seule et avec le meilleur bookmaker, puis écart cumulé entre les deux">
+        ${yticks}${zeroLine}
+        <path class="curve" d="${chemin("b", sy)}" stroke="var(--cyan)"/>
+        <path class="curve" d="${chemin("w", sy)}" stroke="var(--gold)" stroke-dasharray="7 5"/>
+        <circle cx="${xe.toFixed(1)}" cy="${sy(dernier.w).toFixed(1)}" r="4" fill="var(--gold)"/>
+        <circle cx="${xe.toFixed(1)}" cy="${sy(dernier.b).toFixed(1)}" r="4" fill="var(--cyan)"/>
+        ${etiquette("b", fmtEur(dernier.b), yB)}
+        ${etiquette("w", fmtEur(dernier.w), yW)}
+        <text x="${padL}" y="${d0 - 14}" class="chart-tip" fill="var(--ink-dim)">Gain supplémentaire cumulé (meilleur bookmaker − Winamax)</text>
+        ${dgrid}
+        <path class="curve" d="${chemin("d", sd)}" stroke="var(--cyan)"/>
+        <circle cx="${xe.toFixed(1)}" cy="${sd(dernier.d).toFixed(1)}" r="4" fill="var(--cyan)"/>
+        ${etiquette("d", fmtEur(dernier.d), sd(dernier.d) + 4)}
+        ${xticks}
+        <line class="chart-cursor" x1="0" y1="${padT}" x2="0" y2="${d1}" opacity="0"/>
+        <circle class="chart-cursor-dot" data-s="w" r="4.5" fill="var(--gold)" opacity="0"/>
+        <circle class="chart-cursor-dot" data-s="b" r="4.5" fill="var(--cyan)" opacity="0"/>
+        <circle class="chart-cursor-dot" data-s="d" r="4.5" fill="var(--cyan)" opacity="0"/>
+        <rect class="chart-hit" x="${padL}" y="${padT}" width="${W - padL - padR}" height="${d1 - padT}" fill="transparent"/>
+      </svg>
+      <div class="chart-tooltip" hidden></div>
+    </div>
+    <p class="muted" style="margin-top:.5rem;font-size:.8rem">
+      ${pts.length.toLocaleString("fr-FR")} pari(s), classés par date. Le graphique du bas isole l'écart entre les deux courbes : il ne grandit que sur les paris
+      où un autre site paie mieux. Là où il n'y en a pas, les deux courbes avancent ensemble.
+    </p>`;
+
+  const holder = wrap.querySelector(".chart-holder");
+  const svg = holder.querySelector("svg");
+  const cursor = holder.querySelector(".chart-cursor");
+  const dotW = holder.querySelector('.chart-cursor-dot[data-s="w"]');
+  const dotB = holder.querySelector('.chart-cursor-dot[data-s="b"]');
+  const dotD = holder.querySelector('.chart-cursor-dot[data-s="d"]');
+  const tip = holder.querySelector(".chart-tooltip");
+  const cache = () => {
+    [cursor, dotW, dotB, dotD].forEach(e => e.setAttribute("opacity", "0"));
+    tip.hidden = true;
+  };
+  const bouge = ev => {
+    const rect = svg.getBoundingClientRect();
+    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const relX = (clientX - rect.left) / rect.width * W;
+    if (relX < padL - 4 || relX > W - padR + 4) { cache(); return; }
+    // Recherche dichotomique : les abscisses sont croissantes.
+    let lo = 0, hi = pts.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sx(pts[mid].x) < relX) lo = mid + 1; else hi = mid; }
+    let p = pts[lo];
+    if (lo > 0 && Math.abs(sx(pts[lo - 1].x) - relX) < Math.abs(sx(p.x) - relX)) p = pts[lo - 1];
+    const px = sx(p.x);
+    cursor.setAttribute("x1", px.toFixed(1)); cursor.setAttribute("x2", px.toFixed(1)); cursor.setAttribute("opacity", "1");
+    [[dotW, sy(p.w)], [dotB, sy(p.b)], [dotD, sd(p.d)]].forEach(([dot, y]) => {
+      dot.setAttribute("cx", px.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("opacity", "1");
+    });
+    const r = p.l.r;
+    const prix = p.l.autre
+      ? `<div class="tt-row"><span>${p.l.autre.nom} @ ${p.l.autre.cote.toFixed(2)}</span><span class="tt-win">${fmtPct(p.l.autre.cote / r.cote - 1)}</span></div>`
+      : `<div class="tt-row"><span class="muted">Aucun site ne paie mieux</span></div>`;
+    tip.innerHTML = `
+      <div class="tt-date">${r.date}</div>
+      <div class="tt-match">${r.match}</div>
+      <div class="tt-row"><span>${r.colonne} · Winamax @ ${r.cote.toFixed(2)}</span>
+        ${r.gagne ? '<span class="tt-win">Gagné</span>' : '<span class="tt-lose">Perdu</span>'}</div>
+      ${prix}
+      <div class="tt-cum">Winamax <strong class="${p.w >= 0 ? "pos" : "neg"}">${fmtEur(p.w)}</strong><br>
+        Meilleur bookmaker <strong class="${p.b >= 0 ? "pos" : "neg"}">${fmtEur(p.b)}</strong><br>
+        Écart <strong class="${p.d >= 0 ? "pos" : "neg"}">${fmtEur(p.d)}</strong></div>`;
+    tip.hidden = false;
+    const pxReal = px / W * rect.width;
+    const pyReal = sy(Math.max(p.w, p.b)) / H * rect.height;
+    const tw = tip.offsetWidth || 220;
+    let left = pxReal + 14;
+    if (left + tw > rect.width) left = pxReal - tw - 14;
+    tip.style.left = Math.max(4, left) + "px";
+    tip.style.top = Math.max(4, Math.min(pyReal - 10, rect.height - (tip.offsetHeight || 120) - 4)) + "px";
+  };
+  const hit = holder.querySelector(".chart-hit");
+  hit.addEventListener("mousemove", bouge);
+  hit.addEventListener("mouseleave", cache);
+  hit.addEventListener("touchstart", bouge, {passive: true});
+  hit.addEventListener("touchmove", bouge, {passive: true});
+  hit.addEventListener("touchend", cache);
 }
 
 function renderBacktest() {
@@ -5579,6 +5919,7 @@ function renderBacktest() {
   renderHistMatrix(btFiltered({sansHist: true}));
   renderBtActiveFilters(rowsFiltrees);
   majBlocCbkRetro(rowsFiltrees);
+  majBlocMeilleurBk(rowsFiltrees);
   renderBtFilterImpact(rowsFiltrees, rowsReferenceComplete);
   // La page Bankroll compare vos paris réels à ces mêmes lignes filtrées.
   if (typeof renderComparaison === "function") renderComparaison(rowsFiltrees);
