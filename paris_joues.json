@@ -494,6 +494,17 @@
   "mise": 5,
   "maj": 1793452671235
  },
+ "2026-10-31|FC Porto - Estoril|0 - 0": {
+  "cote": 17,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 17,
+  "ts": "2026-10-31T18:17:19",
+  "kickoff": "2026-10-31T21:30:00",
+  "capture_iso": "2026-10-31T16:18:53.385666",
+  "mise": 10,
+  "maj": 1793467039509
+ },
  "2026-10-31|Feyenoord - Fortuna Sittard|1 - 2": {
   "cote": 30,
   "cote_confirmee": false,
