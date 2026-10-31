@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261031101901">
+<link rel="stylesheet" href="style.css?v=20261031104159">
 </head>
 <body>
 <div class="topbar">
@@ -431,6 +431,7 @@
     <div class="bt-section-nav" id="btSectionNav" aria-label="Navigation dans le DC rétrospectif">
       <nav class="bt-section-links" aria-label="Sections de l’analyse">
         <button type="button" class="bt-section-link" data-bt-target="btSectionSynthese" aria-current="location">Synthèse</button>
+        <button type="button" class="bt-section-link" id="btNavMeilleurBk" data-bt-target="btMeilleurBkPanel" style="display:none">Bookmakers</button>
         <button type="button" class="bt-section-link" data-bt-target="btScorePanel">Matrices</button>
         <button type="button" class="bt-section-link" data-bt-target="btMvtFiltrePanel">CLV</button>
         <button type="button" class="bt-section-link" data-bt-target="btLeaguePanel">Ligues</button>
@@ -656,7 +657,7 @@
 
       <div id="btCbkFiltres" class="cbk-filtres" style="display:none">
         <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .3rem">Filtres entre bookmakers</h3>
-        <p class="muted" style="margin:0 0 .8rem; font-size:.82rem">Les mêmes filtres que sur « Paris à venir » (réglages <strong>partagés</strong>), rejoués sur des paris <strong>déjà joués</strong>. Ils <strong>restreignent</strong> la liste déjà sélectionnée sur la cote Winamax : le profit de chaque pari reste celui de sa cote Winamax. Chaque pari est comparé au relevé d'Unibet / Betclic le plus proche dans le temps de celui de Winamax ; « Écart maximal entre relevés » décide quels sites comptent. Un match qu'aucun autre site n'a relevé avant le coup d'envoi n'est pas mesurable : il est écarté dès qu'un filtre demande une comparaison.</p>
+        <p class="muted" style="margin:0 0 .8rem; font-size:.82rem">Les mêmes filtres que sur « Paris à venir » (réglages <strong>partagés</strong>), rejoués sur des paris <strong>déjà joués</strong>. Ils <strong>restreignent</strong> la liste déjà sélectionnée sur la cote Winamax : le profit de chaque pari reste celui de sa cote Winamax. Chaque pari est comparé au relevé d'Unibet / Betclic le plus proche dans le temps de celui de Winamax ; « Écart maximal entre relevés » décide quels sites comptent. Les paris qui n'ont que la cote Winamax (les plus anciens, ou ceux qu'aucun autre site n'a relevé assez près de Winamax) ne sont pas mesurables : « Paris sans autre site » décide s'ils restent dans le calcul avec leur cote Winamax (par défaut) ou s'ils sont écartés. Les paris mesurables sont toujours comparés au meilleur site disponible.</p>
         <div class="controls">
           <div class="field">
             <label for="btCbkEv">Espérance au meilleur prix</label>
@@ -712,6 +713,13 @@
               <option value="0.015" selected>1,5 point</option>
               <option value="0.02">2 points</option>
               <option value="0.03">3 points</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkSans">Paris sans autre site</label>
+            <select id="btCbkSans" title="Paris passés qui n'ont que la cote Winamax (relevés des autres sites pas encore collectés, ou trop éloignés dans le temps). « Les garder » les laisse dans le calcul avec leur cote Winamax : ils passent les filtres de comparaison, faute de mesure. « Les écarter » ne garde que les paris réellement comparés à un autre site.">
+              <option value="garder" selected>Les garder (Winamax seule)</option>
+              <option value="ecarter">Les écarter</option>
             </select>
           </div>
           <div class="field">
@@ -826,6 +834,69 @@
       </div>
       <div id="btJourWrap"></div>
     </div>
+
+<details class="panel panel-foldable" id="btMeilleurBkPanel" open style="display:none">
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 16V9.5M10 16V4M16 16v-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Winamax seule ou meilleur bookmaker <span class="hint">— ce que rapporteraient ces mêmes paris joués au site qui paie le mieux</span></h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Mêmes paris que les KPI ci-dessus (mêmes filtres), <strong>à mise égale</strong> : chaque pari est rejoué à la
+        cote du site qui paie le plus parmi Winamax, Unibet et Betclic. Le résultat du pari (gagné ou perdu) ne change
+        pas, seul le prix change. Les paris qui n'ont que la cote Winamax (relevés des autres sites pas encore collectés)
+        restent à leur cote Winamax.
+      </p>
+      <p class="muted" id="btMbkVide" style="display:none; font-size:.85rem"></p>
+      <div id="btMbkContenu">
+        <div class="score-tiles" id="btMbkTiles"></div>
+
+        <h3 class="mbk-h3">Résumé</h3>
+        <div class="tablewrap table-scroll">
+          <table id="btMbkResumeTable" class="cardify">
+            <thead><tr>
+              <th>Périmètre</th><th class="num">Paris</th>
+              <th class="num">Net Winamax</th><th class="num">ROI Winamax</th>
+              <th class="num">Net meilleur bookmaker</th><th class="num">ROI meilleur bookmaker</th>
+              <th class="num">Écart net</th><th class="num">Écart ROI</th>
+            </tr></thead>
+            <tbody id="btMbkResume"></tbody>
+          </table>
+        </div>
+
+        <h3 class="mbk-h3">Gain cumulé en euros</h3>
+        <div class="mbk-legend" aria-hidden="true">
+          <span><i class="is-w"></i>Winamax seule</span>
+          <span><i class="is-b"></i>Avec le meilleur bookmaker</span>
+        </div>
+        <div id="btMbkChartWrap"></div>
+
+        <h3 class="mbk-h3">Site par site</h3>
+        <div class="tablewrap table-scroll">
+          <table id="btMbkSiteTable" class="cardify">
+            <thead><tr>
+              <th>Site</th><th class="num">Paris cotés</th><th class="num">Cote moy. vs Winamax</th>
+              <th class="num">Paie plus que Winamax</th><th class="num">Meilleur prix retenu</th>
+              <th class="num">Net Winamax</th><th class="num">Net chez ce site</th><th class="num">Écart</th>
+            </tr></thead>
+            <tbody id="btMbkSite"></tbody>
+          </table>
+        </div>
+
+        <h3 class="mbk-h3">Par catégorie</h3>
+        <div class="tablewrap table-scroll">
+          <table id="btMbkCatTable" class="cardify">
+            <thead><tr>
+              <th>Catégorie</th><th class="num">Paris</th><th class="num">Comparés</th>
+              <th class="num">Net Winamax</th><th class="num">Net meilleur bookmaker</th><th class="num">Écart</th>
+              <th class="num">ROI Winamax</th><th class="num">ROI meilleur bookmaker</th>
+            </tr></thead>
+            <tbody id="btMbkCat"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="btMbkNotes" style="margin:.9rem 0 0; font-size:.82rem"></p>
+      </div>
+      </div>
+    </details>
 
     <h3 class="section-divider">Résultats détaillés</h3>
 
@@ -2221,7 +2292,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261031101932"></script>
-<script src="app.js?v=20261031101901"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261031104250"></script>
+<script src="app.js?v=20261031104159"></script>
 </body>
 </html>
