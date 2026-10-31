@@ -472,6 +472,17 @@
   "mise": 5,
   "maj": 1793041861913
  },
+ "2026-10-31|Ajax Amsterdam - AZ Alkmaar|0 - 0": {
+  "cote": 18,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 18,
+  "ts": "2026-10-31T18:16:45",
+  "kickoff": "2026-10-31T21:00:00",
+  "capture_iso": "2026-10-31T16:18:53.385666",
+  "mise": 11.5,
+  "maj": 1793467007121
+ },
  "2026-10-31|Al-Taawon - Al-Ettifaq|0 - 0": {
   "cote": 11,
   "cote_confirmee": false,
