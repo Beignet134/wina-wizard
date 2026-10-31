@@ -505,6 +505,17 @@
   "mise": 5,
   "maj": 1793452668971
  },
+ "2026-10-31|Heerenveen - NEC Nijmegen|0 - 0": {
+  "cote": 18,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 18,
+  "ts": "2026-10-31T18:14:55",
+  "kickoff": "2026-10-31T18:45:00",
+  "capture_iso": "2026-10-31T16:18:53.385666",
+  "mise": 10,
+  "maj": 1793466895971
+ },
  "2026-10-31|Zabbar Saint Patrick FC - Mosta FC|homeWin": {
   "cote": 2.2,
   "cote_confirmee": false,
