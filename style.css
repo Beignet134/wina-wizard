@@ -1088,6 +1088,15 @@ td.lvl-bad { color: var(--down); }
 /* --- Diagnostics visuels du modèle --- */
 .diag-svg { display: block; width: 100%; height: auto; max-width: 700px; margin: 0 auto; }
 #btEvoWrap .diag-svg { max-width: 100%; }
+/* Panneau « Winamax seule ou meilleur bookmaker » */
+.mbk-h3 { font-family: var(--font-display); font-size: .92rem; margin: 1.4rem 0 .5rem; }
+.mbk-legend { display: flex; flex-wrap: wrap; gap: .35rem 1.3rem; margin: 0 0 .4rem; font-size: .8rem; color: var(--ink-dim); }
+.mbk-legend span { display: inline-flex; align-items: center; gap: .5rem; }
+.mbk-legend i { display: inline-block; width: 24px; height: 0; border-top: 2.5px solid currentColor; }
+.mbk-legend i.is-w { color: var(--gold); border-top-style: dashed; }
+.mbk-legend i.is-b { color: var(--cyan); }
+.mbk-sous { display: block; font-size: .76rem; font-weight: 400; margin-top: .1rem; }
+#btMbkChartWrap .chart-holder svg { overflow: visible; }
 
 /* Barres divergentes : ROI positif à droite de l'axe, négatif à gauche.
    Ce format rend la comparaison entre gammes immédiate, là où des barres
