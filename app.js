@@ -5148,7 +5148,10 @@ function btFiltered(opts) {
     if (pred === "desaccord" && r.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(r.prediction && !r.prediction_accord)) return false;
 
-    if (!passeMvt(bornesMvt, r)) return false;
+    // opts.sansMvt : tout sauf le mouvement de cote — c'est ce que la matrice
+    // des gains par mouvement (renderMvtMatrix) affiche, pour montrer aussi
+    // les tranches que le curseur écarte.
+    if (!opts.sansMvt && !passeMvt(bornesMvt, r)) return false;
     if (filtresCbk && filtresCbk.actif && !passeCbkRetro(filtresCbk, r, alpha)) return false;
     return true;
   });
@@ -5161,7 +5164,9 @@ function btFiltered(opts) {
                           && histBucketKey(r.n_hist_ext) === BT_HIST_SELECTION.ext);
   }
 
-  if (dedup) {
+  // opts.sansDedup : la matrice des gains par mouvement refait elle-même ce
+  // choix, tranche par tranche (voir renderMvtMatrix / mvtMatDedup).
+  if (dedup && !opts.sansDedup) {
     // Plusieurs seuils joués sur le même match ne sont PAS des paris
     // indépendants : ils gagnent ou perdent ensemble. Les compter tous gonfle
     // le nombre de paris tout en concentrant le risque, ce qui rend le ROI
@@ -6031,6 +6036,15 @@ function renderBacktest() {
   // en cours ne laisse plus aucun pari pour le reste de la page (retour
   // anticipé juste en dessous) — voir le commentaire sur btFiltered(opts).
   renderHistMatrix(btFiltered({sansHist: true}));
+  // Matrice des gains par mouvement : mêmes filtres SAUF le mouvement de
+  // cote (sinon les tranches écartées par le curseur seraient toujours vides).
+  // Rendue ici, avant le retour anticipé, pour rester visible quand le
+  // curseur ne laisse plus aucun pari.
+  // Sans dédoublonnage : la matrice le refait tranche par tranche.
+  const dedupBt = $("btDedup") && $("btDedup").value === "1";
+  renderMvtMatrix(mvtBornesActives("bt").actif || dedupBt
+                    ? btFiltered({sansMvt: true, sansDedup: true}) : rowsFiltrees,
+                  rowsFiltrees);
   renderBtActiveFilters(rowsFiltrees);
   majBlocCbkRetro(rowsFiltrees);
   majBlocMeilleurBk(rowsFiltrees);
@@ -7244,6 +7258,365 @@ function renderMvtFiltre(rowsFiltrees) {
         + `(${fmtPct(pire.roi)}, ${pire.n} paris).`;
     }
   }
+}
+
+// --- Matrice des gains par mouvement de cote -------------------------------
+// Lignes = tranches de mouvement, en points de probabilité implicite entre la
+// première et la dernière capture (variation_proba × 100) : négatif = cote
+// allongée, positif = cote raccourcie, 0 = inchangée (≈ 1 pari sur 5 sur les
+// exports réels, d'où une ligne à part). Plus fin près de 0, où se trouve le
+// réglage par défaut du curseur (0 à +0,5), plus large dans les queues.
+// Bornes : côté négatif lo ≤ v < hi, côté positif lo < v ≤ hi — symétrique
+// autour de l'inchangé. Toutes les bornes sont des multiples de 0,5, le pas
+// du curseur « Mouvement de la cote ».
+// Colonnes au choix : type de pari, plage de cote ou nombre de relevés.
+// Calculée par renderBacktest sur btFiltered({sansMvt: true}) : tous les
+// filtres de la page sauf le mouvement lui-même.
+const MVT_MAT_TRANCHES = [
+  {k: "a5",  lo: -Infinity, hi: -5,  label: "< −5",      sens: "allongée"},
+  {k: "a2",  lo: -5,   hi: -2,       label: "−5 à −2",   sens: "allongée"},
+  {k: "a1",  lo: -2,   hi: -1,       label: "−2 à −1",   sens: "allongée"},
+  {k: "a05", lo: -1,   hi: -0.5,     label: "−1 à −0,5", sens: "allongée"},
+  {k: "a0",  lo: -0.5, hi: 0,        label: "−0,5 à 0",  sens: "allongée"},
+  {k: "z",   lo: 0,    hi: 0,        label: "0",         sens: "inchangée"},
+  {k: "r0",  lo: 0,    hi: 0.5,      label: "0 à +0,5",  sens: "raccourcie"},
+  {k: "r05", lo: 0.5,  hi: 1,        label: "+0,5 à +1", sens: "raccourcie"},
+  {k: "r1",  lo: 1,    hi: 2,        label: "+1 à +2",   sens: "raccourcie"},
+  {k: "r2",  lo: 2,    hi: 5,        label: "+2 à +5",   sens: "raccourcie"},
+  {k: "r5",  lo: 5,    hi: Infinity, label: "> +5",      sens: "raccourcie"},
+];
+// Pari capturé une seule fois : aucun mouvement mesurable. Toujours écarté
+// dès que le curseur est resserré (voir passeMvt), d'où une ligne séparée.
+const MVT_MAT_NON_MESURE = {k: "nm", label: "Non mesuré", sens: "1 seule capture"};
+const MVT_MAT_PAR_CLE = Object.fromEntries(
+  [...MVT_MAT_TRANCHES, MVT_MAT_NON_MESURE].map(t => [t.k, t]));
+const MVT_MAT_CAT_COURT = {
+  "Score exact": "Score exact", "Vainqueur du match": "Vainqueur",
+  "Intervalle de buts": "Intervalle", "Plus/Moins de buts": "Plus/Moins",
+  "Les 2 équipes marquent": "2 équipes marquent",
+};
+function mvtMatGroupeBorne(groupes, v) {
+  if (v == null || isNaN(v)) return null;
+  const g = groupes.find(x => v >= x.lo && v < x.hi);
+  return g ? g.k : null;
+}
+const MVT_MAT_COLONNES = {
+  cat: {
+    coin: "Type de pari →",
+    groupes: CATEGORIES_DC.map(c => ({k: c, label: MVT_MAT_CAT_COURT[c] || c})),
+    cle: r => r.categorie,
+  },
+  cote: {
+    coin: "Cote →",
+    groupes: [
+      {k: "c1", label: "< 1,5",   lo: 0,   hi: 1.5},
+      {k: "c2", label: "1,5 à 2", lo: 1.5, hi: 2},
+      {k: "c3", label: "2 à 3",   lo: 2,   hi: 3},
+      {k: "c4", label: "3 à 5",   lo: 3,   hi: 5},
+      {k: "c5", label: "5 à 10",  lo: 5,   hi: 10},
+      {k: "c6", label: "10 et +", lo: 10,  hi: Infinity},
+    ],
+    cle: r => mvtMatGroupeBorne(MVT_MAT_COLONNES.cote.groupes, r.cote),
+  },
+  // Relevés = nombre de captures de la cote avant le match. Peu de relevés
+  // (période à une capture par jour) = mouvement mesuré grossièrement.
+  releves: {
+    coin: "Relevés →",
+    groupes: [
+      {k: "n1", label: "2 à 7",   lo: 2,  hi: 8},
+      {k: "n2", label: "8 à 19",  lo: 8,  hi: 20},
+      {k: "n3", label: "20 et +", lo: 20, hi: Infinity},
+    ],
+    cle: r => mvtMatGroupeBorne(MVT_MAT_COLONNES.releves.groupes, r.n_captures),
+  },
+};
+// Choix de colonnes : simple confort d'affichage, mémorisé dans ce navigateur.
+const MVT_MAT_LS = "ww_bt_mvtmat_col";
+let BT_MVT_MAT_COL = (() => {
+  try { const v = localStorage.getItem(MVT_MAT_LS); return MVT_MAT_COLONNES[v] ? v : "cat"; }
+  catch (e) { return "cat"; }
+})();
+// Dernier rendu : données des cases (détail au clic) et lignes reçues, pour
+// changer de colonnes sans refaire tout le rendu de la page.
+let MVT_MAT_DATA = {};
+let MVT_MAT_DERNIER = null;
+
+// Arrondi au centième de point : variation_proba est stockée à 4 décimales,
+// ×100 en flottant donnerait parfois -0.49999 au lieu de -0.5.
+function mvtMatPoints(r) { return Math.round((r.variation_proba || 0) * 10000) / 100; }
+function mvtMatTranche(r) {
+  if (r.raccourcit == null) return MVT_MAT_NON_MESURE.k;
+  const v = mvtMatPoints(r);
+  if (v === 0) return "z";
+  for (const t of MVT_MAT_TRANCHES) {
+    if (t.k === "z") continue;
+    if (v < 0 ? (v >= t.lo && v < t.hi) : (v > t.lo && v <= t.hi)) return t.k;
+  }
+  return null;
+}
+function mvtMatPtsTxt(v) {
+  return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("fr-FR") + " pt";
+}
+function mvtMatNomTranche(t) {
+  if (t.k === "z") return "cote inchangée";
+  if (t.k === "nm") return "mouvement non mesuré";
+  return `${t.label} pts`;
+}
+// Position d'une tranche par rapport au curseur (bornes incluses, une borne
+// à l'extrémité du domaine = pas de limite, comme passeMvt) :
+// "tout" = entièrement retenue, "partiel" = en partie, "" = écartée.
+function mvtMatCouverture(t, b) {
+  if (!b.actif || t.k === "nm") return "";
+  const L = b.lo > MVT_SLIDER_MIN ? b.lo : -Infinity;
+  const H = b.hi < MVT_SLIDER_MAX ? b.hi : Infinity;
+  if (t.k === "z") return (L <= 0 && 0 <= H) ? "tout" : "";
+  const negatif = t.hi <= 0;
+  const touche = negatif ? (t.lo <= H && t.hi > L) : (t.hi >= L && t.lo < H);
+  if (!touche) return "";
+  return (t.lo >= L && t.hi <= H) ? "tout" : "partiel";
+}
+
+function marquerModesMvtMat() {
+  document.querySelectorAll("#btMvtMatModes .jour-mode[data-col]").forEach(b => {
+    const actif = b.dataset.col === BT_MVT_MAT_COL;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+
+// « Un seul pari par match et par catégorie » : même règle que btFiltered
+// (meilleure espérance, le premier rencontré en cas d'égalité), avec une clé
+// au choix.
+function mvtMatDedup(rows, cle) {
+  const meilleur = {};
+  rows.forEach(r => {
+    const k = cle(r);
+    if (!meilleur[k] || r.ev > meilleur[k].ev) meilleur[k] = r;
+  });
+  return Object.values(meilleur);
+}
+
+// rowsBruts = tous les filtres de la page sauf le mouvement de cote, AVANT
+// « un seul pari par match » ; rowsPage = les paris de la page.
+// Avec ce dédoublonnage actif, chaque tranche garde son propre meilleur pari
+// par match et par catégorie : une ligne montre ainsi exactement ce que
+// donnerait le curseur réglé sur cette seule tranche. Le dédoublonnage global
+// (rowsSansFiltre) sert au comparatif « sans ce filtre ».
+function renderMvtMatrix(rowsBruts, rowsPage) {
+  const wrap = $("btMvtMatWrap");
+  if (!wrap) return;
+  const empty = $("btMvtMatEmpty");
+  const legend = $("btMvtMatLegend");
+  const note = $("btMvtMatNote");
+  const bestEl = $("btMvtMatBest");
+  MVT_MAT_DERNIER = {rowsBruts, rowsPage};
+  marquerModesMvtMat();
+  const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
+  const rowsSansFiltre = dedupActif
+    ? mvtMatDedup(rowsBruts, r => `${r.match}|${r.date}|${r.categorie}`) : rowsBruts;
+  const rows = dedupActif
+    ? mvtMatDedup(rowsBruts, r => `${r.match}|${r.date}|${r.categorie}|${mvtMatTranche(r)}`) : rowsBruts;
+
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    [legend, note].forEach(el => { if (el) el.innerHTML = ""; });
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    MVT_MAT_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  const dim = MVT_MAT_COLONNES[BT_MVT_MAT_COL] || MVT_MAT_COLONNES.cat;
+  const gLabel = {};
+  dim.groupes.forEach(g => { gLabel[g.k] = g.label; });
+
+  // Regroupement : chaque pari compte dans sa case ET dans le total de sa
+  // tranche (clé "*"), y compris quand il n'a pas de colonne (relevés absents
+  // pour un pari sans mouvement, par exemple).
+  const parCase = {};
+  let nSansGroupe = 0;
+  const ajouter = (t, g, r) => {
+    const k = t + "|" + g;
+    (parCase[k] = parCase[k] || {t, g, rows: []}).rows.push(r);
+  };
+  rows.forEach(r => {
+    const t = mvtMatTranche(r);
+    if (!t) return;
+    const g = dim.cle(r);
+    if (g != null && gLabel[g] != null) ajouter(t, g, r); else nSansGroupe++;
+    ajouter(t, "*", r);
+  });
+
+  const presents = new Set(Object.values(parCase).map(c => c.g));
+  const groupes = dim.groupes.filter(g => presents.has(g.k));
+  // Une seule colonne qui contient tout = la colonne Total en double : on
+  // ne garde alors que la colonne elle-même.
+  const avecTotal = groupes.length !== 1 || nSansGroupe > 0;
+  // Sans aucune colonne détaillée, c'est le total qui porte la teinte.
+  const totalTeinte = groupes.length === 0;
+
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const c = parCase[k];
+    const s = btAgg(c.rows);
+    const net = c.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    // Gains attendus si le marché (marge retirée) avait raison : la case
+    // fait-elle mieux que le prix payé, ou seulement mieux que le modèle ?
+    const attMarche = c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0);
+    agg[k] = Object.assign({
+      net, t: c.t, g: c.g, rows: c.rows, attMarche,
+      gLabel: c.g === "*" ? "toutes colonnes" : (gLabel[c.g] || c.g),
+      fiable: s.n >= MVT_TRANCHE_SEUIL_FIABLE,
+    }, s);
+  });
+  MVT_MAT_DATA = agg;
+
+  const teintees = Object.values(agg).filter(c => (c.g === "*") === totalTeinte && c.roi != null);
+  const roiVals = teintees.map(c => c.roi);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+
+  const b = mvtBornesActives("bt");
+  const tranches = MVT_MAT_TRANCHES.concat(
+    Object.values(agg).some(c => c.t === "nm") ? [MVT_MAT_NON_MESURE] : []);
+  let partiels = false;
+
+  const cellule = (key, c, desc, estTotal) => {
+    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+    const roi = c.roi ?? 0;
+    const neutre = estTotal && !totalTeinte;
+    const cls = roi >= 0 ? "pos" : "neg";
+    const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
+    let style = "";
+    if (!neutre) {
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    return `<td class="score-cell ${cls}${peuFiable}${neutre ? " score-cell-total" : ""}"${style} data-mvtmat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+        <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
+        <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+        <div class="score-roi">${fmtPct(roi)}</div>
+      </td>`;
+  };
+
+  let thead = `<tr><th class="score-corner">Mouvement (pts) ↓<br>${dim.coin}</th>`;
+  groupes.forEach(g => { thead += `<th class="num">${g.label}</th>`; });
+  if (avecTotal) thead += `<th class="num score-total-head">Total</th>`;
+  thead += "</tr>";
+
+  let tbody = "";
+  tranches.forEach(t => {
+    const couv = mvtMatCouverture(t, b);
+    if (couv === "partiel") partiels = true;
+    const cls = [t.k === "z" ? "mvt-row-zero" : "", t.k === "nm" ? "mvt-row-nm" : "",
+                 couv === "tout" ? "mvt-row-filtre" : "", couv === "partiel" ? "mvt-row-filtre-partiel" : ""]
+                .filter(Boolean).join(" ");
+    const nom = mvtMatNomTranche(t);
+    const couvTxt = couv === "tout" ? " (retenue par votre filtre)" : couv === "partiel" ? " (en partie retenue par votre filtre)" : "";
+    tbody += `<tr${cls ? ` class="${cls}"` : ""}><th class="num" scope="row" title="${nom}${couvTxt}">${t.label}<span class="mvt-sens">${t.sens}</span></th>`;
+    groupes.forEach(g => {
+      tbody += cellule(`${t.k}|${g.k}`, agg[`${t.k}|${g.k}`], `${nom}, ${g.label}`, false);
+    });
+    if (avecTotal) tbody += cellule(`${t.k}|*`, agg[`${t.k}|*`], `${nom}, toutes colonnes`, true);
+    tbody += "</tr>";
+  });
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  const nombrePts = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("fr-FR");
+  const avecMin = b.lo > MVT_SLIDER_MIN, avecMax = b.hi < MVT_SLIDER_MAX;
+  const bornesTxt = avecMin && avecMax
+    ? (b.lo === b.hi ? `${nombrePts(b.lo)} pt` : `${nombrePts(b.lo)} à ${nombrePts(b.hi)} pt`)
+    : avecMin ? `${nombrePts(b.lo)} pt et plus` : `jusqu'à ${nombrePts(b.hi)} pt`;
+  if (legend) {
+    const pire = roiVals.length ? arrMin(roiVals) : 0;
+    const meilleur = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pire, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${MVT_TRANCHE_SEUIL_FIABLE} paris</span>
+      ${b.actif ? `<span class="mvt-filtre-key"><span aria-hidden="true"></span> retenu par votre filtre (${bornesTxt})</span>` : ""}
+      ${partiels ? `<span class="mvt-filtre-key partiel"><span aria-hidden="true"></span> en partie</span>` : ""}
+      <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise ·
+      ✓ = paris gagnés · cliquez une case pour voir ses paris</span>`;
+  }
+
+  // Effet du filtre « Mouvement de la cote » sur la page : avec / sans.
+  const resume = rs => {
+    const s = btAgg(rs);
+    const net = rs.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    return `<strong>${fmtEur(net)}</strong> (ROI ${fmtPct(s.roi)}, ${s.n} pari${s.n > 1 ? "s" : ""})`;
+  };
+  if (note) {
+    const nMesure = rowsSansFiltre.filter(r => r.raccourcit != null).length;
+    let txt = `${rowsSansFiltre.length} pari${rowsSansFiltre.length > 1 ? "s" : ""} sur vos filtres hors mouvement · `
+      + `${nMesure} avec un mouvement mesuré`;
+    if (dedupActif) txt += " · chaque tranche garde son meilleur pari par match et par catégorie";
+    if (!b.actif) {
+      txt += " · filtre « Mouvement de la cote » inactif.";
+    } else {
+      // Un match peut avoir un pari dans deux tranches retenues : la page n'en
+      // garde qu'un, la matrice un par tranche.
+      const nMarques = rows.filter(r => passeMvt(b, r)).length;
+      txt += ` · ${nMarques} dans votre plage de mouvement`;
+      if (rowsPage && nMarques !== rowsPage.length) {
+        txt += ` (la page en compte ${rowsPage.length} : elle ne garde qu'un pari par match et par catégorie sur l'ensemble de la plage)`;
+      }
+      txt += ".";
+    }
+    note.textContent = txt;
+  }
+
+  if (bestEl) {
+    const phrases = [];
+    if (b.actif && rowsPage) {
+      phrases.push(`Avec votre filtre « Mouvement de la cote » (${bornesTxt}) : ${resume(rowsPage)} · sans ce filtre : ${resume(rowsSansFiltre)}.`);
+    }
+    const totaux = tranches.map(t => agg[`${t.k}|*`]).filter(c => c && c.fiable);
+    if (totaux.length >= 2) {
+      const parNet = totaux.slice().sort((x, y) => y.net - x.net);
+      const top = parNet[0], bas = parNet[parNet.length - 1];
+      const decrire = c => `<strong>${mvtMatNomTranche(MVT_MAT_PAR_CLE[c.t])}</strong> (${fmtEur(c.net)}, ROI ${fmtPct(c.roi)}, ${c.n} paris)`;
+      phrases.push(`Toutes colonnes confondues : ${decrire(top)} rapporte le plus · ${decrire(bas)} le moins.`);
+    } else {
+      phrases.push(`Pas encore assez de tranches d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris pour comparer.`);
+    }
+    bestEl.innerHTML = phrases.join("<br>");
+  }
+}
+
+(function initMvtMatModes() {
+  const groupe = $("btMvtMatModes");
+  if (!groupe) return;
+  marquerModesMvtMat();
+  groupe.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-col]");
+    if (!bouton || !groupe.contains(bouton) || bouton.dataset.col === BT_MVT_MAT_COL) return;
+    if (!MVT_MAT_COLONNES[bouton.dataset.col]) return;
+    BT_MVT_MAT_COL = bouton.dataset.col;
+    try { localStorage.setItem(MVT_MAT_LS, BT_MVT_MAT_COL); } catch (e) { /* confort seulement */ }
+    if (MVT_MAT_DERNIER) renderMvtMatrix(MVT_MAT_DERNIER.rowsBruts, MVT_MAT_DERNIER.rowsPage);
+    else marquerModesMvtMat();
+  });
+})();
+
+initMatrixCellInspector({
+  holderId: "btMvtMatHolder", panelId: "btMvtMatPanel",
+  inspectorId: "btMvtMatInspector", tooltipId: "btMvtMatTooltip",
+  dataKey: "mvtmat", getData: () => MVT_MAT_DATA,
+  rowMeta: r => mvtMatMetaPari(r),
+  buildDetails: c => matrixDetailMarkup(
+    c, `${mvtMatNomTranche(MVT_MAT_PAR_CLE[c.t])} · ${c.gLabel}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+      + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+    r => mvtMatMetaPari(r)
+  )
+});
+function mvtMatMetaPari(r) {
+  const mvt = r.raccourcit == null ? "1 capture"
+    : `${mvtMatPtsTxt(mvtMatPoints(r))} · ${r.n_captures} relevés`;
+  return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.colonne} · ${mvt}`;
 }
 
 // Colonne et sens de tri du tableau de détail. Par défaut : les plus
