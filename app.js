@@ -6190,6 +6190,7 @@ function renderBacktest() {
   renderOosValidation();
   renderNbValidation();
   renderLecturesForces();
+  renderLecturesSaison();
   renderMouvement();
   drawCalibration();
   drawParCote();
@@ -7639,6 +7640,75 @@ function renderLecturesForces() {
       plus proche du marché. Les matchs sont comptés une fois par marché ; un même match nourrit donc
       plusieurs lignes. Choisissez « Forces d'équipe » dans les filtres pour voir ce que l'une ou
       l'autre donnerait sur les paris retenus.</p>`;
+}
+
+/* Correction saisonnière des buts attendus (SAISON_CORRECTION_ACTIVE /
+   SAISON_SUIVI_ACTIF dans le script) : la lecture actuelle avec et sans le
+   facteur du mois, contre le marché, sur toutes les issues des matchs concernés.
+   Sommes calculées par Python (_agreger_suivi_saison), intervalle de confiance
+   à 95 % calculé ici comme pour les lectures des forces. */
+const SUIVI_SAISON = (WIZARD_DATA.dc_stats || {}).suivi_saison || null;
+function renderLecturesSaison() {
+  const box = $("btLecturesSaison");
+  if (!box) return;
+  const titre = '<h3 style="margin:1.8rem 0 .4rem; font-size:1rem">Correction saisonnière des buts attendus</h3>';
+  const s = SUIVI_SAISON;
+  if (!s || !s.familles || !s.familles.length) {
+    box.innerHTML = titre + '<p class="muted" style="font-size:.85rem">En attente de données : ce tableau se ' +
+      'remplit au prochain lancement de wina_wizard.py (SAISON_SUIVI_ACTIF = True), avec les matchs joués ' +
+      'des championnats concernés.</p>';
+    return;
+  }
+  const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  const virg = (v, d) => v.toFixed(d).replace(".", ",");
+  const f4 = v => (v >= 0 ? "+" : "−") + virg(Math.abs(v), 4);
+  const stat = (somme, q, n) => {
+    const m = somme / n;
+    const v = n > 1 ? Math.max(0, (q / n - m * m) * n / (n - 1)) : 0;
+    return {m, h: 1.96 * Math.sqrt(v / n)};
+  };
+  const lignes = s.familles.map(f => {
+    const a = stat(f.sans - f.marche, f.q_sans, f.n);
+    const b = stat(f.avec - f.marche, f.q_avec, f.n);
+    const d = stat(f.avec - f.sans, f.q_diff, f.n);
+    let verdict = "Indécis", cls = "";
+    if (d.m + d.h < 0) { verdict = "Plus proche du marché"; cls = "pos"; }
+    else if (d.m - d.h > 0) { verdict = "Plus loin du marché"; cls = "neg"; }
+    return `<tr>
+      <td data-label="Marché">${f.nom}</td>
+      <td data-label="Matchs" class="num">${f.n.toLocaleString("fr-FR")}</td>
+      <td data-label="Sans correction · écart" class="num">${f4(a.m)}</td>
+      <td data-label="Avec correction · écart" class="num">${f4(b.m)}</td>
+      <td data-label="Avec − sans" class="num ${cls}">${f4(d.m)} <span class="muted">± ${virg(d.h, 4)}</span></td>
+      <td data-label="Lecture" class="${cls}">${verdict}</td></tr>`;
+  }).join("");
+  const facteurs = Object.entries(s.facteurs || {})
+    .sort((x, y) => ((+x[0] + 4) % 12) - ((+y[0] + 4) % 12))      // d'août à mai
+    .map(([m, v]) => `${MOIS[+m - 1]} ×${virg(v, 3)}`).join(" · ");
+  const parMois = (s.mois || []).filter(m => m.nom === "Plus/Moins 2,5" && m.n >= 30)
+    .map(m => {
+      const [an, mo] = m.mois.split("-");
+      const d = (m.avec - m.sans) / m.n;
+      return `${MOIS[+mo - 1]} ${an} <span class="${d < 0 ? "pos" : (d > 0 ? "neg" : "")}">${f4(d)}</span> (${m.n})`;
+    }).join(" · ");
+  box.innerHTML = titre + `
+    <p class="muted" style="margin:0 0 .8rem; font-size:.85rem">
+      ${s.active
+        ? "<strong>Appliquée aux paris</strong> : les probabilités affichées partout sur le site en tiennent compte (SAISON_CORRECTION_ACTIVE = True dans le script)."
+        : "<strong>Mesurée seulement</strong> : les paris affichés sont calculés sans elle (SAISON_CORRECTION_ACTIVE = False dans le script)."}
+      Buts attendus multipliés par le facteur du mois (${facteurs}), mesurés sur 25 saisons de
+      championnats d'août à mai. Matchs concernés : ${(s.pays || []).join(", ")} ; hors coupes
+      d'Europe, sélections, compétitions féminines, juin-juillet.</p>
+    <div class="tablewrap"><table class="cmp-table cardify">
+      <thead><tr><th>Marché</th><th class="num">Matchs</th><th class="num">Sans correction · écart</th>
+        <th class="num">Avec correction · écart</th><th class="num">Avec − sans (± IC 95 %)</th><th>Lecture</th></tr></thead>
+      <tbody>${lignes}</tbody></table></div>
+    ${parMois ? `<p class="muted" style="margin:.8rem 0 0; font-size:.85rem">Par mois, Plus/Moins 2,5 (avec − sans, matchs) : ${parMois}.</p>` : ""}
+    <p class="muted" style="margin:.8rem 0 0; font-size:.82rem">
+      Écarts au marché dévigué en log-loss par match (0 = aussi bon que le marché). Un « avec − sans »
+      négatif signifie que la correction rapproche le modèle du marché. L'effet attendu est petit
+      (quelques dix-millièmes) et concentré en février-mars et en mai : ne l'activer qu'après plusieurs
+      mois où il reste du bon côté.</p>`;
 }
 
 /* Comparaison : suivre le mouvement du marché est-il rentable ? */
