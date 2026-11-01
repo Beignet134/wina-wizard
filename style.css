@@ -679,6 +679,49 @@ tbody tr:hover { background: rgba(128,175,255,.08); }
 .hist-matrix .score-cell:not(.score-cell-empty):hover {
   outline: 2px solid var(--violet); outline-offset: -2px;
 }
+/* Matrice des gains par mouvement de cote (voir renderMvtMatrix) : cases
+   cliquables pour le détail, en-têtes de ligne figés au défilement
+   horizontal (8 colonnes ne tiennent pas sur un téléphone), et un liseré
+   violet à gauche des tranches que le filtre « Mouvement de la cote »
+   retient — en pointillé quand il n'en retient qu'une partie. */
+#btMvtMatModes { margin-bottom: .7rem; }
+.mvt-matrix .score-cell:not(.score-cell-empty) { cursor: pointer; }
+.mvt-matrix .score-cell:not(.score-cell-empty):hover {
+  outline: 2px solid var(--violet); outline-offset: -2px;
+}
+.mvt-matrix .score-corner, .mvt-matrix tbody th {
+  position: sticky; left: 0; z-index: 2;
+}
+/* Colonne des tranches aussi étroite que son contenu (sinon elle absorbe
+   toute la largeur libre quand il y a peu de colonnes), libellés lisibles
+   à gauche, près du liseré du filtre. Le coin passe sur deux lignes : sur
+   une seule, c'est lui qui imposait la largeur de toute la colonne. */
+.mvt-matrix .score-corner { white-space: normal; text-align: left; padding-left: .8rem; }
+.mvt-matrix tbody th {
+  width: 1%; min-width: 5.6rem; text-align: left;
+  text-transform: none; letter-spacing: 0; padding-left: .8rem;
+}
+.mvt-matrix .mvt-sens {
+  display: block; margin-top: .08rem; font-family: var(--font-body);
+  font-size: .6rem; color: var(--ink-faint); font-weight: 400;
+}
+.mvt-matrix tr.mvt-row-zero > * { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.mvt-matrix tr.mvt-row-nm > * { border-top: 2px solid var(--line); }
+.mvt-matrix tr.mvt-row-filtre > th { box-shadow: inset 4px 0 0 var(--violet); color: var(--ink); }
+.mvt-matrix tr.mvt-row-filtre-partiel > th {
+  background: linear-gradient(var(--violet) 55%, transparent 0) left top / 4px 7px repeat-y, var(--bg-2);
+  color: var(--ink);
+}
+.mvt-filtre-key {
+  display: inline-flex; align-items: center; gap: .35rem; font-size: .7rem;
+  color: var(--ink-dim); white-space: nowrap;
+}
+.mvt-filtre-key > span {
+  display: inline-block; width: 4px; height: .9rem; border-radius: 2px; background: var(--violet);
+}
+.mvt-filtre-key.partiel > span {
+  background: linear-gradient(var(--violet) 55%, transparent 0) 0 0 / 4px 5px repeat-y;
+}
 /* Case retenue comme filtre "historique" actif sur toute la page : un
    liseré plein (comme .score-cell-diag) + un repère ✓ en coin, pour rester
    visible même quand la case porte le repère ambre (lowdata) ou
