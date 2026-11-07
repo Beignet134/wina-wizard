@@ -2899,6 +2899,28 @@ a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
    de la carte « meilleure cote » ; elles identifient le site mais le nom est
    toujours écrit à côté (jamais la couleur seule).
    --------------------------------------------------------------- */
+/* Cotes boostées Winamax (Paris à venir, 07/11/2026) */
+.bst-intro { margin: -.2rem 0 .6rem; font-size: .84rem; max-width: 78ch; }
+.bst-resume { margin: 0 0 .7rem; font-size: .9rem; }
+.bst-table td { vertical-align: top; }
+.bst-table td:first-child, .bst-table td:nth-child(2),
+.bst-passes-table td:first-child, .bst-passes-table td:nth-child(2) { white-space: normal; min-width: 10rem; }
+.bst-table td:nth-child(2), .bst-passes-table td:nth-child(2) { min-width: 15rem; }
+.bst-sub { display: block; margin-top: .1rem; font-size: .74rem; font-weight: 400; color: var(--ink-faint); }
+.bst-verdict { display: inline-block; padding: .12rem .5rem; border-radius: 6px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.bst-verdict.bst-jouer { background: var(--lime); color: #0b0f17; }
+.bst-verdict.bst-limite { background: color-mix(in srgb, var(--gold) 20%, transparent); color: var(--gold); }
+.bst-verdict.bst-eviter { background: color-mix(in srgb, var(--coral) 15%, transparent); color: var(--coral); }
+.bst-verdict.bst-ne { background: var(--night-3); color: var(--ink-faint); }
+.bst-details { margin-top: .8rem; }
+.bst-ne-list { margin: .5rem 0 .2rem; padding-left: 1.1rem; font-size: .82rem; color: var(--ink-dim); }
+.bst-ne-list li { margin: .15rem 0; }
+.bst-bilan-note { margin: .5rem 0 .2rem; font-size: .8rem; }
+.bst-bilan-table, .bst-passes-table { margin-top: .5rem; }
+@media (max-width: 720px) {
+  table.cardify.bst-table td:first-child, table.cardify.bst-passes-table td:first-child { flex-wrap: wrap; }
+  table.cardify.bst-table td:first-child .bst-sub, table.cardify.bst-passes-table td:first-child .bst-sub { flex: 0 0 100%; margin-top: 0; }
+}
 .cmpb-table th { white-space: normal; }
 .cmpb-table th .hint {
   white-space: normal; max-width: 9.5rem; margin-left: auto;
