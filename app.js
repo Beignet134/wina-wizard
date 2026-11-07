@@ -10211,9 +10211,9 @@ function renderBookmakers() {
     const multi = r.matchs && r.matchs.includes("|") ? `<span class="bst-sub">${r.matchs.split("|").map(s => esc(s.trim())).join("<br>")}</span>` : "";
     return `<tr class="bst-row">`
       + `<td data-label="">${esc(r.match)}<span class="bst-sub">${quand(r.ko)}${r.comp && r.comp !== r.match && r.comp !== "Football" ? " · " + esc(r.comp) : ""}</span>${multi}</td>`
-      + `<td data-label="Pari">${esc(r.pari)}</td>`
+      + `<td data-label="Pari">${esc(r.pari)}${r.approx ? `<span class="bst-sub">prix estimé : ${r.approx} match${r.approx > 1 ? "s" : ""} absent${r.approx > 1 ? "s" : ""} du relevé Winamax, compté${r.approx > 1 ? "s" : ""} comme la moyenne des autres</span>` : ""}</td>`
       + `<td class="num" data-label="Cote">${r.co ? cote(r.co) + " → " : ""}<strong>${cote(r.cb)}</strong></td>`
-      + `<td class="num" data-label="Cote juste">${cote(r.cj)}</td>`
+      + `<td class="num" data-label="Cote juste">${r.approx ? "≈ " : ""}${cote(r.cj)}</td>`
       + `<td class="num ${r.esp >= 0 ? "pos" : "neg"}" data-label="Espérance">${pct(r.esp)}</td>`
       + `<td class="num" data-label="Gain espéré">${r.mm ? eur(r.esp * r.mm) + `<span class="bst-sub">mise max ${nb(r.mm, 0)} €</span>` : "—"}</td>`
       + `<td data-label=""><span class="bst-verdict ${cls}">${lib}</span></td></tr>`;
