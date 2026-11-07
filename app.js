@@ -2166,7 +2166,7 @@ function fmtKickoff(iso) {
    MEILLEURE COTE ENTRE BOOKMAKERS (page « Paris à venir »)
    ------------------------------------------------------------
    Le fichier de données joint à chaque pari (v.cb) les cotes du même pari chez
-   les autres bookmakers (Unibet, Betclic, relevées par les collecteurs dédiés) ; la carte
+   les autres bookmakers (Unibet, Betclic, Bwin, relevées par les collecteurs dédiés) ; la carte
    affiche alors la MEILLEURE cote retenue, un petit tag coloré du site, un lien
    vers le match chez ce site, et — au survol (ou au toucher sur mobile) — les
    cotes de tous les sites.
@@ -2184,7 +2184,7 @@ function fmtKickoff(iso) {
    égalité (moins de 0,5 % d'écart) on garde Winamax.
    ============================================================ */
 const CBK_LS_KEY = "wina_cotes_bookmakers_v1";
-const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic"};
+const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic", bwin: "Bwin"};
 const CBK_EGALITE = 0.005;
 const CBK_SEUIL_INHABITUEL = 0.10;
 const CBK_SEUIL_INHABITUEL_SE = 0.30;
@@ -9572,12 +9572,13 @@ function renderMargeLigues() {
   if (el) { el.addEventListener("input", renderMargeLigues); el.addEventListener("change", renderMargeLigues); }
 });
 
-/* ================= PAGE — BOOKMAKERS (Winamax / Unibet / Betclic) =================
-   Ajoutée le 28/10/2026. Les données (WIZARD_DATA.comparaison_bk) viennent de
-   build_bookmaker_comparison() : pour chaque match commun à Winamax et à un autre
-   site, des « cellules » [colonne, cote Winamax, cote Unibet, cote Betclic, minutes
-   avant le coup d'envoi, écart d'heure Unibet, écart d'heure Betclic], choisies pour
-   que les relevés comparés soient les plus proches possible dans le temps.
+/* ================= PAGE — BOOKMAKERS (Winamax / Unibet / Betclic / Bwin) =================
+   Ajoutée le 28/10/2026 ; Bwin le 07/11/2026 (nombre d'autres sites quelconque). Les données
+   (WIZARD_DATA.comparaison_bk) viennent de build_bookmaker_comparison() : pour chaque match
+   commun à Winamax et à un autre site, des « cellules » [colonne, cote Winamax, cote de chaque
+   autre site (ordre de comparaison_bk.autres), minutes avant le coup d'envoi, écart d'heure de
+   chaque autre site], choisies pour que les relevés comparés soient les plus proches possible
+   dans le temps.
 
    Tout le calcul est fait ici, dans le navigateur, pour que les réglages (sites
    comparés, écart maximal entre relevés, période, type de pari) répondent
@@ -9594,9 +9595,27 @@ function renderMargeLigues() {
      match sont liées, les compter comme indépendantes surestimerait la certitude) ;
    - marge : somme des 1/cote d'un marché complet, moins 1. */
 const CMPB = WIZARD_DATA.comparaison_bk || {};
-const CMPB_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic"};
-const CMPB_MODES = {wu: ["winamax", "unibet"], wb: ["winamax", "betclic"], wub: ["winamax", "unibet", "betclic"]};
-const CMPB_MODES_LIB = {wu: "Winamax et Unibet", wb: "Winamax et Betclic", wub: "Les trois sites"};
+const CMPB_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic", bwin: "Bwin"};
+// Autres sites, dans l'ordre des cellules (données version 2, 07/11/2026) ; version 1 : Unibet puis Betclic.
+const CMPB_AUTRES = Array.isArray(CMPB.autres) && CMPB.autres.length ? CMPB.autres : ["unibet", "betclic"];
+const CMPB_K = CMPB_AUTRES.length;
+const CMPB_LETTRE = {unibet: "u", betclic: "b", bwin: "x"};
+// Choix de sites : Winamax + chaque combinaison non vide des autres sites (clés « wu », « wb », « wub », « wx »…).
+const CMPB_MODES = {}, CMPB_MODES_LIB = {};
+(function () {
+  const n = CMPB_AUTRES.length, listes = [];
+  for (let m = 1; m < (1 << n); m++) listes.push(CMPB_AUTRES.filter((_, i) => m & (1 << i)));
+  listes.sort((a, b) => a.length - b.length || CMPB_AUTRES.indexOf(a[0]) - CMPB_AUTRES.indexOf(b[0]));
+  const nombres = ["", "", "deux", "trois", "quatre", "cinq", "six"];
+  listes.forEach(l => {
+    const cle = "w" + l.map(s => CMPB_LETTRE[s] || s).join("");
+    CMPB_MODES[cle] = ["winamax"].concat(l);
+    const noms = ["Winamax"].concat(l.map(s => CMPB_NOMS[s] || s));
+    CMPB_MODES_LIB[cle] = l.length === n && n >= 2 ? `Les ${nombres[n + 1] || n + 1} sites`
+      : noms.slice(0, -1).join(", ") + " et " + noms[noms.length - 1];
+  });
+})();
+const CMPB_MODE_TOUS = Object.keys(CMPB_MODES).find(m => CMPB_MODES[m].length === CMPB_K + 1);
 const CMPB_ECARTS = [[30, "30 min"], [60, "1 h"], [180, "3 h"], [360, "6 h"], [720, "12 h"], [1440, "24 h"], [-1, "sans limite"]];
 const CMPB_LS_KEY = "wina_cmpb_v1";
 const CMPB_COLS = CMPB.colonnes || [];
@@ -9621,12 +9640,17 @@ CMPB_ENR.forEach((m, r) => {
   m.map = {};
   (m.c || []).forEach(c => {
     m.map[c[0]] = c;
-    CMPB_CELLS.push({r, ci: c[0], w: c[1], u: c[2], b: c[3], tw: c[4], du: c[5], db: c[6]});
+    const v = {}, d = {};
+    CMPB_AUTRES.forEach((s, k) => { v[s] = c[2 + k]; d[s] = c[3 + CMPB_K + k]; });
+    CMPB_CELLS.push({r, ci: c[0], w: c[1], tw: c[2 + CMPB_K], v, d});
   });
 });
 
 /* ---------- outils ---------- */
-const cmpbVal = (c, s) => s === "winamax" ? c.w : (s === "unibet" ? c.u : c.b);
+const cmpbVal = (c, s) => s === "winamax" ? c.w : c.v[s];
+// Positions dans une cellule brute : cote du site, écart d'heure du site (Winamax : cote en 1, pas d'écart).
+const cmpbPosCote = s => s === "winamax" ? 1 : 2 + CMPB_AUTRES.indexOf(s);
+const cmpbPosEcart = s => 3 + CMPB_K + CMPB_AUTRES.indexOf(s);
 const cmpbClamp = x => Math.max(-CMPB_CLAMP, Math.min(CMPB_CLAMP, x));
 const cmpbVirg = (x, d) => x.toFixed(d).replace(".", ",");
 const cmpbPc = (x, d = 1) => cmpbVirg(x * 100, d) + " %";
@@ -9649,6 +9673,10 @@ function cmpbLibColonne(ci) {
   if (m) return `${m[1]} de ${m[2].replace(".", ",")} buts`;
   return `Score exact ${c}`;
 }
+function cmpbListeNoms(sites) {
+  const noms = sites.map(s => CMPB_NOMS[s] || s);
+  return noms.length > 1 ? noms.slice(0, -1).join(", ") + " et " + noms[noms.length - 1] : (noms[0] || "");
+}
 function cmpbTag(s) {
   return `<span class="cbk-tag cbk-${s}"><i class="dot"></i>${CMPB_NOMS[s]}</span>`;
 }
@@ -9656,10 +9684,12 @@ function cmpbTag(s) {
 /* ---------- sélection des cotes comparables ---------- */
 function cmpbDansReglages(c, etat) {
   const lim = etat.ecart < 0 ? Infinity : etat.ecart;
-  if (etat.mode === "wu") { if (c.u == null || Math.abs(c.du) > lim) return false; }
-  else if (etat.mode === "wb") { if (c.b == null || Math.abs(c.db) > lim) return false; }
-  else if (c.u == null || c.b == null || Math.abs(c.du) > lim || Math.abs(c.db) > lim) return false;
-  return true;
+  const sites = CMPB_MODES[etat.mode] || [];
+  for (const s of sites) {
+    if (s === "winamax") continue;
+    if (c.v[s] == null || Math.abs(c.d[s]) > lim) return false;
+  }
+  return sites.length > 1;
 }
 function cmpbDansPeriode(r, etat) {
   if (!(etat.jours > 0)) return true;
@@ -9728,7 +9758,7 @@ function cmpbMarges(etat) {
   const sites = CMPB_MODES[etat.mode];
   const lim = etat.ecart < 0 ? Infinity : etat.ecart;
   const lignes = CMPB_GROUPES.filter(g => !etat.cat || g.cat === etat.cat).map(g => ({
-    g, n: 0, matchs: new Set(), somme: {winamax: 0, unibet: 0, betclic: 0},
+    g, n: 0, matchs: new Set(), somme: Object.fromEntries(["winamax"].concat(CMPB_AUTRES).map(s => [s, 0])),
   }));
   CMPB_ENR.forEach((m, r) => {
     if (!cmpbDansPeriode(r, etat)) return;
@@ -9736,11 +9766,11 @@ function cmpbMarges(etat) {
       const cs = L.g.idx.map(i => m.map[i]);
       if (cs.some(c => !c)) return;
       // un seul relevé par site sur tout le marché (sinon la somme des probabilités ne veut rien dire)
-      if (cs.some(c => c[4] !== cs[0][4])) return;
+      if (cs.some(c => c[2 + CMPB_K] !== cs[0][2 + CMPB_K])) return;
       const marge = {};
       for (const s of sites) {
-        const col = s === "winamax" ? 1 : (s === "unibet" ? 2 : 3);
-        const dc = s === "unibet" ? 5 : 6;
+        const col = cmpbPosCote(s);
+        const dc = cmpbPosEcart(s);
         if (cs.some(c => c[col] == null)) return;
         if (s !== "winamax") {
           if (cs.some(c => c[dc] !== cs[0][dc]) || Math.abs(cs[0][dc]) > lim) return;
@@ -9828,6 +9858,7 @@ function cmpbChargerEtat() {
     const o = JSON.parse(localStorage.getItem(CMPB_LS_KEY) || "null");
     if (!o) return;
     if (CMPB_MODES[o.mode]) CMPB_ETAT.mode = o.mode;
+    else if (o.mode === "wub" && CMPB_MODE_TOUS) CMPB_ETAT.mode = CMPB_MODE_TOUS;   // ancien « les trois sites »
     if (CMPB_ECARTS.some(e => e[0] === o.ecart)) { CMPB_ETAT.ecart = o.ecart; CMPB_ETAT.auto = false; }
     if ([7, 14, 30].includes(o.jours)) CMPB_ETAT.jours = o.jours;
     if (typeof o.cat === "string") CMPB_ETAT.cat = o.cat;
@@ -9846,14 +9877,22 @@ function cmpbEcartAuto(mode, jours, cat) {
   }
   return -1;
 }
+// Choix de sites par défaut : le plus de sites possible qui laisse au moins 100 cotes comparées (écart de 6 h),
+// sinon le duel Winamax / site le mieux fourni.
 function cmpbModeAuto() {
-  const n = {};
-  Object.keys(CMPB_MODES).forEach(m => { n[m] = cmpbFiltrer({mode: m, ecart: 360, jours: CMPB_ETAT.jours, cat: ""}).length; });
-  if (n.wub >= 100) return "wub";
-  if (n.wu === 0 && n.wb === 0) {
-    Object.keys(CMPB_MODES).forEach(m => { n[m] = cmpbFiltrer({mode: m, ecart: -1, jours: CMPB_ETAT.jours, cat: ""}).length; });
-  }
-  return n.wb > n.wu ? "wb" : "wu";
+  const modes = Object.keys(CMPB_MODES);
+  const compter = ecart => {
+    const n = {};
+    modes.forEach(m => { n[m] = cmpbFiltrer({mode: m, ecart, jours: CMPB_ETAT.jours, cat: ""}).length; });
+    return n;
+  };
+  let n = compter(360);
+  const multi = modes.filter(m => CMPB_MODES[m].length > 2 && n[m] >= 100)
+    .sort((a, b) => CMPB_MODES[b].length - CMPB_MODES[a].length || n[b] - n[a]);
+  if (multi.length) return multi[0];
+  const duels = modes.filter(m => CMPB_MODES[m].length === 2);
+  if (duels.every(m => n[m] === 0)) n = compter(-1);
+  return duels.reduce((a, b) => (n[b] > n[a] ? b : a), duels[0]);
 }
 
 /* ---------- dessin ---------- */
@@ -10006,8 +10045,7 @@ function cmpbRenderEcarts(cells, sites) {
     const seuil = g && g.cat === "Score exact" ? CBK_SEUIL_INHABITUEL_SE : CBK_SEUIL_INHABITUEL;
     const cotes = sites.map((s, i) => `<td data-label="${CMPB_NOMS[s]}" class="num">${L.v[i] >= L.mx - 1e-9 ? `<span class="cmpb-best">${L.v[i].toFixed(2)}</span>` : L.v[i].toFixed(2)}</td>`).join("");
     const ecarts = [];
-    if (sites.includes("unibet") && L.c.du != null) ecarts.push(Math.abs(L.c.du));
-    if (sites.includes("betclic") && L.c.db != null) ecarts.push(Math.abs(L.c.db));
+    sites.forEach(s => { if (s !== "winamax" && L.c.d[s] != null) ecarts.push(Math.abs(L.c.d[s])); });
     const gap = ecarts.length ? Math.max.apply(null, ecarts) : 0;
     return `<tr><td data-label="Match"><strong>${cbkEsc(m.m)}</strong><span class="mc-sub">${cbkEsc(fmtKickoff(m.k))} · ${cbkEsc(ligueLabel(m.p, m.l))}</span></td>` +
       `<td data-label="Pari">${cbkEsc(cmpbLibColonne(L.c.ci))}</td>${cotes}` +
@@ -10021,7 +10059,7 @@ function cmpbRenderAVenir() {
   let liste = [];
   try { liste = (typeof UPCOMING_COMPLET !== "undefined" ? UPCOMING_COMPLET : []).filter(v => !v.seul_sa && !v.seul_ab && v.cb && v.cb.length); } catch (e) { liste = []; }
   if (!liste.length) { panel.style.display = "none"; return; }
-  const comptes = {winamax: 0, unibet: 0, betclic: 0};
+  const comptes = Object.fromEntries(["winamax"].concat(CMPB_AUTRES).map(s => [s, 0]));
   let n = 0, gains = [], autres = [], inhabituels = 0;
   liste.forEach(v => {
     let a = null;
@@ -10057,8 +10095,8 @@ function renderBookmakers() {
     vide.innerHTML = "<strong>Pas encore de comparaison possible.</strong> " +
       (CMPB.version
         ? "Aucun match n'a pu être rapproché entre Winamax et un autre site" + (sansReleve.length ? ` (aucun relevé trouvé pour ${sansReleve.join(" et ")})` : "") +
-          ". Lancez les collecteurs Unibet et Betclic, puis relancez le wizard."
-        : "Ces données apparaissent à la prochaine exécution complète du wizard (<code>python wina_wizard.py --complet</code>), une fois les relevés Unibet et Betclic collectés.");
+          ". Lancez les collecteurs " + cmpbListeNoms(CMPB_AUTRES) + ", puis relancez le wizard."
+        : "Ces données apparaissent à la prochaine exécution complète du wizard (<code>python wina_wizard.py --complet</code>), une fois les relevés " + cmpbListeNoms(CMPB_AUTRES) + " collectés.");
     vide.style.display = ""; corps.style.display = "none";
     return;
   }
@@ -10080,7 +10118,7 @@ function renderBookmakers() {
   const sans = $("cmpbSansDonnees"), res = $("cmpbResultats");
   if (!cells.length) {
     const plus = cmpbFiltrer(Object.assign({}, CMPB_ETAT, {ecart: -1}));
-    const mini = plus.length ? Math.min.apply(null, plus.map(c => Math.min(c.du == null ? 1e9 : Math.abs(c.du), c.db == null ? 1e9 : Math.abs(c.db)))) : null;
+    const mini = plus.length ? Math.min.apply(null, plus.map(c => Math.min.apply(null, CMPB_AUTRES.map(s => c.d[s] == null ? 1e9 : Math.abs(c.d[s]))))) : null;
     sans.innerHTML = "<strong>Aucune cote comparable avec ces réglages.</strong>" +
       (mini != null && mini < 1e9 ? ` Le plus petit écart disponible entre deux relevés est de ${cmpbDuree(mini)} : élargissez l'« écart maximal ».` : " Essayez un autre choix de sites ou de type de pari.");
     sans.style.display = ""; res.style.display = "none";
