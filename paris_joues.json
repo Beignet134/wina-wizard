@@ -561,15 +561,15 @@
   "maj": 1793452659803
  },
  "2026-11-07|Clermont - Rodez|0 - 0": {
-  "cote": 9.5,
-  "cote_confirmee": false,
+  "cote": 5,
+  "cote_confirmee": true,
   "site": "winamax",
   "cote_capturee": 9.5,
   "ts": "2026-11-07T13:59:06",
   "kickoff": "2026-11-07T14:00:00",
   "capture_iso": "2026-11-07T13:17:01.702995",
   "mise": 10,
-  "maj": 1794056346601
+  "maj": 1794056350735
  },
  "2026-11-07|Floriana - Hibernians FC|homeWin": {
   "cote": 1.88,
