@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261107161844">
+<link rel="stylesheet" href="style.css?v=20261107164502">
 </head>
 <body>
 <div class="topbar">
@@ -671,7 +671,7 @@
 
       <div id="btCbkFiltres" class="cbk-filtres" style="display:none">
         <h3 style="font-family:var(--font-display); font-size:.92rem; margin:1.1rem 0 .3rem">Filtres entre bookmakers</h3>
-        <p class="muted" style="margin:0 0 .8rem; font-size:.82rem">Les mêmes filtres que sur « Paris à venir » (réglages <strong>partagés</strong>), rejoués sur des paris <strong>déjà joués</strong>. Ils <strong>restreignent</strong> la liste déjà sélectionnée sur la cote Winamax : le profit de chaque pari reste celui de sa cote Winamax. Chaque pari est comparé au relevé d'Unibet / Betclic le plus proche dans le temps de celui de Winamax ; « Écart maximal entre relevés » décide quels sites comptent. Les paris qui n'ont que la cote Winamax (les plus anciens, ou ceux qu'aucun autre site n'a relevé assez près de Winamax) ne sont pas mesurables : « Paris sans autre site » décide s'ils restent dans le calcul avec leur cote Winamax (par défaut) ou s'ils sont écartés. Les paris mesurables sont toujours comparés au meilleur site disponible.</p>
+        <p class="muted" style="margin:0 0 .8rem; font-size:.82rem">Les mêmes filtres que sur « Paris à venir » (réglages <strong>partagés</strong>), rejoués sur des paris <strong>déjà joués</strong>. Ils <strong>restreignent</strong> la liste déjà sélectionnée sur la cote Winamax : le profit de chaque pari reste celui de sa cote Winamax. Chaque pari est comparé au relevé d'Unibet / Betclic / Bwin le plus proche dans le temps de celui de Winamax ; « Écart maximal entre relevés » décide quels sites comptent. Les paris qui n'ont que la cote Winamax (les plus anciens, ou ceux qu'aucun autre site n'a relevé assez près de Winamax) ne sont pas mesurables : « Paris sans autre site » décide s'ils restent dans le calcul avec leur cote Winamax (par défaut) ou s'ils sont écartés. Les paris mesurables sont toujours comparés au meilleur site disponible.</p>
         <div class="controls">
           <div class="field">
             <label for="btCbkEv">Espérance au meilleur prix</label>
@@ -858,7 +858,7 @@
       <div class="panel-fold-body">
       <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
         Mêmes paris que les KPI ci-dessus (mêmes filtres), <strong>à mise égale</strong> : chaque pari est rejoué à la
-        cote du site qui paie le plus parmi Winamax, Unibet et Betclic. Le résultat du pari (gagné ou perdu) ne change
+        cote du site qui paie le plus parmi Winamax, Unibet, Betclic et Bwin. Le résultat du pari (gagné ou perdu) ne change
         pas, seul le prix change. Les paris qui n'ont que la cote Winamax (relevés des autres sites pas encore collectés)
         restent à leur cote Winamax.
       </p>
@@ -1867,8 +1867,8 @@
       <span class="muted" id="cbkInfo"></span>
       <p class="cbk-ctl-note">La <strong>sélection</strong> des paris reste faite sur la cote Winamax : edge, espérance, filtres et mise
         conseillée ne changent pas. La meilleure cote ne sert qu'à choisir <strong>où placer</strong> le pari. Survolez (ou touchez) la cote d'une
-        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés des autres sites (Unibet, Betclic)
-        viennent de collecteurs lancés à la main : plus ils sont anciens, moins la comparaison est fiable.</p>
+        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés des autres sites (Unibet, Betclic, Bwin)
+        viennent de leurs collecteurs (chaîne toutes les 3 h) : plus ils sont anciens, moins la comparaison est fiable.</p>
     </div>
 
     <p class="muted" id="uCoteAide" style="margin:1rem 0 0; font-size:.82rem">
@@ -2125,12 +2125,12 @@
   </section>
 
   <!-- ================================================================= -->
-  <!-- PAGE — BOOKMAKERS (Winamax / Unibet / Betclic comparés)            -->
+  <!-- PAGE — BOOKMAKERS (Winamax / Unibet / Betclic / Bwin comparés)     -->
   <!-- ================================================================= -->
   <section class="page" id="page-bookmakers" role="tabpanel" aria-labelledby="heading-bookmakers" tabindex="0">
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">MARCHÉS · 10</p><h2 class="page-title" id="heading-bookmakers">Bookmakers</h2></div>
-      <p class="lead">Winamax, Unibet et Betclic face à face : dans quel cas chaque site offre-t-il la meilleure cote, et combien prélève-t-il sur chaque marché ? De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
+      <p class="lead">Winamax, Unibet, Betclic et Bwin face à face : dans quel cas chaque site offre-t-il la meilleure cote, et combien prélève-t-il sur chaque marché ? De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
     </div>
 
     <div id="cmpbVide" class="warn" style="display:none"></div>
@@ -2256,12 +2256,12 @@
         <summary>Méthode et limites</summary>
         <ul>
           <li><strong>Relevés rapprochés dans le temps.</strong> Winamax est relevé plusieurs fois par jour. Pour chaque cote
-            Unibet ou Betclic, on prend le relevé Winamax <em>le plus proche dans le temps</em> (toujours avant le coup d'envoi) ;
+            Unibet, Betclic ou Bwin, on prend le relevé Winamax <em>le plus proche dans le temps</em> (toujours avant le coup d'envoi) ;
             l'écart d'heure est conservé et le réglage « écart maximal » écarte les comparaisons trop espacées. Sans cela,
             on mesurerait surtout le mouvement des cotes, pas la différence entre sites.</li>
-          <li><strong>Trois sites.</strong> En mode « les trois sites », seules comptent les cotes disponibles chez les trois,
-            dans un trio de relevés resserré ; en mode « deux sites », toutes les cotes communes aux deux sont utilisées.
-            Les trois modes ne portent donc pas sur exactement les mêmes matchs.</li>
+          <li><strong>Plusieurs sites.</strong> Quand plus de deux sites sont choisis, seules comptent les cotes disponibles
+            chez tous, dans un groupe de relevés resserré ; avec deux sites, toutes les cotes communes aux deux sont utilisées.
+            Les différents choix de sites ne portent donc pas sur exactement les mêmes matchs.</li>
           <li><strong>Verdict.</strong> Le site « le plus avantageux » est celui dont la cote moyenne est la plus haute. Il n'est
             annoncé que si l'écart avec le suivant est net (test statistique prudent, qui tient compte du fait que les cotes d'un même
             match sont liées) ; sinon la page écrit « pas de différence nette ». « Indicatif » = moins de 30 matchs.</li>
@@ -2269,7 +2269,9 @@
             cotes aberrantes ne décident pas du résultat (la médiane est donnée en survol).</li>
           <li><strong>Unibet</strong> plafonne ses scores exacts à 100 : ces cotes ne sont pas comparées, et la marge de son
             marché « score exact » n'est donc pas calculable. <strong>Betclic</strong> ne relève ses scores exacts que pour
-            quelques matchs par passage : l'échantillon y est plus petit.</li>
+            quelques matchs par passage : l'échantillon y est plus petit. <strong>Bwin</strong> (ajouté le 07/11/2026) les
+            relève sur la plupart des matchs de son calendrier ; ses noms d'équipes, écrits en entier (« Stade Rennais »,
+            « Leeds United »), sont ramenés à ceux de Winamax avant comparaison.</li>
           <li><strong>Ce que la page ne dit pas.</strong> La sélection des paris reste faite sur la cote Winamax (voir « Paris à
             venir ») ; ce tableau aide seulement à choisir <em>où</em> placer un pari. Il ne tient pas compte des limites de
             mise, des bonus, de la rapidité de paiement ni du risque de voir un compte limité.</li>
@@ -2362,7 +2364,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261107161854"></script>
-<script src="app.js?v=20261107161844"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261107164512"></script>
+<script src="app.js?v=20261107164502"></script>
 </body>
 </html>
