@@ -9630,7 +9630,9 @@ const CMPB_TR_COTE = [[1, 1.5, "moins de 1,50"], [1.5, 2, "1,50 à 2"], [2, 3, "
                       [5, 10, "5 à 10"], [10, 20, "10 à 20"], [20, 50, "20 à 50"], [50, 1e9, "50 et plus"]];
 const CMPB_TR_AVANCE = [[0, 180, "moins de 3 h"], [180, 720, "3 à 12 h"], [720, 1440, "12 à 24 h"],
                         [1440, 2880, "1 à 2 jours"], [2880, 5760, "2 à 4 jours"], [5760, 1e12, "plus de 4 jours"]];
-const CMPB_ETAT = {mode: "", ecart: 0, jours: 30, cat: "", dim: "cote", limite: 15, auto: true};
+// modeChoisi : vrai seulement si le choix de sites vient du menu « Sites comparés » ; sinon il est recalculé à
+// chaque ouverture (le plus de sites possible). auto : idem pour l'écart maximal entre relevés.
+const CMPB_ETAT = {mode: "", ecart: 0, jours: 30, cat: "", dim: "cote", limite: 15, auto: true, modeChoisi: false};
 
 const CMPB_COL_GROUPE = [];
 CMPB_GROUPES.forEach(g => g.idx.forEach(i => { CMPB_COL_GROUPE[i] = g; }));
@@ -9645,6 +9647,10 @@ CMPB_ENR.forEach((m, r) => {
     CMPB_CELLS.push({r, ci: c[0], w: c[1], tw: c[2 + CMPB_K], v, d});
   });
 });
+// Autres sites qui ont au moins une cote à comparer (07/11/2026). Mémorisé avec les réglages : quand un site
+// arrive (Bwin), la page revient au choix de sites automatique au lieu de rester sur un choix fait sans lui.
+const CMPB_SITES_DISPO = CMPB_AUTRES.filter(s => CMPB_CELLS.some(c => c.v[s] != null));
+const CMPB_SITES_DISPO_CLE = CMPB_SITES_DISPO.join(",");
 
 /* ---------- outils ---------- */
 const cmpbVal = (c, s) => s === "winamax" ? c.w : c.v[s];
@@ -9857,9 +9863,12 @@ function cmpbChargerEtat() {
   try {
     const o = JSON.parse(localStorage.getItem(CMPB_LS_KEY) || "null");
     if (!o) return;
-    if (CMPB_MODES[o.mode]) CMPB_ETAT.mode = o.mode;
-    else if (o.mode === "wub" && CMPB_MODE_TOUS) CMPB_ETAT.mode = CMPB_MODE_TOUS;   // ancien « les trois sites »
-    if (CMPB_ECARTS.some(e => e[0] === o.ecart)) { CMPB_ETAT.ecart = o.ecart; CMPB_ETAT.auto = false; }
+    // Choix de sites gardé seulement s'il a été fait dans le menu ET avec les mêmes sites disponibles qu'aujourd'hui.
+    // Les réglages enregistrés avant le 07/11/2026 (sans ces deux champs) repartent donc sur le choix automatique.
+    const memesSites = Array.isArray(o.sites) && o.sites.join(",") === CMPB_SITES_DISPO_CLE;
+    if (o.modeChoisi === true && memesSites && CMPB_MODES[o.mode]) { CMPB_ETAT.mode = o.mode; CMPB_ETAT.modeChoisi = true; }
+    // Écart maximal gardé seulement s'il a été choisi à la main (avant : la valeur automatique restait figée).
+    if (o.auto === false && CMPB_ECARTS.some(e => e[0] === o.ecart)) { CMPB_ETAT.ecart = o.ecart; CMPB_ETAT.auto = false; }
     if ([7, 14, 30].includes(o.jours)) CMPB_ETAT.jours = o.jours;
     if (typeof o.cat === "string") CMPB_ETAT.cat = o.cat;
     if (["cote", "avance", "selection", "ligue", "pays"].includes(o.dim)) CMPB_ETAT.dim = o.dim;
@@ -9867,7 +9876,7 @@ function cmpbChargerEtat() {
   } catch (e) { /* stockage indisponible : réglages par défaut */ }
 }
 function cmpbSauverEtat() {
-  try { localStorage.setItem(CMPB_LS_KEY, JSON.stringify(CMPB_ETAT)); } catch (e) { /* tant pis */ }
+  try { localStorage.setItem(CMPB_LS_KEY, JSON.stringify(Object.assign({}, CMPB_ETAT, {sites: CMPB_SITES_DISPO}))); } catch (e) { /* tant pis */ }
 }
 // Écart maximal choisi tout seul : le plus serré qui laisse assez de cotes pour juger.
 function cmpbEcartAuto(mode, jours, cat) {
@@ -10114,6 +10123,12 @@ function renderBookmakers() {
     : (CMPB_ETAT.ecart < 0
         ? "Sans limite d'écart, la comparaison mélange la différence entre sites et le mouvement des cotes dans le temps."
         : "Seules les cotes relevées à moins de " + (CMPB_ECARTS.find(e => e[0] === CMPB_ETAT.ecart) || [0, ""])[1] + " d'écart du relevé Winamax sont comparées.");
+  // Choix automatique qui laisse de côté un site relevé (07/11/2026 ; ex. Bwin les premiers jours, trop peu de cotes
+  // communes avec les autres) : le dire, pour qu'il ne passe pas inaperçu. Pas de note sur un choix fait à la main.
+  const absents = CMPB_ETAT.modeChoisi ? [] : CMPB_SITES_DISPO.filter(s => !sites.includes(s));
+  if (absents.length) note.textContent += absents.length > 1
+    ? ` ${cmpbListeNoms(absents)} ne sont pas inclus : trop peu de cotes en commun avec les autres sites pour l'instant. Choisissez-les dans « Sites comparés » pour les voir quand même.`
+    : ` ${cmpbListeNoms(absents)} n'est pas inclus : trop peu de cotes en commun avec les autres sites pour l'instant. Choisissez-le dans « Sites comparés » pour le voir quand même.`;
   const cells = cmpbFiltrer(CMPB_ETAT);
   const sans = $("cmpbSansDonnees"), res = $("cmpbResultats");
   if (!cells.length) {
@@ -10140,7 +10155,7 @@ function renderBookmakers() {
   cmpbChargerEtat();
   const lire = () => {
     const mode = $("cmpbMode").value, ecart = parseInt($("cmpbEcart").value, 10);
-    if (mode !== CMPB_ETAT.mode) { CMPB_ETAT.mode = mode; CMPB_ETAT.auto = true; CMPB_ETAT.ecart = 0; }
+    if (mode !== CMPB_ETAT.mode) { CMPB_ETAT.mode = mode; CMPB_ETAT.modeChoisi = true; CMPB_ETAT.auto = true; CMPB_ETAT.ecart = 0; }
     else if (ecart !== CMPB_ETAT.ecart) { CMPB_ETAT.ecart = ecart; CMPB_ETAT.auto = false; }
     CMPB_ETAT.jours = parseInt($("cmpbJours").value, 10);
     CMPB_ETAT.cat = $("cmpbCat").value;
