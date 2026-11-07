@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261107192251">
+<link rel="stylesheet" href="style.css?v=20261107212108">
 </head>
 <body>
 <div class="topbar">
@@ -1500,6 +1500,21 @@
       <em>pistes à vérifier</em> contre le contexte réel, jamais comme des paris sûrs. Joue avec modération.
     </div>
 
+    <!-- Cotes boostées Winamax (07/11/2026) : remplies par le bloc JS « COTES BOOSTÉES », masquées sans historique. -->
+    <div class="panel bst-panel" id="bstPanel" hidden>
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M11.2 2.5 4.6 11h4.6l-1 6.5L15.4 9h-4.7l.5-6.5Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Cotes boostées Winamax <span class="hint">— comparées à leur prix juste</span></h2>
+      <p class="muted bst-intro">Le prix juste vient des cotes Winamax du même match (1X2, Plus/Moins, scores exacts, sans marge) : un boost ne vaut le coup que si sa cote le dépasse. La plupart restent en dessous. <span id="bstMaj"></span></p>
+      <p class="bst-resume" id="bstResume" role="status"></p>
+      <div class="tablewrap" id="bstTableWrap">
+        <table id="bstTable" class="cardify bst-table">
+          <thead><tr><th>Match</th><th>Pari boosté</th><th class="num">Cote</th><th class="num">Cote juste</th><th class="num">Espérance</th><th class="num">Gain espéré</th><th>Verdict</th></tr></thead>
+          <tbody id="bstBody"></tbody>
+        </table>
+      </div>
+      <details class="unmatched bst-details" id="bstNonEval" hidden><summary id="bstNonEvalTitre"></summary><ul class="bst-ne-list" id="bstNonEvalList"></ul></details>
+      <details class="unmatched bst-details" id="bstBilan" hidden><summary id="bstBilanTitre"></summary><div id="bstBilanBody"></div></details>
+    </div>
+
     <div class="panel" id="uFilterPanel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Filtrer les recommandations</h2>
       <div class="filter-reset-row">
@@ -2364,7 +2379,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261107192324"></script>
-<script src="app.js?v=20261107192251"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261107212138"></script>
+<script src="app.js?v=20261107212108"></script>
 </body>
 </html>
