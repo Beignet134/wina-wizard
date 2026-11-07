@@ -560,6 +560,17 @@
   "mise": 5,
   "maj": 1793452659803
  },
+ "2026-11-07|Boca Juniors - Defensa Y Justicia|draw": {
+  "cote": 4.1,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 4.1,
+  "ts": "2026-11-07T17:33:08",
+  "kickoff": "2026-11-07T21:30:00",
+  "capture_iso": "2026-11-07T17:23:11.497901",
+  "mise": 10,
+  "maj": 1794069188321
+ },
  "2026-11-07|Clermont - Rodez|0 - 0": {
   "cote": 5,
   "cote_confirmee": true,
@@ -581,6 +592,17 @@
   "capture_iso": "2026-11-07T13:17:01.702995",
   "mise": 5,
   "maj": 1794056367144
+ },
+ "2026-11-07|Montréal - Vancouver|draw": {
+  "cote": 3.95,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 3.95,
+  "ts": "2026-11-07T17:33:09",
+  "kickoff": "2026-11-07T22:00:00",
+  "capture_iso": "2026-11-07T17:23:11.497901",
+  "mise": 10,
+  "maj": 1794069189829
  },
  "2026-11-07|Slovan Bratislava - Trenčín|draw": {
   "cote": 6.25,
