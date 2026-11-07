@@ -10170,6 +10170,101 @@ function renderBookmakers() {
   });
 })();
 
+/* ================= PAGE — PARIS À VENIR : COTES BOOSTÉES WINAMAX (07/11/2026) ================= */
+// Données préparées par build_boosts (Python) à partir de l'historique du collecteur winamax_cotes_boostees.py :
+// boosts en cours avec leur prix juste et leur verdict, puis bilan des boosts passés réglés avec les résultats.
+(function renderBoosts() {
+  const B = WIZARD_DATA.boosts || {};
+  const panel = $("bstPanel");
+  const enCours = B.en_cours || [], passes = B.passes || [];
+  if (!panel || (!enCours.length && !passes.length)) return;
+  panel.hidden = false;
+  const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const nb = (x, d) => x.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+  const pct = x => (x >= 0 ? "+" : "−") + nb(Math.abs(x * 100), 1) + " %";
+  const cote = x => x == null ? "—" : nb(x, 2);
+  const eur = x => (x >= 0 ? "+" : "−") + nb(Math.abs(x), 2) + " €";
+  const quand = ko => {
+    const d = new Date(String(ko).replace(" ", "T"));
+    if (isNaN(d)) return esc(ko);
+    return d.toLocaleDateString("fr-FR", {weekday: "short", day: "2-digit", month: "2-digit"}) + " " + String(ko).slice(11, 16);
+  };
+  const VERD = {"à jouer": ["bst-jouer", "À jouer"], "limite": ["bst-limite", "Limite"],
+                "à éviter": ["bst-eviter", "À éviter"], "non évaluable": ["bst-ne", "Non évaluable"]};
+  const seuil = B.seuil || 0.03;
+  const pl = (n, mot, motPl) => `${n} ${n > 1 ? (motPl || mot + "s") : mot}`;
+  $("bstMaj").textContent = B.maj ? `Dernier relevé des boosts : ${B.maj}.` : "";
+
+  // ---- boosts en cours
+  const evalues = enCours.filter(r => r.esp != null), nonEval = enCours.filter(r => r.esp == null);
+  const n = v => enCours.filter(r => r.verdict === v).length;
+  if (enCours.length) {
+    const jouer = n("à jouer");
+    $("bstResume").innerHTML = `<strong>${pl(enCours.length, "boost")} en cours</strong> : `
+      + `<span class="${jouer ? "pos" : ""}">${jouer} à jouer</span> (espérance ≥ ${pct(seuil)}), ${n("limite")} limite, `
+      + `${n("à éviter")} à éviter, ${nonEval.length} non évaluable${nonEval.length > 1 ? "s" : ""}.`;
+  } else {
+    $("bstResume").textContent = "Aucun boost en cours au dernier relevé.";
+  }
+  const ligne = r => {
+    const [cls, lib] = VERD[r.verdict] || VERD["non évaluable"];
+    const multi = r.matchs && r.matchs.includes("|") ? `<span class="bst-sub">${r.matchs.split("|").map(s => esc(s.trim())).join("<br>")}</span>` : "";
+    return `<tr class="bst-row">`
+      + `<td data-label="">${esc(r.match)}<span class="bst-sub">${quand(r.ko)}${r.comp && r.comp !== r.match && r.comp !== "Football" ? " · " + esc(r.comp) : ""}</span>${multi}</td>`
+      + `<td data-label="Pari">${esc(r.pari)}</td>`
+      + `<td class="num" data-label="Cote">${r.co ? cote(r.co) + " → " : ""}<strong>${cote(r.cb)}</strong></td>`
+      + `<td class="num" data-label="Cote juste">${cote(r.cj)}</td>`
+      + `<td class="num ${r.esp >= 0 ? "pos" : "neg"}" data-label="Espérance">${pct(r.esp)}</td>`
+      + `<td class="num" data-label="Gain espéré">${r.mm ? eur(r.esp * r.mm) + `<span class="bst-sub">mise max ${nb(r.mm, 0)} €</span>` : "—"}</td>`
+      + `<td data-label=""><span class="bst-verdict ${cls}">${lib}</span></td></tr>`;
+  };
+  $("bstBody").innerHTML = evalues.map(ligne).join("");
+  $("bstTableWrap").hidden = !evalues.length;
+  if (nonEval.length) {
+    $("bstNonEval").hidden = false;
+    $("bstNonEvalTitre").textContent = `${pl(nonEval.length, "boost")} non ${nonEval.length > 1 ? "évaluables" : "évaluable"} (joueur, tirs, autres sports…)`;
+    $("bstNonEvalList").innerHTML = nonEval.map(r => `<li><strong>${esc(r.match)}</strong> — ${esc(r.pari)} · `
+      + `${r.co ? cote(r.co) + " → " : ""}${cote(r.cb)} <span class="muted">(${esc(r.raison || "non évaluable")})</span></li>`).join("");
+  }
+
+  // ---- bilan des boosts passés
+  const bil = B.bilan || {};
+  const tous = bil.tous || {};
+  if (passes.length) {
+    $("bstBilan").hidden = false;
+    $("bstBilanTitre").textContent = `Bilan des boosts passés (${B.jours || 30} derniers jours) : `
+      + `${pl(tous.n_eval || 0, "boost évalué", "boosts évalués")}`
+      + (tous.esp_moy != null ? `, espérance moyenne ${pct(tous.esp_moy)}` : "");
+    const lignesBil = [["Tous les boosts évalués", bil.tous], ["Espérance positive", bil.positifs], [`À jouer (≥ ${pct(seuil)})`, bil.a_jouer]];
+    const corps = lignesBil.map(([nom, b]) => {
+      b = b || {};
+      const net = b.regles ? `<span class="${b.net >= 0 ? "pos" : "neg"}">${eur(b.net)}</span>` : "—";
+      return `<tr><td data-label="">${nom}</td><td class="num" data-label="Boosts">${b.n_eval || 0}</td>`
+        + `<td class="num" data-label="Espérance moyenne">${b.esp_moy != null ? pct(b.esp_moy) : "—"}</td>`
+        + `<td class="num" data-label="Réglés">${b.regles || 0}</td>`
+        + `<td class="num" data-label="Gagnés / attendus">${b.regles ? `${b.gagnes} / ${nb(b.attendus, 1)}` : "—"}</td>`
+        + `<td class="num" data-label="Misé (mise max)">${b.regles ? nb(b.mise, 0) + " €" : "—"}</td>`
+        + `<td class="num" data-label="Résultat">${net}</td>`
+        + `<td class="num" data-label="Attendu">${b.regles ? eur(b.net_espere) : "—"}</td></tr>`;
+    }).join("");
+    const recents = passes.filter(r => r.esp != null).slice(0, 20).map(r => {
+      const res = r.res === true ? `<span class="pos">Gagné</span>` : r.res === false ? `<span class="neg">Perdu</span>` : `<span class="muted">non réglé</span>`;
+      return `<tr><td data-label="">${esc(r.match)}<span class="bst-sub">${quand(r.ko)}</span></td><td data-label="Pari">${esc(r.pari)}</td>`
+        + `<td class="num" data-label="Cote">${cote(r.cb)}</td><td class="num ${r.esp >= 0 ? "pos" : "neg"}" data-label="Espérance">${pct(r.esp)}</td>`
+        + `<td data-label="Résultat">${res}</td></tr>`;
+    }).join("");
+    $("bstBilanBody").innerHTML =
+      `<div class="tablewrap"><table class="cardify bst-bilan-table"><thead><tr><th>Si vous aviez joué…</th><th class="num">Boosts</th>`
+      + `<th class="num">Espérance moyenne</th><th class="num">Réglés</th><th class="num">Gagnés / attendus</th><th class="num">Misé (mise max)</th>`
+      + `<th class="num">Résultat</th><th class="num">Attendu</th></tr></thead><tbody>${corps}</tbody></table></div>`
+      + `<p class="muted bst-bilan-note">Résultat = gain net en jouant chaque boost à sa mise maximale ; « attendu » = ce que le prix juste prévoyait. `
+      + `Les boosts sur la mi-temps, le premier but ou un joueur ne sont pas réglés (pas de score par période dans les résultats). `
+      + `Sur quelques dizaines de boosts, l'écart entre résultat et attendu est surtout du hasard : c'est l'espérance moyenne qui compte.</p>`
+      + (recents ? `<div class="tablewrap"><table class="cardify bst-passes-table"><thead><tr><th>Match</th><th>Pari boosté</th><th class="num">Cote</th>`
+        + `<th class="num">Espérance</th><th>Résultat</th></tr></thead><tbody>${recents}</tbody></table></div>` : "");
+  }
+})();
+
 /* ================= PAGE — BANKROLL ================= */
 // Rapproche chaque pari coché « joué » du RÉSULTAT RÉEL du match, puis calcule
 // le gain avec la cote que vous avez réellement obtenue.
