@@ -572,15 +572,15 @@
   "maj": 1794056350735
  },
  "2026-11-07|Floriana - Hibernians FC|homeWin": {
-  "cote": 1.88,
+  "cote": 1.86,
   "cote_confirmee": false,
-  "site": "betclic",
-  "cote_capturee": 1.88,
+  "site": "winamax",
+  "cote_capturee": 1.86,
   "ts": "2026-11-07T13:59:04",
   "kickoff": "2026-11-07T14:00:00",
   "capture_iso": "2026-11-07T13:17:01.702995",
   "mise": 10,
-  "maj": 1794056344945
+  "maj": 1794056354734
  },
  "2026-11-07|Slovan Bratislava - Trenčín|draw": {
   "cote": 6.25,
