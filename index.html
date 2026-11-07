@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261107102345">
+<link rel="stylesheet" href="style.css?v=20261107110726">
 </head>
 <body>
 <div class="topbar">
@@ -586,6 +586,13 @@
             <option value="oui">Oui (test)</option>
           </select>
         </div>
+        <div class="field" id="btAbsField">
+          <label for="btAbs">Absences</label>
+          <select id="btAbs" title="Non : modèle sans tenir compte des absents. Oui (test) : chaque point d'importance des absents connus (API-Football, joueurs « Missing Fixture » dont l'importance est calculée) affaiblit son équipe — environ 10 % de buts marqués en moins et 10 % de buts encaissés en plus. Seuls les matchs avec absents changent. Combinable avec les autres lectures.">
+            <option value="non" selected>Non</option>
+            <option value="oui">Oui (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="btMise">Strategie de mise</label>
           <select id="btMise">
@@ -796,6 +803,7 @@
       <p class="muted" id="btEnrichiNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btForcesNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btSaisonNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btAbsNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
     </div>
@@ -1605,6 +1613,13 @@
             <option value="oui">Oui (test)</option>
           </select>
         </div>
+        <div class="field" id="uAbsField">
+          <label for="uAbs">Absences</label>
+          <select id="uAbs" title="Non : modèle sans tenir compte des absents. Oui (test) : chaque point d'importance des absents connus (API-Football, joueurs « Missing Fixture » dont l'importance est calculée) affaiblit son équipe — environ 10 % de buts marqués en moins et 10 % de buts encaissés en plus. Seuls les matchs avec absents changent. Combinable avec les autres lectures.">
+            <option value="non" selected>Non</option>
+            <option value="oui">Oui (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="uMise2">Strategie de mise</label>
           <select id="uMise2">
@@ -1768,6 +1783,7 @@
       <p class="muted" id="uEnrichiNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uForcesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uSaisonNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uAbsNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uCotesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -2346,7 +2362,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261107102500"></script>
-<script src="app.js?v=20261107102345"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261107110811"></script>
+<script src="app.js?v=20261107110726"></script>
 </body>
 </html>
