@@ -10,8 +10,15 @@ const UNMATCHED = WIZARD_DATA.unmatched_examples;
 const VALUE_BETS_COMPLET = WIZARD_DATA.value_bets;
 // Même règle pour les paris que SEULE la correction saisonnière a retenus
 // (champ seul_sa) : écartés tant que « Correction saisonnière » est sur Non.
-const VALUE_BETS = VALUE_BETS_COMPLET.some(v => v.seul_tm || v.seul_sa)
-  ? VALUE_BETS_COMPLET.filter(v => !v.seul_tm && !v.seul_sa) : VALUE_BETS_COMPLET;
+// Idem pour la lecture « absences » (seul_ab) : voir ligneOptionnelle.
+const VALUE_BETS = VALUE_BETS_COMPLET.some(ligneOptionnelle)
+  ? VALUE_BETS_COMPLET.filter(v => !ligneOptionnelle(v)) : VALUE_BETS_COMPLET;
+// Pari présent dans les données SEULEMENT pour une lecture optionnelle
+// (« tous matchs », correction saisonnière, absences) : absent du site tant
+// que cette lecture n'est pas choisie.
+function ligneOptionnelle(r) {
+  return !!(r.seul_tm || r.seul_sa || r.seul_ab);
+}
 const MIN_BETS = WIZARD_DATA.config.min_bets_for_verdict;
 const OOS_MIN = WIZARD_DATA.config.oos_min_test;
 const UPCOMING_DAYS = WIZARD_DATA.config.upcoming_days;
@@ -414,7 +421,7 @@ function remplirScoreExMsel(prefixe, rows) {
 }
 function remplirScoreExOptionsPartout() {
   if (!$("btScoreExOptions") && !$("uScoreExOptions")) return;
-  const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])].filter(r => !r.seul_tm && !r.seul_sa);
+  const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])].filter(r => !ligneOptionnelle(r));
   remplirScoreExMsel("bt", toutes);
   remplirScoreExMsel("u", toutes);
 }
@@ -525,11 +532,6 @@ function appliquerForces(rows, actif) {
     if (r.cote) {
       o.edge = p - 1 / r.cote;
       o.ev = p * (r.cote - 1) - (1 - p);
-      // Même pénalité d'absences que sur la lecture « buts » (côté Python).
-      if (r.penalite_absences) {
-        o.ev_brut = o.ev;
-        o.ev = o.ev * (1 - r.penalite_absences);
-      }
     }
     if (pm != null && (r.p_implied_devig != null || r.edge_devig != null)) o.edge_devig = p - pm;
     return o;
@@ -567,22 +569,17 @@ function appliquerSaison(rows, actif) {
     const o = {...r, source_saison: true, saison_f: f,
                p_model_sans_saison: r.p_model, lam_home_sans_saison: r.lam_home,
                lam_away_sans_saison: r.lam_away};
-    const lecture = (pp, kp, ke, ked, kev, penalite) => {
+    const lecture = (pp, kp, ke, ked, kev) => {
       o[kp] = pp;
       if (c) {
         o[ke] = pp - 1 / c;
         o[kev] = pp * (c - 1) - (1 - pp);
-        // Même pénalité d'absences que la lecture « buts » côté Python.
-        if (penalite && r.penalite_absences) {
-          o.ev_brut = o[kev];
-          o[kev] = o[kev] * (1 - r.penalite_absences);
-        }
       }
       if (pm != null) o[ked] = pp - pm;
     };
-    if (p != null) lecture(p, "p_model", "edge", "edge_devig", "ev", true);
-    if (px != null) lecture(px, "p_model_xg", "edge_xg", "edge_devig_xg", "ev_xg", false);
-    if (pn != null) lecture(pn, "p_model_nb", "edge_nb", "edge_devig_nb", "ev_nb", false);
+    if (p != null) lecture(p, "p_model", "edge", "edge_devig", "ev");
+    if (px != null) lecture(px, "p_model_xg", "edge_xg", "edge_devig_xg", "ev_xg");
+    if (pn != null) lecture(pn, "p_model_nb", "edge_nb", "edge_devig_nb", "ev_nb");
     const fois = v => (v == null ? v : Math.round(v * f * 100) / 100);
     o.lam_home = fois(r.lam_home);
     o.lam_away = fois(r.lam_away);
@@ -593,15 +590,28 @@ function appliquerSaison(rows, actif) {
   });
 }
 
-// Lignes de départ selon les deux réglages optionnels : `complet` = toutes les
+// Lignes de départ selon les réglages optionnels : `complet` = toutes les
 // lignes collectées, `base` = celles de la lecture actuelle sans correction.
-function lignesLecture(complet, base, forcesTm, saison) {
-  if (!saison) {
-    if (!forcesTm) return base;
-    return complet.some(r => r.seul_sa) ? complet.filter(r => !r.seul_sa) : complet;
+// Sans « Absences », les paris que seule cette lecture retient (seul_ab) sont
+// écartés : mêmes paris qu'avant le réglage. Avec, s'y ajoutent ceux que la
+// lecture corrigée retient dans la configuration choisie (bits de q_ab :
+// 1 = actuelle, 2 = tous matchs, 4 / 8 = les mêmes avec la saison).
+function lignesLecture(complet, base, forcesTm, saison, absences = false) {
+  if (!absences) {
+    if (!saison) {
+      if (!forcesTm) return base;
+      return complet.some(r => r.seul_sa || r.seul_ab) ? complet.filter(r => !r.seul_sa && !r.seul_ab) : complet;
+    }
+    if (forcesTm) return complet.some(r => r.seul_ab) ? complet.filter(r => !r.seul_ab) : complet;
+    return complet.filter(r => ((!r.seul_tm && !r.seul_sa) || (r.q_sa & 1)) && !r.seul_ab);
   }
-  if (forcesTm) return complet;
-  return complet.filter(r => (!r.seul_tm && !r.seul_sa) || (r.q_sa & 1));
+  const bit = (forcesTm ? 2 : 1) * (saison ? 4 : 1);
+  const vuSans = r => {
+    if (r.seul_ab) return false;
+    if (!saison) return forcesTm ? !r.seul_sa : (!r.seul_tm && !r.seul_sa);
+    return forcesTm || (!r.seul_tm && !r.seul_sa) || !!(r.q_sa & 1);
+  };
+  return complet.filter(r => vuSans(r) || !!(r.q_ab & bit));
 }
 
 function majSaisonNote(prefixe) {
@@ -634,13 +644,104 @@ function majSaisonNote(prefixe) {
     + `Mesure contre le marché : panneau « Lectures du modèle » sur DC rétrospectif.`;
 }
 
+// ---------------------------------------------------------------------------
+// LECTURE « ABSENCES » (réglage « Absences », ABSENCES_LECTURE_ACTIVE côté
+// Python). Pour un match avec des absents d'importance connue, λ domicile × g
+// et λ extérieur ÷ g (g < 1 : le domicile est le plus touché). Python fournit,
+// pour chaque pari concerné, r.ab = [g, rapport buts, xG, tous matchs,
+// binomiale négative] (probabilité corrigée ÷ probabilité de la lecture) ;
+// ici on MULTIPLIE la probabilité de chaque lecture par son rapport, après la
+// correction saisonnière et avant forces, calibration, NB et xG, puis on
+// recalcule edge, edge dévigué et espérance (marché inchangé). Paris sans
+// r.ab (aucun absent compté, BTTS) : inchangés. « Non » (défaut) : strictement
+// les mêmes paris et valeurs qu'avant.
+const ABS_DISPO = (WIZARD_DATA.dc_backtest || []).some(r => r.ab)
+               || (WIZARD_DATA.value_bets || []).some(r => r.ab);
+
+function absencesActive(prefixe) {
+  const s = $(prefixe + "Abs");
+  return !!(ABS_DISPO && s && s.value === "oui");
+}
+
+function appliquerAbsences(rows, actif) {
+  if (!ABS_DISPO || !actif) return rows;
+  const borne = p => Math.min(0.999, Math.max(0, p));
+  return rows.map(r => {
+    if (!r.ab) return r;
+    const [g, rb, rx, rt, rn] = r.ab;
+    const pm = pMarche(r);                 // marché dévigué : calculé AVANT correction
+    const c = r.cote;
+    const o = {...r, source_abs: true, abs_g: g, p_model_sans_abs: r.p_model};
+    const lecture = (ratio, kp, ke, ked, kev) => {
+      if (ratio == null || r[kp] == null) return;
+      const pp = borne(r[kp] * ratio);
+      o[kp] = pp;
+      if (c) {
+        o[ke] = pp - 1 / c;
+        o[kev] = pp * (c - 1) - (1 - pp);
+      }
+      if (pm != null) o[ked] = pp - pm;
+    };
+    lecture(rb, "p_model", "edge", "edge_devig", "ev");
+    lecture(rx, "p_model_xg", "edge_xg", "edge_devig_xg", "ev_xg");
+    lecture(rn, "p_model_nb", "edge_nb", "edge_devig_nb", "ev_nb");
+    const dom = v => (v == null ? v : Math.round(v * g * 100) / 100);
+    const ext = v => (v == null ? v : Math.round(v / g * 100) / 100);
+    o.lam_home = dom(r.lam_home);
+    o.lam_away = ext(r.lam_away);
+    if (r.lam_home_xg != null) o.lam_home_xg = dom(r.lam_home_xg);
+    if (r.lam_away_xg != null) o.lam_away_xg = ext(r.lam_away_xg);
+    if (r.tm && rt != null) o.tm = [borne(r.tm[0] * rt), dom(r.tm[1]), ext(r.tm[2]), ...r.tm.slice(3)];
+    return o;
+  });
+}
+
+function majAbsNote(prefixe) {
+  const sel = $(prefixe + "Abs");
+  const note = $(prefixe + "AbsNote");
+  if (!sel) return;
+  if (!ABS_DISPO) {
+    sel.value = "non";
+    sel.disabled = true;
+    sel.title = "Aucun absent d'importance connue dans les données de cette collecte (api_football_data.json absent ou sans blessures, ou ABSENCES_LECTURE_ACTIVE = False).";
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  if (sel.value !== "oui") {
+    note.style.display = "none";
+    return;
+  }
+  const s = (WIZARD_DATA.dc_stats || {}).suivi_absences || {};
+  const rows = prefixe === "bt" ? (WIZARD_DATA.dc_backtest || []) : (WIZARD_DATA.value_bets || []);
+  const matchs = new Set(rows.filter(r => r.ab && !r.seul_ab).map(r => r.date + "|" + r.match));
+  const parPoint = s.par_point != null ? s.par_point : 0.10;
+  const nombre = (v, d) => Number(v).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+  const pctTxt = v => nombre(v * 100, 1) + " %";
+  const signe = v => (v > 0 ? "+" : v < 0 ? "−" : "") + nombre(Math.abs(v), 4);
+  // Effet mesuré contre le marché (rétrospectif) : écart moyen de log-loss au
+  // marché, sans puis avec la correction, sur les matchs avec absents.
+  const familles = (s.familles || []).filter(f => ["1X2", "Plus/Moins 2,5", "Intervalles"].includes(f.nom) && f.n);
+  const mesure = familles.length
+    ? " Sur le rétrospectif, écart au marché (log-loss, plus bas = mieux) sans → avec : "
+      + familles.map(f => `${f.nom} ${signe((f.sans - f.marche) / f.n)} → ${signe((f.avec - f.marche) / f.n)} (${f.n} matchs)`).join(" · ") + "."
+    : "";
+  note.style.display = "";
+  note.innerHTML = `<strong>Absences prises en compte</strong> (test) — chaque point d'importance des absents `
+    + `connus affaiblit son équipe : ${pctTxt(1 - Math.exp(-parPoint))} de buts marqués en moins, `
+    + `${pctTxt(Math.exp(parPoint) - 1)} de buts encaissés en plus. ${matchs.size} match${matchs.size > 1 ? "s" : ""} `
+    + `avec des absents comptés dans les données de cette page ; les autres matchs et le BTTS ne bougent pas. `
+    + `Absents sans importance calculée : ignorés.${mesure}`;
+}
+
 // Chaîne complète de lecture du modèle, commune aux trois endroits qui
 // préparent les lignes (DC rétrospectif, Paris à venir, plage de cotes).
 // La correction saisonnière passe en premier : toutes les lectures qui
 // suivent (forces, calibration, binomiale négative, xG) partent des
 // probabilités corrigées.
-function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false) {
-  rows = appliquerSaison(rows, saison);
+function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false, absences = false) {
+  rows = appliquerAbsences(appliquerSaison(rows, saison), absences);
   if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif, CALIB_RATIO_TM);
   return appliquerXg(appliquerNb(calibrer(appliquerForces(rows, false), calibActif), nbActif), modeXg);
 }
@@ -777,7 +878,7 @@ function initMeta() {
   // bas) échouerait silencieusement dès qu'une valeur de l'un est absente
   // de la liste de l'autre.
   if ($("btLigueOptions") || $("uLigueOptions")) {
-    const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])].filter(r => !r.seul_tm && !r.seul_sa);
+    const toutes = [...(WIZARD_DATA.dc_backtest || []), ...(WIZARD_DATA.value_bets || [])].filter(r => !ligneOptionnelle(r));
     remplirLiguesMsel("bt", toutes);
     remplirLiguesMsel("u", toutes);
   }
@@ -1990,8 +2091,8 @@ function lireCoteSaisie(texte) {
 // Recalcule TOUT ce qui dépend de la cote, pour les trois lectures du
 // modèle (buts, xG, binomiale négative). Les formules sont celles de
 // build_value_bets (Python) : edge = p − 1/cote, edge dévigué = p − p_marché,
-// espérance = p·(cote−1) − (1−p). La pénalité d'absences ne porte que sur
-// l'espérance « buts », comme côté Python.
+// espérance = p·(cote−1) − (1−p). Les lectures optionnelles (saison,
+// absences) s'appliquent ensuite, dans lectureModele.
 function avecCote(v, cote) {
   const o = Object.assign({}, v);
   const pImp = 1 / cote;
@@ -2010,10 +2111,6 @@ function avecCote(v, cote) {
     o[ed] = v[p] - pDev;
     o[ev] = v[p] * (cote - 1) - (1 - v[p]);
   });
-  if (v.penalite_absences) {
-    o.ev_brut = o.ev;
-    o.ev = o.ev * (1 - v.penalite_absences);
-  }
   // Mouvement depuis l'ouverture : mesuré avec la cote saisie comme dernière cote.
   if (v.cote_ouverture != null && v.cote_ouverture > 1) {
     o.variation_proba = pImp - 1 / v.cote_ouverture;
@@ -2504,7 +2601,7 @@ function cbkFermerBientot() {
 function cbkMajControles() {
   const box = document.getElementById("cbkCtl");
   if (!box) return;
-  const avec = UPCOMING_COMPLET.filter(v => !v.seul_sa && v.cb && v.cb.length);
+  const avec = UPCOMING_COMPLET.filter(v => !v.seul_sa && !v.seul_ab && v.cb && v.cb.length);
   box.style.display = avec.length ? "" : "none";
   // Filtres « entre bookmakers » (panneau de filtres) et tri « espérance au meilleur prix » : seulement s'il existe des cotes d'un autre site.
   const fbox = document.getElementById("cbkFiltres");
@@ -2574,10 +2671,13 @@ function renderUpcoming() {
   const forcesTm = forcesTmActif("u");
   // Correction saisonnière (option) : combinable avec les forces, voir appliquerSaison.
   const saison = saisonActive("u");
-  let source = lectureModele(upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison)),
-                             forcesTm, calibActif, nbActif, modeXg, saison);
+  // Lecture « absences » (option) : combinable avec tout, voir appliquerAbsences.
+  const absences = absencesActive("u");
+  let source = lectureModele(upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison, absences)),
+                             forcesTm, calibActif, nbActif, modeXg, saison, absences);
   majForcesNote("u");
   majSaisonNote("u");
+  majAbsNote("u");
 
   // Filtre "historique" de la matrice (DC rétrospectif) — voir
   // BT_HIST_SELECTION / propagerFiltreHistorique(). Le champ
@@ -2693,7 +2793,7 @@ function renderUpcoming() {
   // aucune cote ne convient).
   const plageCotePour = (v0, evConcurrents = null) => {
     const echecsA = c => {
-      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg, saison)[0];
+      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg, saison, absences)[0];
       if (!r) return null;
       const a = calculerAff(r);
       const echecs = controlesCote(a);
@@ -3026,7 +3126,7 @@ function renderUpcoming() {
           <div class="rec-injuries">
             <span class="inj-dot" aria-hidden="true"></span>
             <span><strong>${nMatch} absent${nMatch>1?'s':''}</strong>${noms.length? " · " + noms.join(", ") : ""}${reste>0? ` +${reste}` : ""}
-            ${v.penalite_absences ? `<span class="inj-adj">espérance réduite de ${(v.penalite_absences*100).toFixed(0)} %</span>` : ""}</span>
+            ${v.source_abs ? `<span class="inj-adj">réglage « Absences » : buts attendus domicile ×${v.abs_g.toLocaleString("fr-FR", {maximumFractionDigits: 3})}, extérieur ×${(1 / v.abs_g).toLocaleString("fr-FR", {maximumFractionDigits: 3})}</span>` : ""}</span>
           </div>`;
       } else {
         injuryBlock = `<div class="rec-injuries ok"><span class="inj-dot ok" aria-hidden="true"></span><span>Aucune absence signalée</span></div>`;
@@ -3509,7 +3609,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
   const el=$(id); if (!el) return; el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 // Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
@@ -4191,7 +4291,7 @@ function cablerMenusDeroulants() {
 }
 cablerMenusDeroulants();
 
-[["btDevig","uDevig"], ["btAlpha","uAlpha"], ["btForces","uForces"], ["btSaison","uSaison"],
+[["btDevig","uDevig"], ["btAlpha","uAlpha"], ["btForces","uForces"], ["btSaison","uSaison"], ["btAbs","uAbs"],
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -4616,8 +4716,8 @@ function renderOverview() {
 // paris que SEULE la lecture « tous matchs » a retenus, champ seul_tm) — voir
 // VALUE_BETS_COMPLET.
 const BT_ROWS_COMPLET = WIZARD_DATA.dc_backtest || [];
-const BT_ROWS = BT_ROWS_COMPLET.some(r => r.seul_tm || r.seul_sa)
-  ? BT_ROWS_COMPLET.filter(r => !r.seul_tm && !r.seul_sa) : BT_ROWS_COMPLET;
+const BT_ROWS = BT_ROWS_COMPLET.some(ligneOptionnelle)
+  ? BT_ROWS_COMPLET.filter(r => !ligneOptionnelle(r)) : BT_ROWS_COMPLET;
 
 // Garantie 2 buts : sans chronologie des buts collectée (api_football_
 // collect.py, endpoint /fixtures/events), aucun pari ne porte l'indicateur
@@ -5007,8 +5107,10 @@ function btFiltered(opts) {
   const forcesTm = forcesTmActif("bt");
   // Correction saisonnière (option) : combinable avec les forces, voir appliquerSaison.
   const saison = saisonActive("bt");
-  let source = lectureModele(lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison),
-                             forcesTm, calibActif, nbActif, modeXg, saison);
+  // Lecture « absences » (option) : combinable avec tout, voir appliquerAbsences.
+  const absences = absencesActive("bt");
+  let source = lectureModele(lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison, absences),
+                             forcesTm, calibActif, nbActif, modeXg, saison, absences);
 
   // Edge minimum, plage de cotes, filtre marchés de queue, edge dévigué max
   // et garantie 2 buts sont désormais PROPRES À CHAQUE CATÉGORIE de pari
@@ -5187,7 +5289,7 @@ function btFiltered(opts) {
 // relance que si un filtre réellement utilisé par « Paris à venir » bouge.
 function verdictsFiltresAvenir() {
   const ids = [
-    "uDevig", "uAlpha", "uForces", "uSaison", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
     "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
     "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
   ];
@@ -5420,6 +5522,10 @@ function renderBtActiveFilters(rowsFiltrees) {
     add("Correction saisonnière", "oui (test)",
         "Buts attendus × facteur du mois pour les championnats d'août à mai (voir « Lectures du modèle »)");
   }
+  if (absencesActive("bt")) {
+    add("Absences", "oui (test)",
+        "Chaque point d'importance des absents connus affaiblit son équipe (voir la note sous les filtres)");
+  }
   const alpha = $("btAlpha");
   if (alpha && parseFloat(alpha.value) !== 1) {
     add("Poids modèle", alpha.selectedOptions[0]?.textContent.trim() || `${fmtNum(parseFloat(alpha.value) * 100, 0)} %`);
@@ -5639,7 +5745,7 @@ function btCbrInfo() {
   if (BT_CBR_INFO) return BT_CBR_INFO;
   let n = 0, debut = null;
   BT_ROWS_COMPLET.forEach(r => {
-    if (r.seul_sa || !r.cbr || !r.cbr.length) return;
+    if (r.seul_sa || r.seul_ab || !r.cbr || !r.cbr.length) return;
     n++;
     if (debut == null || r.date < debut) debut = r.date;
   });
@@ -6092,6 +6198,7 @@ function renderBacktest() {
   majLoiNote("bt");
   majForcesNote("bt");
   majSaisonNote("bt");
+  majAbsNote("bt");
 
   // Le mélange avec le marché (alpha < 1) utilise TOUJOURS la probabilité
   // marché dévigée en interne (cf. blended()/pMarche()) — mélanger avec la
@@ -7671,7 +7778,10 @@ function renderBacktestRows() {
         lht: r.tm ? r.tm[1] : undefined, lat: r.tm ? r.tm[2] : undefined,
         ft: r.source_tm ? 1 : undefined,
         // Correction saisonnière : facteur appliqué aux buts attendus affichés.
-        fs: r.source_saison ? r.saison_f : undefined
+        fs: r.source_saison ? r.saison_f : undefined,
+        // Lecture « absences » : facteur sur les buts attendus du domicile
+        // (l'extérieur est divisé par ce facteur).
+        fa: r.source_abs ? r.abs_g : undefined
       }))}">${r.match}</span></td>
       <td data-label="Score réel"><span class="pill">${r.score_reel}</span></td>
       <td data-label="Pari">${r.colonne}</td>
@@ -7770,6 +7880,9 @@ function exporterBacktestCsv() {
     // Correction saisonnière (réglage du site) : facteur appliqué et proba
     // « buts » sans correction, pour comparer.
     "Facteur saison", "Proba modèle (sans saison)",
+    // Lecture « absences » (réglage du site) : facteur sur les buts attendus
+    // du domicile (extérieur ÷ ce facteur) et proba sans cette correction.
+    "Facteur absences (domicile)", "Proba modèle (sans absences)",
   ];
   const lignes = rows.map(r => {
     // appliquerXg() (voir plus haut) substitue p_model/edge/edge_devig/
@@ -7824,9 +7937,12 @@ function exporterBacktestCsv() {
       r.raccourcit == null ? "" : (r.raccourcit ? "Oui" : "Non"), r.n_captures ?? "",
       pct(edgeAffiche), num(mise), num(gain),
       pct(pTm), pct(edgeTm), pct(edgeDevigTm), pct(evTm),
-      (r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : ""),
+      (r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : "")
+        + (r.source_abs ? " + absences" : ""),
       r.source_saison ? String(r.saison_f).replace(".", ",") : "",
       r.source_saison ? pct(r.p_model_sans_saison) : "",
+      r.source_abs ? String(r.abs_g).replace(".", ",") : "",
+      r.source_abs ? pct(r.p_model_sans_abs) : "",
     ].map(champ).join(";");
   });
   // ﻿ (BOM) : sans lui, Excel Windows interprète les caractères
@@ -7900,6 +8016,7 @@ function attachDcTooltips() {
         <div class="dc-tip-sep"></div>
         ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">tous matchs</strong></div>` : ""}
         ${d.fs ? `<div class="dc-tip-row"><span>Correction saisonnière</span><strong class="pos">buts attendus ×${String(d.fs).replace(".", ",")}</strong></div>` : ""}
+        ${d.fa ? `<div class="dc-tip-row"><span>Absences</span><strong class="pos">domicile ×${d.fa.toLocaleString("fr-FR", {maximumFractionDigits: 3})} · extérieur ×${(1 / d.fa).toLocaleString("fr-FR", {maximumFractionDigits: 3})}</strong></div>` : ""}
         <div class="dc-tip-row"><span>Domicile · attaque</span><strong>${d.ad}</strong></div>
         <div class="dc-tip-row"><span>Domicile · défense</span><strong>${d.dd}</strong></div>
         <div class="dc-tip-row"><span>Extérieur · attaque</span><strong>${d.ae}</strong></div>
@@ -9328,7 +9445,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
@@ -9902,7 +10019,7 @@ function cmpbRenderEcarts(cells, sites) {
 function cmpbRenderAVenir() {
   const panel = $("cmpbAVenirPanel"), box = $("cmpbAVenir");
   let liste = [];
-  try { liste = (typeof UPCOMING_COMPLET !== "undefined" ? UPCOMING_COMPLET : []).filter(v => !v.seul_sa && v.cb && v.cb.length); } catch (e) { liste = []; }
+  try { liste = (typeof UPCOMING_COMPLET !== "undefined" ? UPCOMING_COMPLET : []).filter(v => !v.seul_sa && !v.seul_ab && v.cb && v.cb.length); } catch (e) { liste = []; }
   if (!liste.length) { panel.style.display = "none"; return; }
   const comptes = {winamax: 0, unibet: 0, betclic: 0};
   let n = 0, gains = [], autres = [], inhabituels = 0;
