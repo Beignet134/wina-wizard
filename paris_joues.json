@@ -647,5 +647,16 @@
   "capture_iso": "2026-11-08T10:25:07.213992",
   "mise": 5,
   "maj": 1794131957043
+ },
+ "2026-11-08|Union Saint-Gilloise - Genk|homeWin": {
+  "cote": 1.52,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 1.52,
+  "ts": "2026-11-08T16:44:52",
+  "kickoff": "2026-11-08T18:30:00",
+  "capture_iso": "2026-11-08T16:22:44.528009",
+  "mise": 10,
+  "maj": 1794152692408
  }
 }
