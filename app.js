@@ -1113,6 +1113,92 @@ function majNiveauNote(prefixe) {
 }
 
 // ---------------------------------------------------------------------------
+// MOMENT DU PARI (réglage « Moment du pari » de DC rétrospectif, option ajoutée
+// le 08/11/2026). Par défaut, un pari est jugé au DERNIER relevé avant le coup
+// d'envoi : « cote inchangée » y signifie « n'a plus bougé jusqu'au match »,
+// ce qu'on ne peut pas savoir quand on parie le matin pour l'après-midi.
+// Choisi, ce réglage rejoue chaque pari au dernier relevé situé au moins H
+// heures avant son coup d'envoi (MOMENT_PARI_HEURES côté Python, champ r.mp) :
+// cote, probabilité de marché sans marge, marge, mouvement depuis l'ouverture
+// et nombre de relevés de CE moment-là ; edge, espérance et gain en découlent
+// (le résultat du match ne change pas). Un pari sans relevé aussi tôt est
+// écarté : on n'aurait pas pu le jouer à ce moment-là. Les comparaisons avec
+// les autres sites restent celles du dernier relevé. Vide (défaut) : strictement
+// le comportement d'avant.
+const MOMENT_HEURES = WIZARD_DATA.moment_pari_heures || [];
+const MOMENT_DISPO = MOMENT_HEURES.length > 0 && (WIZARD_DATA.dc_backtest || []).some(r => r.mp);
+
+function momentPari() {
+  const s = $("btMoment");
+  const h = s && s.value ? Number(s.value) : null;
+  return h && MOMENT_DISPO && MOMENT_HEURES.includes(h) ? h : null;
+}
+
+// Lignes rejouées au moment choisi (mémorisé par tableau et par délai, pour
+// que les lectures en aval réutilisent leur propre mémoire).
+const _CACHE_MOMENT = new WeakMap();
+function momentLignes(rows, h) {
+  if (!h) return rows;
+  let memo = _CACHE_MOMENT.get(rows);
+  if (!memo) { memo = new Map(); _CACHE_MOMENT.set(rows, memo); }
+  if (memo.has(h)) return memo.get(h);
+  const k = MOMENT_HEURES.indexOf(h);
+  const res = [];
+  for (const r of rows) {
+    const snap = r.mp && r.mp[k];
+    if (!snap) continue;
+    const [c, pm, v, n, hAv] = snap;
+    const o = {...r, cote: c, p_implied: 1 / c, p_implied_devig: pm,
+               variation_proba: v, n_captures: n,
+               raccourcit: r.cote_ouverture != null ? c < r.cote_ouverture : v > 0,
+               moment_h: h, heures_avant: hAv, cote_dernier_releve: r.cote,
+               profit: r.gagne ? c - 1 : -1};
+    if (pm > 0) o.marge_marche = (1 / c) / pm - 1;
+    if (r.garantie_sauve) o.profit_garantie = c - 1;
+    else if (r.profit_garantie != null) o.profit_garantie = o.profit;
+    const lecture = (kp, ke, ked, kev) => {
+      const p = r[kp];
+      if (p == null) return;
+      o[ke] = p - 1 / c;
+      o[ked] = p - pm;
+      o[kev] = p * (c - 1) - (1 - p);
+    };
+    lecture("p_model", "edge", "edge_devig", "ev");
+    lecture("p_model_xg", "edge_xg", "edge_devig_xg", "ev_xg");
+    lecture("p_model_nb", "edge_nb", "edge_devig_nb", "ev_nb");
+    res.push(o);
+  }
+  memo.set(h, res);
+  return res;
+}
+
+function majMomentNote() {
+  const sel = $("btMoment"), note = $("btMomentNote");
+  if (!sel) return;
+  if (!MOMENT_DISPO) {
+    sel.value = "";
+    sel.disabled = true;
+    sel.title = "Les relevés de cette collecte ne portent pas encore l'état des cotes au moment du pari (relancez wina_wizard.py à jour).";
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  const h = momentPari();
+  if (!h) { note.style.display = "none"; return; }
+  const lignes = momentLignes(BT_ROWS, h);
+  const delais = lignes.map(r => r.heures_avant).filter(x => x != null).sort((a, b) => a - b);
+  const med = delais.length ? delais[Math.floor(delais.length / 2)] : null;
+  const ecartes = BT_ROWS.length - lignes.length;
+  note.style.display = "";
+  note.innerHTML = `<strong>Moment du pari : au moins ${h} h avant le match</strong> — chaque pari est rejoué au dernier relevé `
+    + `situé au moins ${h} h avant son coup d'envoi${med != null ? ` (en médiane ${String(med).replace(".", ",")} h avant)` : ""} : `
+    + `cote, marge, mouvement depuis l'ouverture et nombre de relevés de ce moment-là, donc « cote inchangée » ne regarde `
+    + `que ce qu'on savait alors. ${ecartes ? `${ecartes} des ${BT_ROWS.length} paris testés n'avaient pas de relevé aussi tôt et sont écartés. ` : ""}`
+    + `Les comparaisons avec les autres sites restent celles du dernier relevé.`;
+}
+
+// ---------------------------------------------------------------------------
 // ACCORD DES LECTURES (réglage « Accord des lectures », option ajoutée le
 // 08/11/2026). Les forces « Actuelles » (domicile et extérieur estimés à part,
 // retrait k = 8) s'écartent plus souvent du marché que le Dixon-Coles complet :
@@ -5665,14 +5751,17 @@ function btFiltered(opts) {
   const rho = rhoActif("bt");
   // Niveau de buts corrigé (option) : combinable avec tout, voir corrigerNiveau.
   const niveau = niveauActif("bt");
-  const entreeBt = lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison, absences, rho);
+  // Moment du pari (option) : paris rejoués au relevé de ce moment-là, voir momentLignes.
+  const moment = momentPari();
+  const entreeBt = lignesLecture(momentLignes(BT_ROWS_COMPLET, moment), momentLignes(BT_ROWS, moment),
+                                 forcesTm, saison, absences, rho);
   let source = lectureModele(entreeBt, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau);
   // Accord des lectures (option) : l'autre lecture sur les mêmes lignes, voir
   // echecAccord. Gardée en cache tant que les réglages du modèle ne bougent pas
   // (btFiltered est appelée plusieurs fois par rendu).
   let autresBt = null;
   if (accordActif("bt") && !opts.referenceComplete) {
-    const sig = [forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau].join("|");
+    const sig = [forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau, moment].join("|");
     if (!_CACHE_ACCORD_BT || _CACHE_ACCORD_BT.sig !== sig) {
       _CACHE_ACCORD_BT = {sig, m: lectureAutre(entreeBt, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau)};
     }
@@ -6101,6 +6190,10 @@ function renderBtActiveFilters(rowsFiltrees) {
   if (absencesActive("bt")) {
     add("Absences", "oui (test)",
         "Chaque point d'importance des absents connus affaiblit son équipe (voir la note sous les filtres)");
+  }
+  if (momentPari()) {
+    add("Moment du pari", `au moins ${momentPari()} h avant le match`,
+        "Chaque pari est rejoué au dernier relevé situé au moins ce délai avant le coup d'envoi (voir la note sous les filtres)");
   }
   if (niveauActif("bt")) {
     add("Niveau de buts", "corrigé (test)",
@@ -6786,6 +6879,7 @@ function renderBacktest() {
   majRhoNote("bt");
   majNiveauNote("bt");
   majAccordNote("bt");
+  majMomentNote();
 
   // Le mélange avec le marché (alpha < 1) utilise TOUJOURS la probabilité
   // marché dévigée en interne (cf. blended()/pMarche()) — mélanger avec la
@@ -8477,6 +8571,8 @@ function exporterBacktestCsv() {
     // Lecture « Dixon-Coles complet » (07/11/2026), donnée quelle que soit la lecture active.
     "Proba modèle (Dixon-Coles complet)", "Edge brut (Dixon-Coles complet)",
     "Edge dévigué (Dixon-Coles complet)", "Espérance (Dixon-Coles complet)",
+    // Option « Moment du pari » (08/11/2026) : relevé auquel le pari est joué.
+    "Moment du pari", "Heures avant le match", "Cote au dernier relevé",
   ];
   const lignes = rows.map(r => {
     // appliquerXg() (voir plus haut) substitue p_model/edge/edge_devig/
@@ -8548,6 +8644,9 @@ function exporterBacktestCsv() {
       pct(pDc), pct(pDc != null && r.cote ? pDc - 1 / r.cote : null),
       pct(pDc != null && pmTm2 != null ? pDc - pmTm2 : null),
       pct(pDc != null && r.cote ? pDc * (r.cote - 1) - (1 - pDc) : null),
+      r.moment_h ? `au moins ${r.moment_h} h avant` : "dernier relevé",
+      r.heures_avant != null ? String(r.heures_avant).replace(".", ",") : "",
+      num(r.cote_dernier_releve ?? r.cote),
     ].map(champ).join(";");
   });
   // ﻿ (BOM) : sans lui, Excel Windows interprète les caractères
@@ -10089,7 +10188,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btAccord","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
