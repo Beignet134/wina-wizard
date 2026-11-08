@@ -636,5 +636,16 @@
   "capture_iso": "2026-11-08T10:25:07.213992",
   "mise": 5,
   "maj": 1794131852902
+ },
+ "2026-11-08|Tromso - Bodø/Glimt|1 - 1": {
+  "cote": 8.5,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 8.5,
+  "ts": "2026-11-08T10:59:12",
+  "kickoff": "2026-11-08T14:30:00",
+  "capture_iso": "2026-11-08T10:25:07.213992",
+  "mise": 10,
+  "maj": 1794131952879
  }
 }
