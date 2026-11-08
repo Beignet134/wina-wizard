@@ -12332,7 +12332,8 @@ if ($("mcHorizon") || $("mcCmpFixe")) {
 
 /* ---------- Réinitialisation des filtres (DC rétrospectif / Paris à venir) ---------- */
 // « Valeur d'origine » = l'état de chaque contrôle une fois la page entièrement initialisée
-// (plage de dates = toute la période, mouvement de la cote 0 → 0,5 %, catégories cochées par
+// (plage de dates = toute la période, mouvement de la cote 0 → 0 (cote inchangée, réglage par
+// défaut depuis le 08/11/2026, pas de 0,1), catégories cochées par
 // défaut, listes de ligues/scores peuplées...). On le photographie ici, avant que quiconque y
 // touche, plutôt que de recopier les valeurs par défaut à la main : si un défaut change dans le
 // HTML, le bouton suit sans rien à mettre à jour.
