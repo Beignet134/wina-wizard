@@ -17,7 +17,7 @@ const VALUE_BETS = VALUE_BETS_COMPLET.some(ligneOptionnelle)
 // (« tous matchs », correction saisonnière, absences) : absent du site tant
 // que cette lecture n'est pas choisie.
 function ligneOptionnelle(r) {
-  return !!(r.seul_tm || r.seul_sa || r.seul_ab);
+  return !!(r.seul_tm || r.seul_sa || r.seul_ab || r.seul_dc);
 }
 const MIN_BETS = WIZARD_DATA.config.min_bets_for_verdict;
 const OOS_MIN = WIZARD_DATA.config.oos_min_test;
@@ -510,13 +510,58 @@ const FORCES_TM_K = SUIVI_FORCES ? SUIVI_FORCES.k : null;
 const FORCES_TM_DISPO = (WIZARD_DATA.dc_backtest || []).some(r => r.tm)
                      || (WIZARD_DATA.value_bets || []).some(r => r.tm);
 
+// --- Lecture « Dixon-Coles complet » (option, ajoutée le 07/11/2026) ---
+// Forces de toutes les équipes d'une compétition estimées ENSEMBLE par
+// maximum de vraisemblance (le modèle de Dixon & Coles proprement dit), donc
+// corrigées de la force des adversaires rencontrés. Python fournit r.dc au
+// même format que r.tm, plus sa_dc / ab_dc (lectures saisonnière et
+// « absences » de cette lecture) et seul_dc (pari que SEULE cette lecture
+// retient). Choisie, elle passe par EXACTEMENT la même chaîne que « tous
+// matchs » : versLectureDc() met r.dc à la place de r.tm (voir lectureModele).
+const SUIVI_FORCES_DC = (WIZARD_DATA.dc_stats || {}).suivi_forces_dc || null;
+const CALIB_RATIO_DC = (WIZARD_DATA.dc_stats || {}).calib_ratio_dc || null;
+const FORCES_DC_DISPO = (WIZARD_DATA.dc_backtest || []).some(r => r.dc)
+                     || (WIZARD_DATA.value_bets || []).some(r => r.dc);
+
+// Lecture des forces choisie : "tm", "dc" ou false (lecture actuelle). Une
+// valeur vraie emprunte le chemin « tous matchs » partout dans le site.
 function forcesTmActif(prefixe) {
   const s = $(prefixe + "Forces");
-  return !!(FORCES_TM_DISPO && s && s.value === "tm");
+  if (!s) return false;
+  if (s.value === "tm" && FORCES_TM_DISPO) return "tm";
+  if (s.value === "dc" && FORCES_DC_DISPO) return "dc";
+  return false;
+}
+
+// Lignes vues par la lecture « Dixon-Coles complet » : r.dc prend la place de
+// r.tm (et sa_dc / ab_dc la place de la lecture « tous matchs » dans r.sa /
+// r.ab). Toutes les lignes portant r.dc sont gardées : les filtres d'edge du
+// site, recalculés sur cette lecture, font le tri comme pour « tous matchs ».
+// Idempotente (marque _dc), pour pouvoir l'appeler à chaque étape.
+const _CACHE_DC = new WeakMap();
+function versLectureDc(rows) {
+  if (_CACHE_DC.has(rows)) return _CACHE_DC.get(rows);
+  const out = rows.filter(r => r.dc || r._dc).map(r => {
+    if (r._dc) return r;
+    const o = {...r, tm: r.dc, tm_orig: r.tm, _dc: true, seul_tm: 0, seul_sa: 0, seul_ab: 0, q_sa: 0, q_ab: 0};
+    if (r.sa) { o.sa = r.sa.slice(); o.sa[3] = r.sa_dc != null ? r.sa_dc : null; }
+    if (r.ab) { o.ab = r.ab.slice(); o.ab[3] = r.ab_dc != null ? r.ab_dc : null; }
+    return o;
+  });
+  _CACHE_DC.set(rows, out);
+  return out;
+}
+// Les autres lectures ne voient pas les paris que seule « Dixon-Coles complet »
+// retient (seul_dc) : elles affichent exactement ce qu'elles affichaient avant.
+const _CACHE_SANS_DC = new WeakMap();
+function sansSeulDc(rows) {
+  if (!rows.some(r => r.seul_dc)) return rows;
+  if (!_CACHE_SANS_DC.has(rows)) _CACHE_SANS_DC.set(rows, rows.filter(r => !r.seul_dc));
+  return _CACHE_SANS_DC.get(rows);
 }
 
 function appliquerForces(rows, actif) {
-  if (!FORCES_TM_DISPO || !actif) return rows;
+  if (!(FORCES_TM_DISPO || FORCES_DC_DISPO) || !actif) return rows;
   return rows.filter(r => r.tm).map(r => {
     const t = r.tm, p = t[0];
     const pm = pMarche(r);
@@ -527,7 +572,7 @@ function appliquerForces(rows, actif) {
       // Conservées à part pour l'infobulle et l'export, qui montrent les deux lectures.
       p_model_actuelle: r.p_model, edge_actuelle: r.edge, edge_devig_actuelle: r.edge_devig,
       lam_home_actuelle: r.lam_home, lam_away_actuelle: r.lam_away,
-      source_tm: true,
+      source_tm: true, source_dc: !!r._dc,
     };
     if (r.cote) {
       o.edge = p - 1 / r.cote;
@@ -597,6 +642,8 @@ function appliquerSaison(rows, actif) {
 // lecture corrigée retient dans la configuration choisie (bits de q_ab :
 // 1 = actuelle, 2 = tous matchs, 4 / 8 = les mêmes avec la saison).
 function lignesLecture(complet, base, forcesTm, saison, absences = false) {
+  if (forcesTm === "dc") return versLectureDc(complet);
+  complet = sansSeulDc(complet);      // les autres lectures restent celles d'avant
   if (!absences) {
     if (!saison) {
       if (!forcesTm) return base;
@@ -741,8 +788,10 @@ function majAbsNote(prefixe) {
 // suivent (forces, calibration, binomiale négative, xG) partent des
 // probabilités corrigées.
 function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false, absences = false) {
+  if (forcesTm === "dc") rows = versLectureDc(rows);
   rows = appliquerAbsences(appliquerSaison(rows, saison), absences);
-  if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif, CALIB_RATIO_TM);
+  if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif,
+                                forcesTm === "dc" ? CALIB_RATIO_DC : CALIB_RATIO_TM);
   return appliquerXg(appliquerNb(calibrer(appliquerForces(rows, false), calibActif), nbActif), modeXg);
 }
 
@@ -752,7 +801,7 @@ function majForcesNote(prefixe, nbLignes, nbTotal) {
   const sel = $(prefixe + "Forces");
   const note = $(prefixe + "ForcesNote");
   if (!sel) return;
-  if (!FORCES_TM_DISPO) {
+  if (!FORCES_TM_DISPO && !FORCES_DC_DISPO) {
     sel.value = "act";
     sel.disabled = true;
     sel.title = "Cette lecture n'est pas dans les données de cette collecte (relancez wina_wizard.py).";
@@ -760,7 +809,23 @@ function majForcesNote(prefixe, nbLignes, nbTotal) {
     return;
   }
   sel.disabled = false;
+  // Choix absent des données de cette collecte : grisé (et quitté s'il était choisi).
+  [["tm", FORCES_TM_DISPO], ["dc", FORCES_DC_DISPO]].forEach(([v, dispo]) => {
+    const opt = sel.querySelector(`option[value="${v}"]`);
+    if (opt) opt.disabled = !dispo;
+    if (!dispo && sel.value === v) sel.value = "act";
+  });
   if (!note) return;
+  if (sel.value === "dc") {
+    const tau = SUIVI_FORCES_DC && SUIVI_FORCES_DC.tau != null ? String(SUIVI_FORCES_DC.tau).replace(".", ",") : "?";
+    note.style.display = "";
+    note.innerHTML = `<strong>Forces « Dixon-Coles complet » actives</strong> (test, pénalité τ = ${tau}) — `
+      + `attaques et défenses de toutes les équipes d'une compétition estimées ensemble, en tenant compte `
+      + `de la force des adversaires rencontrés. Cette lecture remplace la lecture actuelle ; xG et binomiale `
+      + `négative sont sans effet ; pas de lecture pour les sélections nationales. Comparaison des lectures : `
+      + `panneau « Lectures du modèle » sur DC rétrospectif.`;
+    return;
+  }
   if (sel.value !== "tm") {
     note.style.display = "none";
     return;
@@ -7777,6 +7842,8 @@ function renderBacktestRows() {
         // que soit la lecture active ; ft = les forces ci-dessous sont les siennes.
         lht: r.tm ? r.tm[1] : undefined, lat: r.tm ? r.tm[2] : undefined,
         ft: r.source_tm ? 1 : undefined,
+        // Lecture « Dixon-Coles complet » active : r.tm porte alors ses valeurs.
+        ldc: r._dc ? 1 : undefined,
         // Correction saisonnière : facteur appliqué aux buts attendus affichés.
         fs: r.source_saison ? r.saison_f : undefined,
         // Lecture « absences » : facteur sur les buts attendus du domicile
@@ -7883,6 +7950,9 @@ function exporterBacktestCsv() {
     // Lecture « absences » (réglage du site) : facteur sur les buts attendus
     // du domicile (extérieur ÷ ce facteur) et proba sans cette correction.
     "Facteur absences (domicile)", "Proba modèle (sans absences)",
+    // Lecture « Dixon-Coles complet » (07/11/2026), donnée quelle que soit la lecture active.
+    "Proba modèle (Dixon-Coles complet)", "Edge brut (Dixon-Coles complet)",
+    "Edge dévigué (Dixon-Coles complet)", "Espérance (Dixon-Coles complet)",
   ];
   const lignes = rows.map(r => {
     // appliquerXg() (voir plus haut) substitue p_model/edge/edge_devig/
@@ -7917,11 +7987,16 @@ function exporterBacktestCsv() {
 
     // Lecture « tous matchs » : proba brute de la ligne, edge et espérance
     // déduits de la cote et du marché dévigué (pMarche), comme appliquerForces.
-    const pTm = r.tm ? r.tm[0] : null;
+    const tmVrai = r._dc ? r.tm_orig : r.tm;     // en lecture DC, r.tm porte la lecture DC
+    const pTm = tmVrai ? tmVrai[0] : null;
     const pmTm = pTm != null ? pMarche(r) : null;
     const edgeTm = pTm != null && r.cote ? pTm - 1 / r.cote : null;
     const edgeDevigTm = pTm != null && pmTm != null ? pTm - pmTm : null;
     const evTm = pTm != null && r.cote ? pTm * (r.cote - 1) - (1 - pTm) : null;
+    // Lecture « Dixon-Coles complet » (avec saison / absences si elle est active).
+    const dcV = r._dc ? r.tm : r.dc;
+    const pDc = dcV ? dcV[0] : null;
+    const pmTm2 = pDc != null ? pMarche(r) : null;
 
     return [
       r.date, r.match, r.pays || "", r.ligue || "", r.categorie, r.colonne,
@@ -7937,12 +8012,15 @@ function exporterBacktestCsv() {
       r.raccourcit == null ? "" : (r.raccourcit ? "Oui" : "Non"), r.n_captures ?? "",
       pct(edgeAffiche), num(mise), num(gain),
       pct(pTm), pct(edgeTm), pct(edgeDevigTm), pct(evTm),
-      (r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : "")
+      (r.source_dc ? "Dixon-Coles complet" : r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : "")
         + (r.source_abs ? " + absences" : ""),
       r.source_saison ? String(r.saison_f).replace(".", ",") : "",
       r.source_saison ? pct(r.p_model_sans_saison) : "",
       r.source_abs ? String(r.abs_g).replace(".", ",") : "",
       r.source_abs ? pct(r.p_model_sans_abs) : "",
+      pct(pDc), pct(pDc != null && r.cote ? pDc - 1 / r.cote : null),
+      pct(pDc != null && pmTm2 != null ? pDc - pmTm2 : null),
+      pct(pDc != null && r.cote ? pDc * (r.cote - 1) - (1 - pDc) : null),
     ].map(champ).join(";");
   });
   // ﻿ (BOM) : sans lui, Excel Windows interprète les caractères
@@ -8011,10 +8089,10 @@ function attachDcTooltips() {
         <div class="dc-tip-row"><span>Buts attendus (mélange xG)</span>
           <strong class="pos">${d.lhx} – ${d.lax}</strong></div>` : ""}
         ${d.lht != null ? `
-        <div class="dc-tip-row"><span>Buts attendus (tous matchs)</span>
+        <div class="dc-tip-row"><span>Buts attendus (${d.ldc ? "Dixon-Coles complet" : "tous matchs"})</span>
           <strong class="pos">${d.lht} – ${d.lat}</strong></div>` : ""}
         <div class="dc-tip-sep"></div>
-        ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">tous matchs</strong></div>` : ""}
+        ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">${d.ldc ? "Dixon-Coles complet" : "tous matchs"}</strong></div>` : ""}
         ${d.fs ? `<div class="dc-tip-row"><span>Correction saisonnière</span><strong class="pos">buts attendus ×${String(d.fs).replace(".", ",")}</strong></div>` : ""}
         ${d.fa ? `<div class="dc-tip-row"><span>Absences</span><strong class="pos">domicile ×${d.fa.toLocaleString("fr-FR", {maximumFractionDigits: 3})} · extérieur ×${(1 / d.fa).toLocaleString("fr-FR", {maximumFractionDigits: 3})}</strong></div>` : ""}
         <div class="dc-tip-row"><span>Domicile · attaque</span><strong>${d.ad}</strong></div>
@@ -8201,9 +8279,11 @@ function renderLecturesForces() {
   const box = $("btLecturesForces");
   if (!box) return;
   const s = SUIVI_FORCES;
-  if (!s || !s.familles || !s.familles.length) {
+  const sdc = SUIVI_FORCES_DC;
+  const vide = x => !x || !x.familles || !x.familles.length;
+  if (vide(s) && vide(sdc)) {
     box.innerHTML = '<p class="muted">En attente de données : ce tableau se remplit au prochain ' +
-      'lancement de wina_wizard.py avec la lecture « tous matchs ».</p>';
+      'lancement de wina_wizard.py avec la lecture « tous matchs » ou « Dixon-Coles complet ».</p>';
     return;
   }
   const f3 = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3).replace(".", ",");
@@ -8213,46 +8293,53 @@ function renderLecturesForces() {
     const v = n > 1 ? Math.max(0, (q / n - m * m) * n / (n - 1)) : 0;
     return {m, h: 1.96 * Math.sqrt(v / n)};
   };
-  const lignes = s.familles.map(f => {
-    const a = stat(f.actuelle - f.marche, f.q_act, f.n);
-    const t = stat(f.tm - f.marche, f.q_tm, f.n);
-    const d = stat(f.tm - f.actuelle, f.q_tm_act, f.n);
-    let verdict = "Indécis", cls = "";
-    if (d.m + d.h < 0) { verdict = "Plus proche du marché"; cls = "pos"; }
-    else if (d.m - d.h > 0) { verdict = "Plus loin du marché"; cls = "neg"; }
-    return `<tr>
-      <td data-label="Marché">${f.nom}</td>
-      <td data-label="Matchs" class="num">${f.n.toLocaleString("fr-FR")}</td>
-      <td data-label="Marché (log-loss)" class="num">${(f.marche / f.n).toFixed(4).replace(".", ",")}</td>
-      <td data-label="Actuelle · écart au marché" class="num">${f3(a.m)}</td>
-      <td data-label="Tous matchs · écart au marché" class="num">${f3(t.m)}</td>
-      <td data-label="Tous matchs − actuelle" class="num ${cls}">${f3(d.m)} <span class="muted">± ${d.h.toFixed(3).replace(".", ",")}</span></td>
-      <td data-label="Lecture" class="${cls}">${verdict}</td></tr>`;
-  }).join("");
-
-  // Régularité dans le temps : sur 1X2, combien de semaines la lecture « tous
-  // matchs » est-elle plus proche du marché que l'actuelle (semaines d'au moins
-  // 10 matchs) ?
-  const sem = (s.semaines || []).filter(w => w.nom === "1X2" && w.n >= 10);
-  const mieux = sem.filter(w => w.tm < w.actuelle).length;
-  const regularite = sem.length >= 4
-    ? `<p class="muted" style="margin:.8rem 0 0; font-size:.85rem">Régularité (1X2) : la lecture « tous matchs » est plus proche du marché ` +
-      `que l'actuelle dans <strong>${mieux} semaine${mieux > 1 ? "s" : ""} sur ${sem.length}</strong> ` +
-      `(semaines d'au moins 10 matchs).</p>`
-    : "";
-
-  box.innerHTML = `
+  // Un tableau par lecture comparée à l'actuelle (dans les agrégats, le champ
+  // « tm » désigne la lecture comparée : « tous matchs » ou « Dixon-Coles complet »).
+  const tableau = (x, nom, reglage, nomPhrase) => {
+    const lignes = x.familles.map(f => {
+      const a = stat(f.actuelle - f.marche, f.q_act, f.n);
+      const t = stat(f.tm - f.marche, f.q_tm, f.n);
+      const d = stat(f.tm - f.actuelle, f.q_tm_act, f.n);
+      let verdict = "Indécis", cls = "";
+      if (d.m + d.h < 0) { verdict = "Plus proche du marché"; cls = "pos"; }
+      else if (d.m - d.h > 0) { verdict = "Plus loin du marché"; cls = "neg"; }
+      return `<tr>
+        <td data-label="Marché">${f.nom}</td>
+        <td data-label="Matchs" class="num">${f.n.toLocaleString("fr-FR")}</td>
+        <td data-label="Marché (log-loss)" class="num">${(f.marche / f.n).toFixed(4).replace(".", ",")}</td>
+        <td data-label="Actuelle · écart au marché" class="num">${f3(a.m)}</td>
+        <td data-label="${nom} · écart au marché" class="num">${f3(t.m)}</td>
+        <td data-label="${nom} − actuelle" class="num ${cls}">${f3(d.m)} <span class="muted">± ${d.h.toFixed(3).replace(".", ",")}</span></td>
+        <td data-label="Lecture" class="${cls}">${verdict}</td></tr>`;
+    }).join("");
+    // Régularité dans le temps : sur 1X2, combien de semaines la lecture comparée
+    // est-elle plus proche du marché que l'actuelle (semaines d'au moins 10 matchs) ?
+    const sem = (x.semaines || []).filter(w => w.nom === "1X2" && w.n >= 10);
+    const mieux = sem.filter(w => w.tm < w.actuelle).length;
+    const regularite = sem.length >= 4
+      ? `<p class="muted" style="margin:.8rem 0 0; font-size:.85rem">Régularité (1X2) : la lecture « ${nomPhrase} » est plus proche du marché ` +
+        `que l'actuelle dans <strong>${mieux} semaine${mieux > 1 ? "s" : ""} sur ${sem.length}</strong> ` +
+        `(semaines d'au moins 10 matchs).</p>`
+      : "";
+    return `
     <div class="tablewrap"><table class="cmp-table cardify">
       <thead><tr><th>Marché</th><th class="num">Matchs</th><th class="num">Marché (log-loss)</th>
-        <th class="num">Actuelle · écart</th><th class="num">Tous matchs · écart (k = ${s.k})</th>
-        <th class="num">Tous matchs − actuelle (± IC 95 %)</th><th>Lecture</th></tr></thead>
+        <th class="num">Actuelle · écart</th><th class="num">${nom} · écart (${reglage})</th>
+        <th class="num">${nom} − actuelle (± IC 95 %)</th><th>Lecture</th></tr></thead>
       <tbody>${lignes}</tbody></table></div>
-    ${regularite}
+    ${regularite}`;
+  };
+  const titre = t => `<h3 style="margin:1.4rem 0 .4rem; font-size:1rem">${t}</h3>`;
+  const tauTxt = sdc && sdc.tau != null ? String(sdc.tau).replace(".", ",") : "?";
+  box.innerHTML = (vide(s) ? "" : titre("Tous matchs") + tableau(s, "Tous matchs", `k = ${s.k}`, "tous matchs"))
+    + (vide(sdc) ? "" : titre("Dixon-Coles complet") + tableau(sdc, "Dixon-Coles complet", `τ = ${tauTxt}`, "Dixon-Coles complet"))
+    + `
     <p class="muted" style="margin:.8rem 0 0; font-size:.82rem">
-      Un écart négatif dans « Tous matchs − actuelle » signifie que la lecture « tous matchs » est
-      plus proche du marché. Les matchs sont comptés une fois par marché ; un même match nourrit donc
-      plusieurs lignes. Choisissez « Forces d'équipe » dans les filtres pour voir ce que l'une ou
-      l'autre donnerait sur les paris retenus.</p>`;
+      Un écart négatif dans « … − actuelle » signifie que la lecture comparée est plus proche du marché
+      que l'actuelle. Les matchs sont comptés une fois par marché ; un même match nourrit donc
+      plusieurs lignes. « Dixon-Coles complet » n'a pas de lecture pour les sélections nationales.
+      Choisissez « Forces d'équipe » dans les filtres pour voir ce que l'une ou l'autre donnerait
+      sur les paris retenus.</p>`;
 }
 
 /* Correction saisonnière des buts attendus (réglage « Correction saisonnière »,
