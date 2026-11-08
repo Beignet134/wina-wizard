@@ -9636,6 +9636,9 @@ function pasGraduationEntier(max) {
 //   "n"     nombre de paris retenus (l'histogramme d'origine)
 //   "jour"  résultat net de chaque jour (barres vertes au-dessus du zéro pour
 //           un gain, corail au-dessous pour une perte)
+//   "mois"  résultat net de chaque mois civil (mêmes couleurs que "jour") ;
+//           le premier et le dernier mois peuvent être incomplets, et le
+//           résumé le dit
 //   "cumul" résultat net accumulé depuis le premier jour (même échelle de
 //           lecture : une barre par jour, qui repart de la valeur de la veille
 //           quand aucun pari n'a été joué)
@@ -9648,6 +9651,7 @@ function pasGraduationEntier(max) {
 const PARJOUR_MODES = {
   n:     {titre: "Paris par jour",        hint: "— combien de paris le modèle retient chaque jour"},
   jour:  {titre: "Gain / perte par jour", hint: "— résultat net de chaque jour, selon la mise choisie"},
+  mois:  {titre: "Gain / perte par mois", hint: "— résultat net de chaque mois, selon la mise choisie"},
   cumul: {titre: "Gain / perte cumulé",   hint: "— résultat net accumulé jour après jour"},
 };
 const PARJOUR_LS_KEY = "wina_parjour_mode_v1";
@@ -9681,6 +9685,7 @@ const HISTO_BK = {
   titres: {
     n:     {titre: "Paris joués par jour",   hint: "— combien de vos paris se terminent chaque jour"},
     jour:  {titre: "Gain / perte par jour",  hint: "— résultat net réel de chaque jour, avec vos mises"},
+    mois:  {titre: "Gain / perte par mois",  hint: "— résultat net réel de chaque mois, avec vos mises"},
     cumul: {titre: "Gain / perte cumulé",    hint: "— résultat net réel accumulé sur la période choisie"},
   },
   netDe: r => Number(r.net) || 0,
@@ -9742,14 +9747,25 @@ function dessinerHistoJour(C, rows) {
   const nums = datees.map(r => numeroJour(r.date));
   const dMin = arrMin(nums), dMax = arrMax(nums);
   const etendue = dMax - dMin + 1;
-  const pas = etendue <= 240 ? 1 : 7;                 // 1 jour, ou 1 semaine si la période est très longue
-  const unite = pas === 1 ? "jour" : "semaine";
-  const nb = Math.ceil(etendue / pas);
+  // Seaux : un par mois civil en mode « mois » ; sinon un par jour, ou par
+  // semaine si la période est très longue. Premier / dernier jour (numéros
+  // de jour) de chaque seau, bornés à la période des paris.
+  const parMois = mode === "mois";
+  const pas = parMois ? null : (etendue <= 240 ? 1 : 7);
+  const unite = parMois ? "mois" : (pas === 1 ? "jour" : "semaine");
+  const moisDe = n => { const d = new Date(n * 86400000); return d.getUTCFullYear() * 12 + d.getUTCMonth(); };
+  const jourDuMois = m => Math.round(Date.UTC(Math.floor(m / 12), m % 12, 1) / 86400000);
+  const m0 = moisDe(dMin);
+  const nb = parMois ? moisDe(dMax) - m0 + 1 : Math.ceil(etendue / pas);
+  const indexSeau = n => parMois ? moisDe(n) - m0 : Math.floor((n - dMin) / pas);
+  const debutSeau = i => parMois ? Math.max(dMin, jourDuMois(m0 + i)) : dMin + i * pas;
+  const finSeau = i => parMois ? Math.min(dMax, jourDuMois(m0 + i + 1) - 1) : Math.min(dMin + i * pas + pas - 1, dMax);
   const gap = nb > 120 ? 1 : 2;
+  const barreMax = parMois ? 120 : 24;          // largeur maximale d'une barre (voir .jour-plot.is-mois)
 
   const seaux = Array.from({length: nb}, () => ({n: 0, gagnes: 0, neutres: 0, profit: 0, net: 0, cumul: 0, cats: {}}));
   datees.forEach(r => {
-    const s = seaux[Math.floor((numeroJour(r.date) - dMin) / pas)];
+    const s = seaux[indexSeau(numeroJour(r.date))];
     s.n++;
     if (r.neutre) s.neutres++;
     else if (r.gagne) s.gagnes++;
@@ -9768,7 +9784,7 @@ function dessinerHistoJour(C, rows) {
   const nbPics = seaux.filter(s => s.n === maxN).length;
 
   // Valeur tracée par seau, selon le mode
-  const vals = seaux.map(s => mode === "n" ? s.n : (mode === "jour" ? s.net : s.cumul));
+  const vals = seaux.map(s => mode === "n" ? s.n : (mode === "cumul" ? s.cumul : s.net));
 
   // Échelle verticale : de 0 à yMax pour le comptage ; de yMin (<= 0) à yMax
   // (>= 0) pour les modes « gain », avec 12 % de marge pour loger l'étiquette
@@ -9801,18 +9817,24 @@ function dessinerHistoJour(C, rows) {
                Math.ceil(Math.max(...graduations.map(t => fmtGrad(t).length)) * 6.1) + 14)
     : 0;
 
-  // Libellé d'un seau : un jour, ou « du … au … » pour une semaine.
-  const debutSeau = i => dMin + i * pas;
-  const finSeau = i => Math.min(dMin + i * pas + pas - 1, dMax);
-  const libelleSeau = i => pas === 1
-    ? fmtJourComplet(dateDuJour(debutSeau(i)))
-    : `du ${fmtChartDate(dateDuJour(debutSeau(i)))} au ${fmtChartDate(dateDuJour(finSeau(i)))}`;
-  const avecAnnee = etendue > 330;
+  // Libellé d'un seau : un jour, « du … au … » pour une semaine, le nom du
+  // mois pour un mois (avec ses bornes s'il n'est couvert qu'en partie).
+  const MOIS_LONGS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  const MOIS_COURTS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  const moisIncomplet = i => parMois && (debutSeau(i) !== jourDuMois(m0 + i) || finSeau(i) !== jourDuMois(m0 + i + 1) - 1);
+  const nomMois = i => `${MOIS_LONGS[(m0 + i) % 12]} ${Math.floor((m0 + i) / 12)}`;
+  const libelleSeau = i => parMois
+    ? nomMois(i) + (moisIncomplet(i) ? ` (du ${fmtChartDate(dateDuJour(debutSeau(i)))} au ${fmtChartDate(dateDuJour(finSeau(i)))})` : "")
+    : (pas === 1
+      ? fmtJourComplet(dateDuJour(debutSeau(i)))
+      : `du ${fmtChartDate(dateDuJour(debutSeau(i)))} au ${fmtChartDate(dateDuJour(finSeau(i)))}`);
+  const avecAnnee = parMois ? moisDe(dMax) - m0 >= 12 || Math.floor(m0 / 12) !== Math.floor(moisDe(dMax) / 12) : etendue > 330;
   const libelleCourt = i => {
+    if (parMois) return MOIS_COURTS[(m0 + i) % 12] + (avecAnnee ? ` ${String(Math.floor((m0 + i) / 12)).slice(2)}` : "");
     const d = dateDuJour(debutSeau(i));
     return avecAnnee ? `${fmtChartDate(d)}/${d.slice(2, 4)}` : fmtChartDate(d);
   };
-  const libelleResume = i => pas === 1 ? fmtChartDate(dateDuJour(debutSeau(i))) : libelleSeau(i);
+  const libelleResume = i => parMois ? nomMois(i) : (pas === 1 ? fmtChartDate(dateDuJour(debutSeau(i))) : libelleSeau(i));
 
   // Graduations horizontales (le 0 fait office de ligne de base)
   let grille = "";
@@ -9826,11 +9848,11 @@ function dessinerHistoJour(C, rows) {
   // si l'onglet est visible ; sinon on suppose 900 px (un ResizeObserver
   // redessine dès que la vraie largeur apparaît).
   const largeurPlot = Math.max(120, (wrap.clientWidth || 900) - (signe ? margeGauche + 12 : 48));
-  const pitch = Math.min(24 + gap, (largeurPlot + gap) / nb);
+  const pitch = Math.min(barreMax + gap, (largeurPlot + gap) / nb);
   // Période courte : les barres (plafonnées à 24 px) n'occupent que le début
   // de la largeur. On resserre alors le cadre sur elles plutôt que de tendre
   // la grille sur une moitié de panneau vide.
-  const largeurNaturelle = nb * (24 + gap) - gap;
+  const largeurNaturelle = nb * (barreMax + gap) - gap;
   const stepLib = Math.max(1, Math.ceil(50 / pitch));
   const idxLib = new Set();
   for (let i = 0; i < nb; i += stepLib) idxLib.add(i);
@@ -9842,7 +9864,7 @@ function dessinerHistoJour(C, rows) {
   // la valeur finale (= KPI « Net ») en mode « cumul ».
   const iMeilleur = vals.indexOf(arrMax(vals)), iPire = vals.indexOf(arrMin(vals));
   const etiquetees = new Set();
-  if (mode === "jour") {
+  if (mode === "jour" || mode === "mois") {
     if (vals[iMeilleur] > 0) etiquetees.add(iMeilleur);
     if (vals[iPire] < 0) etiquetees.add(iPire);
   } else if (mode === "cumul" && vals[nb - 1] !== 0) {
@@ -9877,8 +9899,8 @@ function dessinerHistoJour(C, rows) {
     return `<div class="jour-col">${bar}${etiquette}${lib}</div>`;
   }).join("");
 
-  const plur = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
-  const accord = (n, m, f) => (pas === 1 ? m : f) + (n > 1 ? "s" : "");
+  const plur = (n, mot) => `${n} ${mot}${n > 1 && !mot.endsWith("s") ? "s" : ""}`;   // « mois » reste invariable
+  const accord = (n, m, f) => (unite === "semaine" ? f : m) + (n > 1 ? "s" : "");
   const periode = `du ${fmtChartDate(dateDuJour(dMin))} au ${fmtChartDate(dateDuJour(dMax))}`;
   let resume, aria, note;
   if (mode === "n") {
@@ -9895,15 +9917,17 @@ function dessinerHistoJour(C, rows) {
     const nbGagn = seaux.filter(s => s.n && s.net > 0).length;
     const nbPerd = seaux.filter(s => s.n && s.net < 0).length;
     const cle = `<span class="pos">■</span> gain · <span class="neg">■</span> perte`;
-    if (mode === "jour") {
+    if (mode === "jour" || mode === "mois") {
       resume = `Net ${fmtEur(netTotal)} sur ${plur(nb, unite)} (${periode})`
         + ` · ${plur(nbGagn, unite)} ${accord(nbGagn, "gagnant", "gagnante")}, ${nbPerd} ${accord(nbPerd, "perdant", "perdante")}`
         + `${nbVides ? `, ${nbVides} sans pari` : ""}`
         + `${vals[iMeilleur] > 0 ? ` · meilleur : ${fmtEur(vals[iMeilleur])} (${libelleResume(iMeilleur)})` : ""}`
         + `${vals[iPire] < 0 ? ` · pire : ${fmtEur(vals[iPire])} (${libelleResume(iPire)})` : ""}`;
       aria = `Histogramme du gain ou de la perte nette par ${unite}`;
+      const incomplets = parMois ? seaux.map((s, i) => i).filter(moisIncomplet) : [];
       note = `${cle}. Résultat net de chaque ${unite} : ${C.t.formuleNet} (la somme des barres égale le ${C.t.kpiNet}). La date retenue
         est celle du match. ${pas === 7 ? "Période longue : paris regroupés par semaine." : ""}
+        ${incomplets.length ? `Mois incomplet${incomplets.length > 1 ? "s" : ""} : ${incomplets.map(libelleSeau).join(", ")} — à comparer avec prudence aux mois entiers.` : ""}
         Survole une barre pour le détail.`;
     } else {
       const iHaut = iMeilleur, iBas = iPire;
@@ -9929,7 +9953,7 @@ function dessinerHistoJour(C, rows) {
 
   wrap.innerHTML = `
     <div class="jour-chart">
-      <div class="jour-plot${signe ? " is-signed" : ""}" style="${signe ? `margin-left:${margeGauche}px;` : ""}${largeurNaturelle < largeurPlot ? `width:${largeurNaturelle}px;max-width:calc(100% - ${signe ? margeGauche + 14 : 50}px)` : ""}"
+      <div class="jour-plot${signe ? " is-signed" : ""}${parMois ? " is-mois" : ""}" style="${signe ? `margin-left:${margeGauche}px;` : ""}${largeurNaturelle < largeurPlot ? `width:${largeurNaturelle}px;max-width:calc(100% - ${signe ? margeGauche + 14 : 50}px)` : ""}"
            role="img" aria-label="${aria} : ${resume}">
         ${grille}
         <div class="jour-bars" style="gap:${gap}px">${colonnes}</div>
@@ -9939,9 +9963,9 @@ function dessinerHistoJour(C, rows) {
     <p class="muted" style="margin:.2rem 0 0;font-size:.8rem">${resume}.</p>
     <p class="muted" style="margin:.3rem 0 0;font-size:.78rem">${note}</p>
     <details class="chart-help" style="margin:.5rem 0 0">
-      <summary class="muted" style="cursor:pointer;font-size:.82rem">Voir les chiffres ${pas === 1 ? "jour par jour" : "semaine par semaine"}</summary>
+      <summary class="muted" style="cursor:pointer;font-size:.82rem">Voir les chiffres ${parMois ? "mois par mois" : (pas === 1 ? "jour par jour" : "semaine par semaine")}</summary>
       <div class="jour-table-wrap"><table>
-        <thead><tr><th>${pas === 1 ? "Jour" : "Semaine"}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th>${C.avecUnites ? '<th class="num">Bilan (1 u. par pari)</th>' : ""}<th class="num">Net (€)</th><th class="num">Cumul (€)</th></tr></thead>
+        <thead><tr><th>${parMois ? "Mois" : (pas === 1 ? "Jour" : "Semaine")}</th><th class="num">Paris</th><th class="num">Gagnés / perdus</th>${C.avecUnites ? '<th class="num">Bilan (1 u. par pari)</th>' : ""}<th class="num">Net (€)</th><th class="num">Cumul (€)</th></tr></thead>
         <tbody>${lignesTab}</tbody>
       </table></div>
     </details>`;
@@ -9993,7 +10017,7 @@ function dessinerHistoJour(C, rows) {
         <div class="tt-cum">${C.avecUnites
           ? `Bilan <strong class="${s.profit >= 0 ? "pos" : "neg"}">${s.profit >= 0 ? "+" : ""}${s.profit.toFixed(2)} u.</strong>`
           : `Net <strong class="${classeSigne(s.net)}">${fmtEur(s.net)}</strong>`}</div>`;
-      } else if (mode === "jour") {
+      } else if (mode === "jour" || mode === "mois") {
         corps = `
         <div class="tt-date">${libelleSeau(i)}</div>
         <div class="tt-match">Net ${gras(s.net)}</div>
@@ -10027,7 +10051,7 @@ function dessinerHistoJour(C, rows) {
   barres.addEventListener("pointerleave", cacher);
 }
 
-// Sélecteur de mode (nombre de paris / gain par jour / gain cumulé), un par page
+// Sélecteur de mode (nombre de paris / gain par jour / par mois / gain cumulé), un par page
 function brancherSelecteurHisto(C) {
   const groupe = $(C.modesId);
   if (!groupe) return;
