@@ -615,6 +615,17 @@
   "mise": 5,
   "maj": 1794056369855
  },
+ "2026-11-08|CSD Macará - Universidad Católica (EQU)|homeWin": {
+  "cote": 2.57,
+  "cote_confirmee": false,
+  "site": "betclic",
+  "cote_capturee": 2.57,
+  "ts": "2026-11-08T16:44:57",
+  "kickoff": "2026-11-08T17:15:00",
+  "capture_iso": "2026-11-08T16:22:44.528009",
+  "mise": 10,
+  "maj": 1794152697102
+ },
  "2026-11-08|IFK Göteborg - Malmö|1 - 0": {
   "cote": 9,
   "cote_confirmee": false,
