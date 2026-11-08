@@ -17,7 +17,7 @@ const VALUE_BETS = VALUE_BETS_COMPLET.some(ligneOptionnelle)
 // (« tous matchs », correction saisonnière, absences) : absent du site tant
 // que cette lecture n'est pas choisie.
 function ligneOptionnelle(r) {
-  return !!(r.seul_tm || r.seul_sa || r.seul_ab || r.seul_dc);
+  return !!(r.seul_tm || r.seul_sa || r.seul_ab || r.seul_dc || r.seul_rho);
 }
 const MIN_BETS = WIZARD_DATA.config.min_bets_for_verdict;
 const OOS_MIN = WIZARD_DATA.config.oos_min_test;
@@ -551,14 +551,6 @@ function versLectureDc(rows) {
   _CACHE_DC.set(rows, out);
   return out;
 }
-// Les autres lectures ne voient pas les paris que seule « Dixon-Coles complet »
-// retient (seul_dc) : elles affichent exactement ce qu'elles affichaient avant.
-const _CACHE_SANS_DC = new WeakMap();
-function sansSeulDc(rows) {
-  if (!rows.some(r => r.seul_dc)) return rows;
-  if (!_CACHE_SANS_DC.has(rows)) _CACHE_SANS_DC.set(rows, rows.filter(r => !r.seul_dc));
-  return _CACHE_SANS_DC.get(rows);
-}
 
 function appliquerForces(rows, actif) {
   if (!(FORCES_TM_DISPO || FORCES_DC_DISPO) || !actif) return rows;
@@ -641,9 +633,30 @@ function appliquerSaison(rows, actif) {
 // écartés : mêmes paris qu'avant le réglage. Avec, s'y ajoutent ceux que la
 // lecture corrigée retient dans la configuration choisie (bits de q_ab :
 // 1 = actuelle, 2 = tous matchs, 4 / 8 = les mêmes avec la saison).
-function lignesLecture(complet, base, forcesTm, saison, absences = false) {
-  if (forcesTm === "dc") return versLectureDc(complet);
-  complet = sansSeulDc(complet);      // les autres lectures restent celles d'avant
+// Paris « nouveaux » : retenus par AUCUNE des lectures d'avant, seulement par
+// « Dixon-Coles complet » (seul_dc) et/ou par une lecture aux petits scores
+// corrigés (seul_rho, avec q_rho : 16 = actuelle, 32 = tous matchs, 64 = DC
+// complet). Ils ne s'ajoutent qu'à la vue qui les retient ; tout le reste
+// suit exactement la logique d'avant (lignesLectureAvant).
+const _CACHE_NOUV = new WeakMap();
+function separerNouvelles(rows) {
+  if (!_CACHE_NOUV.has(rows)) {
+    const avant = [], nouv = [];
+    rows.forEach(r => ((r.seul_dc || r.seul_rho) ? nouv : avant).push(r));
+    _CACHE_NOUV.set(rows, nouv.length ? [avant, nouv] : [rows, nouv]);
+  }
+  return _CACHE_NOUV.get(rows);
+}
+function lignesLecture(complet, base, forcesTm, saison, absences = false, rho = false) {
+  const [avant, nouvelles] = separerNouvelles(complet);
+  const vue = forcesTm === "dc" ? "dc" : (forcesTm ? "tm" : "act");
+  const bit = vue === "dc" ? 64 : (vue === "tm" ? 32 : 16);
+  const ajout = nouvelles.filter(r => (vue === "dc" && r.seul_dc) || (rho && (r.q_rho & bit)));
+  let rows = vue === "dc" ? avant : lignesLectureAvant(avant, base, forcesTm, saison, absences);
+  if (ajout.length) rows = rows.concat(ajout);
+  return vue === "dc" ? versLectureDc(rows) : rows;
+}
+function lignesLectureAvant(complet, base, forcesTm, saison, absences = false) {
   if (!absences) {
     if (!saison) {
       if (!forcesTm) return base;
@@ -743,6 +756,133 @@ function appliquerAbsences(rows, actif) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// PETITS SCORES (ρ) CORRIGÉS (réglage « Petits scores (ρ) », option ajoutée le
+// 08/11/2026 ; RHO_OPTION_ACTIF côté Python). La correction Dixon-Coles des
+// scores 0-0, 1-0, 0-1 et 1-1 vaut ρ = −0,13 dans le modèle, ce qui surestime
+// les 0-0 et les nuls. Choisie, l'option RECALCULE ici la probabilité de chaque
+// lecture (actuelle, xG, binomiale négative, « tous matchs », « Dixon-Coles
+// complet », avec saison et absences s'ils sont actifs) avec ρ corrigé, à
+// partir de ses buts attendus : seuls les 4 petits scores et la normalisation
+// de la grille changent, d'où une formule exacte :
+//   p' = (p·Z + Δρ·D_O) / (Z + Δρ·D), Z = S + ρ·D,
+// S = masse de la grille sans correction, D = Σ (τ−1)/ρ × Q sur les 4 scores,
+// D_O = la même somme restreinte aux scores qui font gagner le pari.
+// « Les 2 équipes marquent » ne bouge pas (modèle BTTS dédié, sans ρ).
+const MODELE_RHO = WIZARD_DATA.modele_rho || null;
+const RHO_DISPO = !!(MODELE_RHO && MODELE_RHO.corrige != null && MODELE_RHO.actuel != null);
+const SUIVI_FORCES_RHO = (WIZARD_DATA.dc_stats || {}).suivi_forces_rho || null;
+
+function rhoActif(prefixe) {
+  const s = $(prefixe + "Rho");
+  return !!(RHO_DISPO && s && s.value === "cor");
+}
+
+// Pour une colonne de cote : [0-0, 0-1, 1-0, 1-1] font-ils gagner le pari ?
+// (scores « domicile - extérieur ») ; null = pari non recalculé.
+const _RHO_CELLULES = new Map();
+function rhoCellules(col) {
+  if (_RHO_CELLULES.has(col)) return _RHO_CELLULES.get(col);
+  let f = null, m;
+  if (col === "homeWin") f = (i, j) => i > j;
+  else if (col === "draw") f = (i, j) => i === j;
+  else if (col === "awayWin") f = (i, j) => i < j;
+  else if ((m = /^Plus de ([\d.]+)$/.exec(col || ""))) { const t = +m[1]; f = (i, j) => i + j > t; }
+  else if ((m = /^Moins de ([\d.]+)$/.exec(col || ""))) { const t = +m[1]; f = (i, j) => i + j < t; }
+  else if (col === "Buts 0-1") f = (i, j) => i + j <= 1;
+  else if (col === "Buts 2-3") f = (i, j) => i + j >= 2 && i + j <= 3;
+  else if (col === "Buts 4-6") f = (i, j) => i + j >= 4 && i + j <= 6;
+  else if (col === "Buts 7 et plus") f = (i, j) => i + j >= 7;
+  else if ((m = SCORE_RE.exec(col || ""))) { const a = +m[1], b = +m[2]; f = (i, j) => i === a && j === b; }
+  const res = f ? [f(0, 0), f(0, 1), f(1, 0), f(1, 1)] : null;
+  _RHO_CELLULES.set(col, res);
+  return res;
+}
+
+// Lois des buts 0..n (Poisson, ou binomiale négative de dispersion r, même
+// paramétrage que _nbinom_pmf côté Python), sans troncature ni normalisation.
+function rhoLoi(lam, r, n) {
+  const out = new Array(n + 1);
+  if (!(lam > 0)) { out.fill(0); out[0] = 1; return out; }
+  if (r && r > 0) {
+    const q = r / (r + lam);
+    out[0] = Math.pow(q, r);
+    for (let k = 1; k <= n; k++) out[k] = out[k - 1] * (k - 1 + r) / k * (1 - q);
+  } else {
+    out[0] = Math.exp(-lam);
+    for (let k = 1; k <= n; k++) out[k] = out[k - 1] * lam / k;
+  }
+  return out;
+}
+
+function rhoRecalcul(p0, lh, la, cells, r = null) {
+  if (p0 == null || !(lh > 0) || !(la > 0) || !cells) return p0;
+  const n = (MODELE_RHO && MODELE_RHO.max_buts) || 10;
+  const ph = rhoLoi(lh, r, n), pa = rhoLoi(la, r, n);
+  const S = ph.reduce((a, b) => a + b, 0) * pa.reduce((a, b) => a + b, 0);
+  const q = [ph[0] * pa[0], ph[0] * pa[1], ph[1] * pa[0], ph[1] * pa[1]];
+  const coef = [-lh * la, lh, la, -1];
+  let D = 0, DO = 0;
+  for (let k = 0; k < 4; k++) { D += coef[k] * q[k]; if (cells[k]) DO += coef[k] * q[k]; }
+  const r0 = MODELE_RHO.actuel, dr = MODELE_RHO.corrige - r0;
+  const Z = S + r0 * D;
+  const p = (p0 * Z + dr * DO) / (Z + dr * D);
+  return Math.min(0.999, Math.max(0, p));
+}
+
+function corrigerRho(rows, actif) {
+  if (!RHO_DISPO || !actif) return rows;
+  return rows.map(r => {
+    if (r.categorie === "Les 2 équipes marquent") return r;
+    const cells = rhoCellules(r.colonne);
+    if (!cells) return r;
+    const pm = pMarche(r);                 // marché dévigué : calculé AVANT correction
+    const c = r.cote;
+    const o = {...r, source_rho: true, p_model_avant_rho: r.p_model};
+    const lecture = (kp, lh, la, ke, ked, kev, nb = null) => {
+      if (r[kp] == null || lh == null || la == null) return;
+      const pp = rhoRecalcul(r[kp], lh, la, cells, nb);
+      o[kp] = pp;
+      if (c) {
+        o[ke] = pp - 1 / c;
+        o[kev] = pp * (c - 1) - (1 - pp);
+      }
+      if (pm != null) o[ked] = pp - pm;
+    };
+    lecture("p_model", r.lam_home, r.lam_away, "edge", "edge_devig", "ev");
+    lecture("p_model_xg", r.lam_home_xg, r.lam_away_xg, "edge_xg", "edge_devig_xg", "ev_xg");
+    lecture("p_model_nb", r.lam_home, r.lam_away, "edge_nb", "edge_devig_nb", "ev_nb", NB_R);
+    // « Tous matchs » / « Dixon-Coles complet » (r.tm porte la lecture choisie).
+    if (r.tm && r.tm[1] != null) o.tm = [rhoRecalcul(r.tm[0], r.tm[1], r.tm[2], cells), ...r.tm.slice(1)];
+    return o;
+  });
+}
+
+function majRhoNote(prefixe) {
+  const sel = $(prefixe + "Rho");
+  const note = $(prefixe + "RhoNote");
+  if (!sel) return;
+  if (!RHO_DISPO) {
+    sel.value = "act";
+    sel.disabled = true;
+    sel.title = "Option absente des données de cette collecte (relancez wina_wizard.py avec RHO_OPTION_ACTIF = True).";
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  if (sel.value !== "cor") {
+    note.style.display = "none";
+    return;
+  }
+  const v = x => String(x).replace("-", "−").replace(".", ",");
+  note.style.display = "";
+  note.innerHTML = `<strong>Petits scores corrigés</strong> (test, ρ = ${v(MODELE_RHO.corrige)} au lieu de `
+    + `${v(MODELE_RHO.actuel)}) — le modèle surestimait les 0-0 et les nuls ; les probabilités de toutes les `
+    + `lectures sont recalculées, « Les 2 équipes marquent » exceptée. Les paris que seule cette correction `
+    + `retient s'ajoutent. Suivi : panneau « Lectures du modèle » sur DC rétrospectif.`;
+}
+
 function majAbsNote(prefixe) {
   const sel = $(prefixe + "Abs");
   const note = $(prefixe + "AbsNote");
@@ -787,9 +927,9 @@ function majAbsNote(prefixe) {
 // La correction saisonnière passe en premier : toutes les lectures qui
 // suivent (forces, calibration, binomiale négative, xG) partent des
 // probabilités corrigées.
-function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false, absences = false) {
+function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false, absences = false, rho = false) {
   if (forcesTm === "dc") rows = versLectureDc(rows);
-  rows = appliquerAbsences(appliquerSaison(rows, saison), absences);
+  rows = corrigerRho(appliquerAbsences(appliquerSaison(rows, saison), absences), rho);
   if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif,
                                 forcesTm === "dc" ? CALIB_RATIO_DC : CALIB_RATIO_TM);
   return appliquerXg(appliquerNb(calibrer(appliquerForces(rows, false), calibActif), nbActif), modeXg);
@@ -2738,9 +2878,12 @@ function renderUpcoming() {
   const saison = saisonActive("u");
   // Lecture « absences » (option) : combinable avec tout, voir appliquerAbsences.
   const absences = absencesActive("u");
-  let source = lectureModele(upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison, absences)),
-                             forcesTm, calibActif, nbActif, modeXg, saison, absences);
+  // Petits scores (ρ) corrigés (option) : combinable avec tout, voir corrigerRho.
+  const rho = rhoActif("u");
+  let source = lectureModele(upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison, absences, rho)),
+                             forcesTm, calibActif, nbActif, modeXg, saison, absences, rho);
   majForcesNote("u");
+  majRhoNote("u");
   majSaisonNote("u");
   majAbsNote("u");
 
@@ -2858,7 +3001,7 @@ function renderUpcoming() {
   // aucune cote ne convient).
   const plageCotePour = (v0, evConcurrents = null) => {
     const echecsA = c => {
-      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg, saison, absences)[0];
+      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg, saison, absences, rho)[0];
       if (!r) return null;
       const a = calculerAff(r);
       const echecs = controlesCote(a);
@@ -3674,7 +3817,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
   const el=$(id); if (!el) return; el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 // Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
@@ -4357,6 +4500,7 @@ function cablerMenusDeroulants() {
 cablerMenusDeroulants();
 
 [["btDevig","uDevig"], ["btAlpha","uAlpha"], ["btForces","uForces"], ["btSaison","uSaison"], ["btAbs","uAbs"],
+ ["btRho","uRho"],
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -5174,8 +5318,10 @@ function btFiltered(opts) {
   const saison = saisonActive("bt");
   // Lecture « absences » (option) : combinable avec tout, voir appliquerAbsences.
   const absences = absencesActive("bt");
-  let source = lectureModele(lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison, absences),
-                             forcesTm, calibActif, nbActif, modeXg, saison, absences);
+  // Petits scores (ρ) corrigés (option) : combinable avec tout, voir corrigerRho.
+  const rho = rhoActif("bt");
+  let source = lectureModele(lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison, absences, rho),
+                             forcesTm, calibActif, nbActif, modeXg, saison, absences, rho);
 
   // Edge minimum, plage de cotes, filtre marchés de queue, edge dévigué max
   // et garantie 2 buts sont désormais PROPRES À CHAQUE CATÉGORIE de pari
@@ -5354,7 +5500,7 @@ function btFiltered(opts) {
 // relance que si un filtre réellement utilisé par « Paris à venir » bouge.
 function verdictsFiltresAvenir() {
   const ids = [
-    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uRho", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
     "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
     "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
   ];
@@ -6264,6 +6410,7 @@ function renderBacktest() {
   majForcesNote("bt");
   majSaisonNote("bt");
   majAbsNote("bt");
+  majRhoNote("bt");
 
   // Le mélange avec le marché (alpha < 1) utilise TOUJOURS la probabilité
   // marché dévigée en interne (cf. blended()/pMarche()) — mélanger avec la
@@ -7844,6 +7991,8 @@ function renderBacktestRows() {
         ft: r.source_tm ? 1 : undefined,
         // Lecture « Dixon-Coles complet » active : r.tm porte alors ses valeurs.
         ldc: r._dc ? 1 : undefined,
+        // Option « Petits scores (ρ) : corrigé » active.
+        rho: r.source_rho ? 1 : undefined,
         // Correction saisonnière : facteur appliqué aux buts attendus affichés.
         fs: r.source_saison ? r.saison_f : undefined,
         // Lecture « absences » : facteur sur les buts attendus du domicile
@@ -8013,6 +8162,7 @@ function exporterBacktestCsv() {
       pct(edgeAffiche), num(mise), num(gain),
       pct(pTm), pct(edgeTm), pct(edgeDevigTm), pct(evTm),
       (r.source_dc ? "Dixon-Coles complet" : r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : "")
+        + (r.source_rho ? " + ρ corrigé" : "")
         + (r.source_abs ? " + absences" : ""),
       r.source_saison ? String(r.saison_f).replace(".", ",") : "",
       r.source_saison ? pct(r.p_model_sans_saison) : "",
@@ -8093,6 +8243,7 @@ function attachDcTooltips() {
           <strong class="pos">${d.lht} – ${d.lat}</strong></div>` : ""}
         <div class="dc-tip-sep"></div>
         ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">${d.ldc ? "Dixon-Coles complet" : "tous matchs"}</strong></div>` : ""}
+        ${d.rho ? `<div class="dc-tip-row"><span>Petits scores</span><strong class="pos">ρ corrigé</strong></div>` : ""}
         ${d.fs ? `<div class="dc-tip-row"><span>Correction saisonnière</span><strong class="pos">buts attendus ×${String(d.fs).replace(".", ",")}</strong></div>` : ""}
         ${d.fa ? `<div class="dc-tip-row"><span>Absences</span><strong class="pos">domicile ×${d.fa.toLocaleString("fr-FR", {maximumFractionDigits: 3})} · extérieur ×${(1 / d.fa).toLocaleString("fr-FR", {maximumFractionDigits: 3})}</strong></div>` : ""}
         <div class="dc-tip-row"><span>Domicile · attaque</span><strong>${d.ad}</strong></div>
@@ -8280,8 +8431,9 @@ function renderLecturesForces() {
   if (!box) return;
   const s = SUIVI_FORCES;
   const sdc = SUIVI_FORCES_DC;
+  const srho = SUIVI_FORCES_RHO;
   const vide = x => !x || !x.familles || !x.familles.length;
-  if (vide(s) && vide(sdc)) {
+  if (vide(s) && vide(sdc) && vide(srho)) {
     box.innerHTML = '<p class="muted">En attente de données : ce tableau se remplit au prochain ' +
       'lancement de wina_wizard.py avec la lecture « tous matchs » ou « Dixon-Coles complet ».</p>';
     return;
@@ -8333,11 +8485,15 @@ function renderLecturesForces() {
   const tauTxt = sdc && sdc.tau != null ? String(sdc.tau).replace(".", ",") : "?";
   box.innerHTML = (vide(s) ? "" : titre("Tous matchs") + tableau(s, "Tous matchs", `k = ${s.k}`, "tous matchs"))
     + (vide(sdc) ? "" : titre("Dixon-Coles complet") + tableau(sdc, "Dixon-Coles complet", `τ = ${tauTxt}`, "Dixon-Coles complet"))
+    + (vide(srho) ? "" : titre("Petits scores corrigés (lecture actuelle)")
+       + tableau(srho, "ρ corrigé", `ρ = ${String(srho.rho).replace("-", "−").replace(".", ",")}`, "petits scores corrigés"))
     + `
     <p class="muted" style="margin:.8rem 0 0; font-size:.82rem">
       Un écart négatif dans « … − actuelle » signifie que la lecture comparée est plus proche du marché
       que l'actuelle. Les matchs sont comptés une fois par marché ; un même match nourrit donc
       plusieurs lignes. « Dixon-Coles complet » n'a pas de lecture pour les sélections nationales.
+      « Petits scores corrigés » compare la lecture actuelle avec ρ corrigé à la même lecture avec ρ
+      actuel ; son effet porte surtout sur les nuls, les 0-0 et le score exact (non suivi ici).
       Choisissez « Forces d'équipe » dans les filtres pour voir ce que l'une ou l'autre donnerait
       sur les paris retenus.</p>`;
 }
@@ -9532,7 +9688,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
