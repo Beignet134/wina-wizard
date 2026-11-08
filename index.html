@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108192431">
+<link rel="stylesheet" href="style.css?v=20261108195928">
 </head>
 <body>
 <div class="topbar">
@@ -563,6 +563,15 @@
             </div>
           </div>
         </div>
+        <div class="field" id="btMomentField">
+          <label for="btMoment">Moment du pari</label>
+          <select id="btMoment" title="Dernier relevé (défaut) : chaque pari est jugé au dernier relevé avant le coup d'envoi ; « cote inchangée » veut alors dire qu'elle n'a plus bougé jusqu'au match. Au moins N h avant : chaque pari est rejoué au dernier relevé situé au moins N heures avant le match (cote, marge et mouvement de ce moment-là), comme si vous pariiez à cette heure-là sans savoir ce que ferait la cote ensuite.">
+            <option value="" selected>Dernier relevé avant le match</option>
+            <option value="3">Au moins 3 h avant le match</option>
+            <option value="6">Au moins 6 h avant (le matin pour l'après-midi)</option>
+            <option value="10">Au moins 10 h avant (la veille au soir)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="btAlpha">Poids du modèle</label>
           <select id="btAlpha">
@@ -829,6 +838,7 @@
       <p class="muted" id="btRhoNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btNiveauNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btAccordNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btMomentNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
     </div>
@@ -2433,7 +2443,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108192508"></script>
-<script src="app.js?v=20261108192431"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108200012"></script>
+<script src="app.js?v=20261108195928"></script>
 </body>
 </html>
