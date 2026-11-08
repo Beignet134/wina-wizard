@@ -616,15 +616,15 @@
   "maj": 1794056369855
  },
  "2026-11-08|IFK Göteborg - Malmö|1 - 0": {
-  "cote": 9.75,
+  "cote": 9,
   "cote_confirmee": false,
-  "site": "betclic",
-  "cote_capturee": 9.75,
+  "site": "winamax",
+  "cote_capturee": 9,
   "ts": "2026-11-08T10:58:20",
   "kickoff": "2026-11-08T14:00:00",
   "capture_iso": "2026-11-08T10:25:07.213992",
   "mise": 10,
-  "maj": 1794131900502
+  "maj": 1794131902917
  },
  "2026-11-08|KuPS - Inter Turku|draw": {
   "cote": 3.55,
