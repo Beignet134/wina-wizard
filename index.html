@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108072253">
+<link rel="stylesheet" href="style.css?v=20261108084044">
 </head>
 <body>
 <div class="topbar">
@@ -574,9 +574,10 @@
         </div>
         <div class="field" id="btForcesField">
           <label for="btForces">Forces d'équipe</label>
-          <select id="btForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs.">
+          <select id="btForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs. Dixon-Coles complet (test) : forces de toutes les équipes d'une compétition estimées ensemble, en tenant compte de la force des adversaires rencontrés.">
             <option value="act" selected>Actuelles</option>
             <option value="tm">Tous matchs (test)</option>
+            <option value="dc">Dixon-Coles complet (test)</option>
           </select>
         </div>
         <div class="field" id="btSaisonField">
@@ -1248,7 +1249,9 @@
       <p class="muted" style="margin:-.5rem 0 1rem; font-size:.85rem">
         Compare la lecture <strong>actuelle</strong> des forces d'équipe (attaque et défense à
         domicile et à l'extérieur estimées séparément) à la lecture <strong>« tous matchs »</strong>
-        (une attaque et une défense par équipe, sur l'ensemble de ses matchs), toutes deux
+        (une attaque et une défense par équipe, sur l'ensemble de ses matchs) et à la lecture
+        <strong>« Dixon-Coles complet »</strong> (forces de toutes les équipes d'une compétition
+        estimées ensemble, en tenant compte de la force des adversaires rencontrés), toutes
         recalculées à chaque collecte, jour après jour, avec le seul passé connu à la date du match.
         La mesure est la perte logarithmique (log-loss) de chaque probabilité sur le résultat réel,
         <strong>sur toutes les issues du marché</strong> et non sur les seuls paris retenus — c'est
@@ -1616,9 +1619,10 @@
         </div>
         <div class="field" id="uForcesField">
           <label for="uForces">Forces d'équipe</label>
-          <select id="uForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs.">
+          <select id="uForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs. Dixon-Coles complet (test) : forces de toutes les équipes d'une compétition estimées ensemble, en tenant compte de la force des adversaires rencontrés.">
             <option value="act" selected>Actuelles</option>
             <option value="tm">Tous matchs (test)</option>
+            <option value="dc">Dixon-Coles complet (test)</option>
           </select>
         </div>
         <div class="field" id="uSaisonField">
@@ -2379,7 +2383,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108072328"></script>
-<script src="app.js?v=20261108072253"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108084128"></script>
+<script src="app.js?v=20261108084044"></script>
 </body>
 </html>
