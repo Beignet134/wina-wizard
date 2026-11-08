@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108132310">
+<link rel="stylesheet" href="style.css?v=20261108155929">
 </head>
 <body>
 <div class="topbar">
@@ -601,6 +601,20 @@
             <option value="cor">Corrigé (test)</option>
           </select>
         </div>
+        <div class="field" id="btNiveauField">
+          <label for="btNiveau">Niveau de buts</label>
+          <select id="btNiveau" title="Actuel : buts attendus du modèle tels quels (il en prévoit environ 6 % de moins qu'il n'y en a). Corrigé (test) : buts attendus multipliés par le rapport buts réels ÷ buts prévus des matchs joués les 42 jours précédents (passé seulement), d'où moins de petits scores et de nuls annoncés. Combinable avec les autres réglages.">
+            <option value="act" selected>Actuel</option>
+            <option value="cor">Corrigé (test)</option>
+          </select>
+        </div>
+        <div class="field" id="btAccordField">
+          <label for="btAccord">Accord des lectures</label>
+          <select id="btAccord" title="Non : chaque pari est jugé sur la seule lecture choisie dans « Forces d'équipe ». Oui (test) : un pari n'est gardé que si l'autre lecture le retient aussi, avec l'edge minimum et l'espérance minimum de sa catégorie — Dixon-Coles complet quand les forces sont « Actuelles » ou « Tous matchs », les forces actuelles quand c'est « Dixon-Coles complet ». Mêmes corrections (saison, absences, ρ) pour les deux lectures.">
+            <option value="non" selected>Non</option>
+            <option value="oui">Oui (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="btMise">Strategie de mise</label>
           <select id="btMise">
@@ -813,6 +827,8 @@
       <p class="muted" id="btSaisonNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btAbsNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btRhoNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btNiveauNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btAccordNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
     </div>
@@ -1654,6 +1670,20 @@
             <option value="cor">Corrigé (test)</option>
           </select>
         </div>
+        <div class="field" id="uNiveauField">
+          <label for="uNiveau">Niveau de buts</label>
+          <select id="uNiveau" title="Actuel : buts attendus du modèle tels quels (il en prévoit environ 6 % de moins qu'il n'y en a). Corrigé (test) : buts attendus multipliés par le rapport buts réels ÷ buts prévus des matchs joués les 42 jours précédents (passé seulement), d'où moins de petits scores et de nuls annoncés. Combinable avec les autres réglages.">
+            <option value="act" selected>Actuel</option>
+            <option value="cor">Corrigé (test)</option>
+          </select>
+        </div>
+        <div class="field" id="uAccordField">
+          <label for="uAccord">Accord des lectures</label>
+          <select id="uAccord" title="Non : chaque pari est jugé sur la seule lecture choisie dans « Forces d'équipe ». Oui (test) : un pari n'est gardé que si l'autre lecture le retient aussi, avec l'edge minimum et l'espérance minimum de sa catégorie — Dixon-Coles complet quand les forces sont « Actuelles » ou « Tous matchs », les forces actuelles quand c'est « Dixon-Coles complet ». Mêmes corrections (saison, absences, ρ) pour les deux lectures.">
+            <option value="non" selected>Non</option>
+            <option value="oui">Oui (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="uMise2">Strategie de mise</label>
           <select id="uMise2">
@@ -1819,6 +1849,8 @@
       <p class="muted" id="uSaisonNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uAbsNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uRhoNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uNiveauNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uAccordNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uCotesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -2399,7 +2431,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108132342"></script>
-<script src="app.js?v=20261108132310"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108160012"></script>
+<script src="app.js?v=20261108155929"></script>
 </body>
 </html>
