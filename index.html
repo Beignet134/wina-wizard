@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108084044">
+<link rel="stylesheet" href="style.css?v=20261108094613">
 </head>
 <body>
 <div class="topbar">
@@ -594,6 +594,13 @@
             <option value="oui">Oui (test)</option>
           </select>
         </div>
+        <div class="field" id="btRhoField">
+          <label for="btRho">Petits scores (ρ)</label>
+          <select id="btRho" title="Actuel : correction Dixon-Coles des petits scores telle qu'avant (ρ = −0,13), qui surestime les 0-0 et les nuls. Corrigé (test) : ρ = −0,03, appris sur 19 championnats européens (2022-2024) ; les probabilités de toutes les lectures sont recalculées. Combinable avec les autres réglages.">
+            <option value="act" selected>Actuel</option>
+            <option value="cor">Corrigé (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="btMise">Strategie de mise</label>
           <select id="btMise">
@@ -805,6 +812,7 @@
       <p class="muted" id="btForcesNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btSaisonNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btAbsNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btRhoNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btDevigNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
     </div>
@@ -1639,6 +1647,13 @@
             <option value="oui">Oui (test)</option>
           </select>
         </div>
+        <div class="field" id="uRhoField">
+          <label for="uRho">Petits scores (ρ)</label>
+          <select id="uRho" title="Actuel : correction Dixon-Coles des petits scores telle qu'avant (ρ = −0,13), qui surestime les 0-0 et les nuls. Corrigé (test) : ρ = −0,03, appris sur 19 championnats européens (2022-2024) ; les probabilités de toutes les lectures sont recalculées. Combinable avec les autres réglages.">
+            <option value="act" selected>Actuel</option>
+            <option value="cor">Corrigé (test)</option>
+          </select>
+        </div>
         <div class="field">
           <label for="uMise2">Strategie de mise</label>
           <select id="uMise2">
@@ -1803,6 +1818,7 @@
       <p class="muted" id="uForcesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uSaisonNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uAbsNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uRhoNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uCotesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -2383,7 +2399,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108084128"></script>
-<script src="app.js?v=20261108084044"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108094647"></script>
+<script src="app.js?v=20261108094613"></script>
 </body>
 </html>
