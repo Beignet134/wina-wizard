@@ -614,5 +614,16 @@
   "capture_iso": "2026-11-07T13:17:01.702995",
   "mise": 5,
   "maj": 1794056369855
+ },
+ "2026-11-08|KuPS - Inter Turku|draw": {
+  "cote": 3.58,
+  "cote_confirmee": false,
+  "site": "betclic",
+  "cote_capturee": 3.58,
+  "ts": "2026-11-08T10:57:25",
+  "kickoff": "2026-11-08T14:00:00",
+  "capture_iso": "2026-11-08T10:25:07.213992",
+  "mise": 10,
+  "maj": 1794131845897
  }
 }
