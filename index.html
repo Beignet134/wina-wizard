@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108172612">
+<link rel="stylesheet" href="style.css?v=20261108173951">
 </head>
 <body>
 <div class="topbar">
@@ -552,12 +552,12 @@
               <div class="mvt-slider-track">
                 <div class="mvt-slider-rail" aria-hidden="true"></div>
                 <div class="mvt-slider-fill" id="btMvtFill"></div>
-                <input type="range" id="btMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
-                <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
+                <input type="range" id="btMvtMin" class="mvt-range" min="-20" max="20" step="0.1" value="0" aria-label="Mouvement de la cote — borne basse (%)">
+                <input type="range" id="btMvtMax" class="mvt-range" min="-20" max="20" step="0.1" value="0" aria-label="Mouvement de la cote — borne haute (%)">
               </div>
               <div class="mvt-slider-readout">
-                <input type="number" id="btMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
-                <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
+                <input type="number" id="btMvtMinNum" class="mvt-num" min="-20" max="20" step="0.1" value="0" aria-label="Borne basse, en %"><span>% —</span>
+                <input type="number" id="btMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.1" value="0" aria-label="Borne haute, en %"><span>%</span>
                 <button type="button" class="msel-action mvt-reset" id="btMvtReset">Tout inclure</button>
               </div>
             </div>
@@ -590,22 +590,22 @@
         <div class="field" id="btAbsField">
           <label for="btAbs">Absences</label>
           <select id="btAbs" title="Non : modèle sans tenir compte des absents. Oui (test) : chaque point d'importance des absents connus (API-Football, joueurs « Missing Fixture » dont l'importance est calculée) affaiblit son équipe — environ 10 % de buts marqués en moins et 10 % de buts encaissés en plus. Seuls les matchs avec absents changent. Combinable avec les autres lectures.">
-            <option value="non" selected>Non</option>
-            <option value="oui">Oui (test)</option>
+            <option value="non">Non</option>
+            <option value="oui" selected>Oui (test)</option>
           </select>
         </div>
         <div class="field" id="btRhoField">
           <label for="btRho">Petits scores (ρ)</label>
           <select id="btRho" title="Actuel : correction Dixon-Coles des petits scores telle qu'avant (ρ = −0,13), qui surestime les 0-0 et les nuls. Corrigé (test) : ρ = −0,03, appris sur 19 championnats européens (2022-2024) ; les probabilités de toutes les lectures sont recalculées. Combinable avec les autres réglages.">
-            <option value="act" selected>Actuel</option>
-            <option value="cor">Corrigé (test)</option>
+            <option value="act">Actuel</option>
+            <option value="cor" selected>Corrigé (test)</option>
           </select>
         </div>
         <div class="field" id="btNiveauField">
           <label for="btNiveau">Niveau de buts</label>
           <select id="btNiveau" title="Actuel : buts attendus du modèle tels quels (il en prévoit environ 6 % de moins qu'il n'y en a). Corrigé (test) : buts attendus multipliés par le rapport buts réels ÷ buts prévus des matchs joués les 42 jours précédents (passé seulement), d'où moins de petits scores et de nuls annoncés. Combinable avec les autres réglages.">
-            <option value="act" selected>Actuel</option>
-            <option value="cor">Corrigé (test)</option>
+            <option value="act">Actuel</option>
+            <option value="cor" selected>Corrigé (test)</option>
           </select>
         </div>
         <div class="field" id="btAccordField">
@@ -1622,12 +1622,12 @@
               <div class="mvt-slider-track">
                 <div class="mvt-slider-rail" aria-hidden="true"></div>
                 <div class="mvt-slider-fill" id="uMvtFill"></div>
-                <input type="range" id="uMvtMin" class="mvt-range" min="-20" max="20" step="0.5" value="0" aria-label="Mouvement de la cote — borne basse (%)">
-                <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.5" value="0.5" aria-label="Mouvement de la cote — borne haute (%)">
+                <input type="range" id="uMvtMin" class="mvt-range" min="-20" max="20" step="0.1" value="0" aria-label="Mouvement de la cote — borne basse (%)">
+                <input type="range" id="uMvtMax" class="mvt-range" min="-20" max="20" step="0.1" value="0" aria-label="Mouvement de la cote — borne haute (%)">
               </div>
               <div class="mvt-slider-readout">
-                <input type="number" id="uMvtMinNum" class="mvt-num" min="-20" max="20" step="0.5" value="0" aria-label="Borne basse, en %"><span>% —</span>
-                <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.5" value="0.5" aria-label="Borne haute, en %"><span>%</span>
+                <input type="number" id="uMvtMinNum" class="mvt-num" min="-20" max="20" step="0.1" value="0" aria-label="Borne basse, en %"><span>% —</span>
+                <input type="number" id="uMvtMaxNum" class="mvt-num" min="-20" max="20" step="0.1" value="0" aria-label="Borne haute, en %"><span>%</span>
                 <button type="button" class="msel-action mvt-reset" id="uMvtReset">Tout inclure</button>
               </div>
             </div>
@@ -1660,22 +1660,22 @@
         <div class="field" id="uAbsField">
           <label for="uAbs">Absences</label>
           <select id="uAbs" title="Non : modèle sans tenir compte des absents. Oui (test) : chaque point d'importance des absents connus (API-Football, joueurs « Missing Fixture » dont l'importance est calculée) affaiblit son équipe — environ 10 % de buts marqués en moins et 10 % de buts encaissés en plus. Seuls les matchs avec absents changent. Combinable avec les autres lectures.">
-            <option value="non" selected>Non</option>
-            <option value="oui">Oui (test)</option>
+            <option value="non">Non</option>
+            <option value="oui" selected>Oui (test)</option>
           </select>
         </div>
         <div class="field" id="uRhoField">
           <label for="uRho">Petits scores (ρ)</label>
           <select id="uRho" title="Actuel : correction Dixon-Coles des petits scores telle qu'avant (ρ = −0,13), qui surestime les 0-0 et les nuls. Corrigé (test) : ρ = −0,03, appris sur 19 championnats européens (2022-2024) ; les probabilités de toutes les lectures sont recalculées. Combinable avec les autres réglages.">
-            <option value="act" selected>Actuel</option>
-            <option value="cor">Corrigé (test)</option>
+            <option value="act">Actuel</option>
+            <option value="cor" selected>Corrigé (test)</option>
           </select>
         </div>
         <div class="field" id="uNiveauField">
           <label for="uNiveau">Niveau de buts</label>
           <select id="uNiveau" title="Actuel : buts attendus du modèle tels quels (il en prévoit environ 6 % de moins qu'il n'y en a). Corrigé (test) : buts attendus multipliés par le rapport buts réels ÷ buts prévus des matchs joués les 42 jours précédents (passé seulement), d'où moins de petits scores et de nuls annoncés. Combinable avec les autres réglages.">
-            <option value="act" selected>Actuel</option>
-            <option value="cor">Corrigé (test)</option>
+            <option value="act">Actuel</option>
+            <option value="cor" selected>Corrigé (test)</option>
           </select>
         </div>
         <div class="field" id="uAccordField">
@@ -2433,7 +2433,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108172650"></script>
-<script src="app.js?v=20261108172612"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261108174033"></script>
+<script src="app.js?v=20261108173951"></script>
 </body>
 </html>
