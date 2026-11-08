@@ -647,7 +647,18 @@ function separerNouvelles(rows) {
   }
   return _CACHE_NOUV.get(rows);
 }
+// Mémorisée (même raison que lectureModele) : un même tableau pour les mêmes
+// réglages, ce qui permet aussi à lectureModele de réutiliser son résultat.
+const _CACHE_LIGNES = new WeakMap();
 function lignesLecture(complet, base, forcesTm, saison, absences = false, rho = false) {
+  let memo = _CACHE_LIGNES.get(complet);
+  if (!memo) { memo = new Map(); _CACHE_LIGNES.set(complet, memo); }
+  const cle = [forcesTm, saison, absences, rho].join("|");
+  let res = memo.get(cle);
+  if (!res) { res = _lignesLecture(complet, base, forcesTm, saison, absences, rho); memo.set(cle, res); }
+  return res;
+}
+function _lignesLecture(complet, base, forcesTm, saison, absences, rho) {
   const [avant, nouvelles] = separerNouvelles(complet);
   const vue = forcesTm === "dc" ? "dc" : (forcesTm ? "tm" : "act");
   const bit = vue === "dc" ? 64 : (vue === "tm" ? 32 : 16);
@@ -883,6 +894,303 @@ function majRhoNote(prefixe) {
     + `retient s'ajoutent. Suivi : panneau « Lectures du modèle » sur DC rétrospectif.`;
 }
 
+// ---------------------------------------------------------------------------
+// NIVEAU DE BUTS CORRIGÉ (réglage « Niveau de buts », option ajoutée le
+// 08/11/2026). Le modèle prévoit environ 6 % de buts de moins qu'il n'y en a
+// (2,73 prévus pour 2,90 réels sur 2 603 matchs du 28/08 au 07/11, même écart
+// dans chaque période et dans chaque type de championnat) : il annonce donc
+// trop de petits scores et de nuls. Choisi, ce réglage multiplie les buts
+// attendus des deux équipes par un facteur appris SUR LE PASSÉ SEULEMENT :
+// pour un pari du jour J, buts réels ÷ buts prévus des matchs joués entre
+// J − 42 jours et la veille (au moins NIVEAU_MIN_MATCHS matchs, sinon pas de
+// correction), calculé séparément pour chaque lecture (actuelle, xG,
+// « tous matchs », « Dixon-Coles complet »). La probabilité de chaque pari est
+// multipliée par P(issue | λ × facteur) ÷ P(issue | λ), sur la grille complète
+// des scores avec le ρ choisi ; edge, edge dévigué et espérance sont
+// recalculés. « Les 2 équipes marquent » ne bouge pas (modèle dédié).
+// Limite : un pari que SEULE cette correction aurait retenu à la collecte
+// n'est pas dans les données (5 sur 110 en Score exact sur le banc d'essai,
+// aucun en Vainqueur). « Actuel » (défaut) : strictement les mêmes valeurs.
+const NIVEAU_FENETRE_J = 42;
+const NIVEAU_MIN_MATCHS = 200;
+const _jourNum = s => Math.floor(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 86400000);
+// Table construite à la première utilisation (et non au chargement) : elle
+// s'appuie sur estSelectionNationale, dont les mots-clés sont déclarés plus bas.
+let _NIVEAU_TABLE = null;
+const NIVEAU = {
+  get table() { return _NIVEAU_TABLE || (_NIVEAU_TABLE = _construireNiveau()); },
+  facteur(lecture, date) { return this.table.facteur(lecture, date); },
+  get n() { return this.table.n; },
+};
+function _construireNiveau() {
+  const vus = new Set(), m = [];
+  for (const r of (WIZARD_DATA.dc_backtest || [])) {
+    if (!r.date || !r.match) continue;
+    const cle = r.date + "|" + r.match;
+    if (vus.has(cle)) continue;
+    const sc = /^(\d+)\s*-\s*(\d+)$/.exec(String(r.score_reel || "").trim());
+    if (!sc || !(r.lam_home > 0) || !(r.lam_away > 0)) continue;
+    if (estSelectionNationale(r.pays, r.ligue)) continue;
+    vus.add(cle);
+    const somme = (a, b) => (a > 0 && b > 0 ? a + b : null);
+    m.push({j: _jourNum(r.date), buts: +sc[1] + +sc[2],
+            act: r.lam_home + r.lam_away,
+            xg: somme(r.lam_home_xg, r.lam_away_xg),
+            tm: r.tm ? somme(r.tm[1], r.tm[2]) : null,
+            dc: r.dc ? somme(r.dc[1], r.dc[2]) : null});
+  }
+  m.sort((a, b) => a.j - b.j);
+  const jours = m.map(x => x.j);
+  // Sommes cumulées par lecture : buts réels, buts prévus, nombre de matchs.
+  const cumul = {};
+  ["act", "xg", "tm", "dc"].forEach(k => {
+    const b = [0], p = [0], n = [0];
+    m.forEach(x => {
+      const ok = x[k] != null;
+      b.push(b[b.length - 1] + (ok ? x.buts : 0));
+      p.push(p[p.length - 1] + (ok ? x[k] : 0));
+      n.push(n[n.length - 1] + (ok ? 1 : 0));
+    });
+    cumul[k] = {b, p, n};
+  });
+  const borne = j => { let lo = 0, hi = jours.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (jours[mid] < j) lo = mid + 1; else hi = mid; } return lo; };
+  const memo = new Map();
+  // {f, n} : facteur et nombre de matchs de la fenêtre ; f = 1 sans assez de matchs.
+  const facteur = (lecture, date) => {
+    const cle = lecture + "|" + date;
+    if (memo.has(cle)) return memo.get(cle);
+    const c = cumul[lecture] || cumul.act;
+    const j = _jourNum(date), i1 = borne(j), i0 = borne(j - NIVEAU_FENETRE_J);
+    const n = c.n[i1] - c.n[i0], p = c.p[i1] - c.p[i0];
+    const res = (n >= NIVEAU_MIN_MATCHS && p > 0) ? {f: (c.b[i1] - c.b[i0]) / p, n} : {f: 1, n};
+    memo.set(cle, res);
+    return res;
+  };
+  return {facteur, n: m.length};
+}
+function niveauDispo() { return !!(MODELE_RHO && NIVEAU.n >= NIVEAU_MIN_MATCHS); }
+
+function niveauActif(prefixe) {
+  const s = $(prefixe + "Niveau");
+  return !!(s && s.value === "cor" && niveauDispo());
+}
+
+// Issue d'une colonne de cote sous forme de test sur le score (i, j) ; null =
+// pari non recalculé (BTTS, colonne inconnue).
+const _NIVEAU_ISSUES = new Map();
+function niveauIssue(col) {
+  if (_NIVEAU_ISSUES.has(col)) return _NIVEAU_ISSUES.get(col);
+  let f = null, m;
+  if (col === "homeWin") f = (i, j) => i > j;
+  else if (col === "draw") f = (i, j) => i === j;
+  else if (col === "awayWin") f = (i, j) => i < j;
+  else if ((m = /^Plus de ([\d.]+)$/.exec(col || ""))) { const t = +m[1]; f = (i, j) => i + j > t; }
+  else if ((m = /^Moins de ([\d.]+)$/.exec(col || ""))) { const t = +m[1]; f = (i, j) => i + j < t; }
+  else if (col === "Buts 0-1") f = (i, j) => i + j <= 1;
+  else if (col === "Buts 2-3") f = (i, j) => i + j >= 2 && i + j <= 3;
+  else if (col === "Buts 4-6") f = (i, j) => i + j >= 4 && i + j <= 6;
+  else if (col === "Buts 7 et plus") f = (i, j) => i + j >= 7;
+  else if ((m = SCORE_RE.exec(col || ""))) { const a = +m[1], b = +m[2]; f = (i, j) => i === a && j === b; }
+  _NIVEAU_ISSUES.set(col, f);
+  return f;
+}
+
+// P(issue) sur la grille Dixon-Coles complète (0..n buts, ρ sur les 4 petits
+// scores, normalisée comme poisson_score_matrix côté Python), loi de Poisson
+// ou binomiale négative de dispersion r. Mémorisée : tous les paris d'un même
+// match partagent leur grille.
+const _NIVEAU_GRILLES = new Map(), _NIVEAU_PROBAS = new Map();
+function niveauProba(lh, la, rho, col, r = null) {
+  const cleG = lh + "|" + la + "|" + rho + "|" + (r || 0);
+  const cleP = cleG + "|" + col;
+  const deja = _NIVEAU_PROBAS.get(cleP);
+  if (deja !== undefined) return deja;
+  let g = _NIVEAU_GRILLES.get(cleG);
+  if (!g) {
+    const n = (MODELE_RHO && MODELE_RHO.max_buts) || 10;
+    const ph = rhoLoi(lh, r, n), pa = rhoLoi(la, r, n);
+    g = new Float64Array((n + 1) * (n + 1));
+    let tot = 0;
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      let v = ph[i] * pa[j];
+      if (i === 0 && j === 0) v *= 1 - lh * la * rho;
+      else if (i === 0 && j === 1) v *= 1 + lh * rho;
+      else if (i === 1 && j === 0) v *= 1 + la * rho;
+      else if (i === 1 && j === 1) v *= 1 - rho;
+      v = Math.max(0, v);
+      g[i * (n + 1) + j] = v; tot += v;
+    }
+    for (let k = 0; k < g.length; k++) g[k] /= tot;
+    g.n = n;
+    if (_NIVEAU_GRILLES.size > 50000) _NIVEAU_GRILLES.clear();
+    _NIVEAU_GRILLES.set(cleG, g);
+  }
+  const f = niveauIssue(col), n = g.n;
+  let p = 0;
+  for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) if (f(i, j)) p += g[i * (n + 1) + j];
+  if (_NIVEAU_PROBAS.size > 400000) _NIVEAU_PROBAS.clear();
+  _NIVEAU_PROBAS.set(cleP, p);
+  return p;
+}
+
+function corrigerNiveau(rows, actif, rho = false) {
+  if (!actif || !niveauDispo()) return rows;
+  const r0 = rho ? MODELE_RHO.corrige : MODELE_RHO.actuel;
+  const arr = v => (v == null ? v : Math.round(v * 100) / 100);
+  return rows.map(r => {
+    if (r.categorie === "Les 2 équipes marquent" || !r.date) return r;
+    const col = r.colonne;
+    if (!niveauIssue(col)) return r;
+    const pm = pMarche(r);                 // marché dévigué : calculé AVANT correction
+    const c = r.cote;
+    const kAct = NIVEAU.facteur("act", r.date).f;
+    const o = {...r, source_niveau: true, niveau_f: kAct, p_model_avant_niveau: r.p_model};
+    const lecture = (kp, lh, la, k, ke, ked, kev, nb = null) => {
+      if (r[kp] == null || !(lh > 0) || !(la > 0) || !(k > 0) || k === 1) return;
+      const base = niveauProba(lh, la, r0, col, nb);
+      if (!(base > 0)) return;
+      const pp = Math.min(0.999, Math.max(0, r[kp] * niveauProba(lh * k, la * k, r0, col, nb) / base));
+      o[kp] = pp;
+      if (c) {
+        o[ke] = pp - 1 / c;
+        o[kev] = pp * (c - 1) - (1 - pp);
+      }
+      if (pm != null) o[ked] = pp - pm;
+    };
+    lecture("p_model", r.lam_home, r.lam_away, kAct, "edge", "edge_devig", "ev");
+    const kXg = NIVEAU.facteur("xg", r.date).f;
+    lecture("p_model_xg", r.lam_home_xg, r.lam_away_xg, kXg, "edge_xg", "edge_devig_xg", "ev_xg");
+    lecture("p_model_nb", r.lam_home, r.lam_away, kAct, "edge_nb", "edge_devig_nb", "ev_nb", NB_R);
+    // « Tous matchs » / « Dixon-Coles complet » (r.tm porte la lecture choisie).
+    if (r.tm && r.tm[0] != null && r.tm[1] > 0 && r.tm[2] > 0) {
+      const k = NIVEAU.facteur(r._dc ? "dc" : "tm", r.date).f;
+      const base = niveauProba(r.tm[1], r.tm[2], r0, col);
+      if (k !== 1 && base > 0) {
+        const pt = Math.min(0.999, Math.max(0, r.tm[0] * niveauProba(r.tm[1] * k, r.tm[2] * k, r0, col) / base));
+        o.tm = [pt, arr(r.tm[1] * k), arr(r.tm[2] * k), ...r.tm.slice(3)];
+      }
+    }
+    if (kAct !== 1) {
+      o.lam_home = arr(r.lam_home * kAct);
+      o.lam_away = arr(r.lam_away * kAct);
+    }
+    if (kXg !== 1 && r.lam_home_xg != null) {
+      o.lam_home_xg = arr(r.lam_home_xg * kXg);
+      o.lam_away_xg = arr(r.lam_away_xg * kXg);
+    }
+    return o;
+  });
+}
+
+function majNiveauNote(prefixe) {
+  const sel = $(prefixe + "Niveau");
+  const note = $(prefixe + "NiveauNote");
+  if (!sel) return;
+  if (!niveauDispo()) {
+    sel.value = "act";
+    sel.disabled = true;
+    sel.title = `Pas assez de matchs joués dans les données de cette collecte pour mesurer le niveau de buts (il en faut au moins ${NIVEAU_MIN_MATCHS}).`;
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  if (sel.value !== "cor") {
+    note.style.display = "none";
+    return;
+  }
+  const auj = new Date(), iso = auj.getFullYear() + "-" + String(auj.getMonth() + 1).padStart(2, "0") + "-" + String(auj.getDate()).padStart(2, "0");
+  const v = x => x.toFixed(3).replace(".", ",");
+  const fa = NIVEAU.facteur("act", iso);
+  const lect = forcesTmActif(prefixe);
+  const fl = lect ? NIVEAU.facteur(lect === "dc" ? "dc" : "tm", iso) : null;
+  note.style.display = "";
+  note.innerHTML = `<strong>Niveau de buts corrigé</strong> (test) — buts attendus multipliés, pour chaque pari, `
+    + `par le rapport buts réels ÷ buts prévus des matchs joués dans les ${NIVEAU_FENETRE_J} jours précédents `
+    + `(passé seulement, au moins ${NIVEAU_MIN_MATCHS} matchs). Aujourd'hui : ×${v(fa.f)} pour la lecture actuelle `
+    + `(${fa.n} matchs)${fl ? `, ×${v(fl.f)} pour la lecture « ${lect === "dc" ? "Dixon-Coles complet" : "tous matchs"} »` : ""}. `
+    + `Moins de petits scores et de nuls annoncés ; « Les 2 équipes marquent » ne bouge pas. Combinable avec les autres réglages.`;
+}
+
+// ---------------------------------------------------------------------------
+// ACCORD DES LECTURES (réglage « Accord des lectures », option ajoutée le
+// 08/11/2026). Les forces « Actuelles » (domicile et extérieur estimés à part,
+// retrait k = 8) s'écartent plus souvent du marché que le Dixon-Coles complet :
+// une partie de leurs paris vient du bruit de l'estimation, pas d'un vrai
+// écart (voir faux-dc-contre-vrai-dc-filtres-2026-11-08). Choisi, ce réglage
+// ne garde un pari que si L'AUTRE lecture le retient aussi, avec les seuils
+// de sa catégorie (edge minimum, espérance minimum), le même mode d'affichage
+// (dévigué, poids du modèle) et les mêmes corrections (saison, absences, ρ,
+// calibration) :
+//   - forces « Actuelles » ou « Tous matchs » → l'autre lecture est « Dixon-Coles complet » ;
+//   - forces « Dixon-Coles complet » → l'autre lecture est la lecture actuelle
+//     (avec l'xG ou la binomiale négative s'ils sont choisis).
+// Un match sans l'autre lecture (sélections nationales, compétition sans
+// historique suffisant) est écarté. Les plafonds (espérance maximum, edge
+// dévigué maximum) ne portent que sur la lecture choisie. « Non » (défaut) :
+// strictement les mêmes paris qu'avant.
+function accordActif(prefixe) {
+  const s = $(prefixe + "Accord");
+  return !!(FORCES_DC_DISPO && s && s.value === "oui");
+}
+let _CACHE_ACCORD_BT = null;     // {sig, m} : autre lecture du rétrospectif (voir btFiltered)
+function autreForces(forcesTm) { return forcesTm === "dc" ? false : "dc"; }
+function nomAutreLecture(forcesTm) { return forcesTm === "dc" ? "forces actuelles" : "Dixon-Coles complet"; }
+
+// L'autre lecture sur les mêmes lignes d'entrée (celles passées à lectureModele
+// pour la lecture choisie) : Map betKey → ligne.
+function lectureAutre(entree, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau = false) {
+  const m = new Map();
+  lectureModele(entree, autreForces(forcesTm), calibActif, nbActif, modeXg, saison, absences, rho, niveau)
+    .forEach(r => m.set(betKey(r), r));
+  return m;
+}
+
+// Motif d'exclusion ({sens, texte}, même forme que controlesCote) si l'autre
+// lecture `a` ne passe pas les seuils, null sinon. e / ev = edge et espérance
+// de `a` dans le mode d'affichage. Les deux croissent avec la cote : un échec
+// est donc « bas » (la cote devrait monter pour que le pari passe).
+function echecAccord(a, e, ev, seuilEdge, seuilEv, forcesTm) {
+  const nom = nomAutreLecture(forcesTm);
+  if (!a) return {sens: "fixe", texte: `pas de lecture « ${nom} » pour ce match (accord des lectures)`};
+  if (e == null || e < seuilEdge) {
+    return {sens: "bas", texte: `la lecture « ${nom} » ne voit qu'un edge de ${fmtPct(e)}, sous le minimum de ${fmtPct(seuilEdge)} (accord des lectures)`};
+  }
+  if (seuilEv > -900) {
+    if (ev == null) return {sens: "fixe", texte: `espérance de la lecture « ${nom} » indisponible (accord des lectures)`};
+    if (seuilEv === 0 ? ev <= 0 : ev < seuilEv) {
+      return {sens: "bas", texte: `la lecture « ${nom} » donne une espérance de ${fmtPct(ev)}, `
+        + (seuilEv === 0 ? "elle doit être positive" : `sous le minimum de ${fmtPct(seuilEv)}`) + " (accord des lectures)"};
+    }
+  }
+  return null;
+}
+
+function majAccordNote(prefixe) {
+  const sel = $(prefixe + "Accord");
+  const note = $(prefixe + "AccordNote");
+  if (!sel) return;
+  if (!FORCES_DC_DISPO) {
+    sel.value = "non";
+    sel.disabled = true;
+    sel.title = "La lecture « Dixon-Coles complet » n'est pas dans les données de cette collecte (relancez wina_wizard.py avec FORCES_DC_ACTIF = True).";
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  if (sel.value !== "oui") {
+    note.style.display = "none";
+    return;
+  }
+  const nom = nomAutreLecture(forcesTmActif(prefixe));
+  note.style.display = "";
+  note.innerHTML = `<strong>Accord des lectures actif</strong> (test) — un pari n'est gardé que si la lecture `
+    + `« ${nom} » le retient aussi : edge minimum et espérance minimum de sa catégorie, mêmes corrections `
+    + `(saison, absences, ρ). Les matchs sans cette lecture (sélections nationales notamment) sont écartés. `
+    + `Moins de paris : à juger sur la durée, l'échantillon est petit.`;
+}
+
 function majAbsNote(prefixe) {
   const sel = $(prefixe + "Abs");
   const note = $(prefixe + "AbsNote");
@@ -927,9 +1235,26 @@ function majAbsNote(prefixe) {
 // La correction saisonnière passe en premier : toutes les lectures qui
 // suivent (forces, calibration, binomiale négative, xG) partent des
 // probabilités corrigées.
-function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false, absences = false, rho = false) {
+// Mémorisée par tableau d'entrée et par réglages : renderBacktest appelle
+// btFiltered une dizaine de fois par rendu avec les mêmes réglages, et les
+// corrections (saison, absences, ρ, niveau de buts) parcourent tous les paris.
+// Les lignes renvoyées ne sont jamais modifiées en place (chaque étape en aval
+// copie ce qu'elle change), d'où un partage sans risque.
+const _CACHE_LECTURE = new WeakMap();
+function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = false, absences = false, rho = false, niveau = false) {
+  let memo = _CACHE_LECTURE.get(rows);
+  if (!memo) { memo = new Map(); _CACHE_LECTURE.set(rows, memo); }
+  const cle = [forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau].join("|");
+  let res = memo.get(cle);
+  if (!res) {
+    res = _lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau);
+    memo.set(cle, res);
+  }
+  return res;
+}
+function _lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau) {
   if (forcesTm === "dc") rows = versLectureDc(rows);
-  rows = corrigerRho(appliquerAbsences(appliquerSaison(rows, saison), absences), rho);
+  rows = corrigerNiveau(corrigerRho(appliquerAbsences(appliquerSaison(rows, saison), absences), rho), niveau, rho);
   if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif,
                                 forcesTm === "dc" ? CALIB_RATIO_DC : CALIB_RATIO_TM);
   return appliquerXg(appliquerNb(calibrer(appliquerForces(rows, false), calibActif), nbActif), modeXg);
@@ -2880,10 +3205,18 @@ function renderUpcoming() {
   const absences = absencesActive("u");
   // Petits scores (ρ) corrigés (option) : combinable avec tout, voir corrigerRho.
   const rho = rhoActif("u");
-  let source = lectureModele(upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison, absences, rho)),
-                             forcesTm, calibActif, nbActif, modeXg, saison, absences, rho);
+  // Niveau de buts corrigé (option) : combinable avec tout, voir corrigerNiveau.
+  const niveau = niveauActif("u");
+  const entreeU = upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison, absences, rho));
+  let source = lectureModele(entreeU, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau);
+  // Accord des lectures (option) : l'autre lecture sur les mêmes lignes (cotes
+  // saisies comprises), voir echecAccord et controlesCote.
+  const accordU = accordActif("u");
+  const autresU = accordU ? lectureAutre(entreeU, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau) : null;
   majForcesNote("u");
   majRhoNote("u");
+  majNiveauNote("u");
+  majAccordNote("u");
   majSaisonNote("u");
   majAbsNote("u");
 
@@ -2942,7 +3275,9 @@ function renderUpcoming() {
     }
     return s;
   };
-  const controlesCote = v => {
+  // `a` = l'autre lecture du même pari à la même cote, passée par calculerAff
+  // (seulement avec « Accord des lectures », voir echecAccord).
+  const controlesCote = (v, a = null) => {
     const s = seuilsCat(v.categorie);
     const echecs = [];
     const ev = v.ev_aff ?? v.ev;
@@ -2991,8 +3326,13 @@ function renderUpcoming() {
         }
       }
     }
+    if (accordU) {
+      const ech = echecAccord(a, a ? a.edge_aff : null, a ? (a.ev_aff ?? a.ev) : null, s.edge, s.ev, forcesTm);
+      if (ech) echecs.push(ech);
+    }
     return echecs;
   };
+  const autreAff = r => (r ? calculerAff(r) : null);
 
   // Plage de cotes à laquelle ce pari passe TOUS les critères ci-dessus, avec
   // tous les réglages actifs (calibration, xG, NB, poids du modèle, dévigage).
@@ -3001,10 +3341,13 @@ function renderUpcoming() {
   // aucune cote ne convient).
   const plageCotePour = (v0, evConcurrents = null) => {
     const echecsA = c => {
-      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg, saison, absences, rho)[0];
+      const r = lectureModele([avecCote(v0, c)], forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau)[0];
       if (!r) return null;
       const a = calculerAff(r);
-      const echecs = controlesCote(a);
+      const autre = accordU
+        ? autreAff(lectureModele([avecCote(v0, c)], autreForces(forcesTm), calibActif, nbActif, modeXg, saison, absences, rho, niveau)[0])
+        : null;
+      const echecs = controlesCote(a, autre);
       // Un seul par match et par catégorie : il faut aussi battre le meilleur concurrent.
       if (evConcurrents != null && (a.ev_aff ?? a.ev) < evConcurrents) {
         echecs.push({sens: "bas", texte: "un autre pari de ce match a une meilleure espérance"});
@@ -3046,7 +3389,7 @@ function renderUpcoming() {
     if (cats && !cats.includes(v.categorie)) return false;
     if (ligues && !ligues.has(ligueKey(v.pays, v.ligue))) return false;
     if (exclSel && estSelectionNationale(v.pays, v.ligue)) return false;
-    const echecs = controlesCote(v);
+    const echecs = controlesCote(v, accordU ? autreAff(autresU.get(betKey(v))) : null);
     if (echecs.length && v.cote_manuelle == null) return false;   // cote capturée : on écarte, comme avant
     // Filtres « entre bookmakers » : ils ne dépendent pas de la cote Winamax par une relation monotone (voir
     // plageCotePour, qui les ignore) ; une carte à cote saisie qui ne les passe plus reste affichée, avec le motif.
@@ -3817,7 +4160,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uNiveau","uAccord","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
   const el=$(id); if (!el) return; el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 // Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
@@ -4500,7 +4843,7 @@ function cablerMenusDeroulants() {
 cablerMenusDeroulants();
 
 [["btDevig","uDevig"], ["btAlpha","uAlpha"], ["btForces","uForces"], ["btSaison","uSaison"], ["btAbs","uAbs"],
- ["btRho","uRho"],
+ ["btRho","uRho"], ["btNiveau","uNiveau"], ["btAccord","uAccord"],
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -5320,8 +5663,21 @@ function btFiltered(opts) {
   const absences = absencesActive("bt");
   // Petits scores (ρ) corrigés (option) : combinable avec tout, voir corrigerRho.
   const rho = rhoActif("bt");
-  let source = lectureModele(lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison, absences, rho),
-                             forcesTm, calibActif, nbActif, modeXg, saison, absences, rho);
+  // Niveau de buts corrigé (option) : combinable avec tout, voir corrigerNiveau.
+  const niveau = niveauActif("bt");
+  const entreeBt = lignesLecture(BT_ROWS_COMPLET, BT_ROWS, forcesTm, saison, absences, rho);
+  let source = lectureModele(entreeBt, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau);
+  // Accord des lectures (option) : l'autre lecture sur les mêmes lignes, voir
+  // echecAccord. Gardée en cache tant que les réglages du modèle ne bougent pas
+  // (btFiltered est appelée plusieurs fois par rendu).
+  let autresBt = null;
+  if (accordActif("bt") && !opts.referenceComplete) {
+    const sig = [forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau].join("|");
+    if (!_CACHE_ACCORD_BT || _CACHE_ACCORD_BT.sig !== sig) {
+      _CACHE_ACCORD_BT = {sig, m: lectureAutre(entreeBt, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau)};
+    }
+    autresBt = _CACHE_ACCORD_BT.m;
+  }
 
   // Edge minimum, plage de cotes, filtre marchés de queue, edge dévigué max
   // et garantie 2 buts sont désormais PROPRES À CHAQUE CATÉGORIE de pari
@@ -5426,6 +5782,15 @@ function btFiltered(opts) {
       // l'exclut pas, contrairement au plancher ci-dessus.
       if (seuilEvMax < 900 && ev != null && ev > seuilEvMax) return false;
     }
+    // Accord des lectures (option) : l'autre lecture doit passer les mêmes
+    // planchers (edge, espérance), dans le même mode d'affichage.
+    if (autresBt) {
+      const a = autresBt.get(betKey(r));
+      const bla = a && alpha < 1 ? blended(a, alpha) : null;
+      const ea = !a ? null : (bla ? bla.edge : (devig ? (a.edge_devig ?? a.edge) : a.edge));
+      const eva = !a ? null : (bla ? bla.ev : a.ev);
+      if (echecAccord(a, ea, eva, seuil, seuilEv, forcesTm)) return false;
+    }
     // Marchés de queue / plafond d'edge dévigué : réservé aux deux
     // catégories identifiées (voir MARCHES_QUEUE, CATEGORIES_FILTRE_QUEUE),
     // et lus depuis LE BLOC DE CETTE CATÉGORIE (idCat/valCat).
@@ -5500,7 +5865,7 @@ function btFiltered(opts) {
 // relance que si un filtre réellement utilisé par « Paris à venir » bouge.
 function verdictsFiltresAvenir() {
   const ids = [
-    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uRho", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uRho", "uNiveau", "uAccord", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
     "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
     "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
   ];
@@ -5736,6 +6101,14 @@ function renderBtActiveFilters(rowsFiltrees) {
   if (absencesActive("bt")) {
     add("Absences", "oui (test)",
         "Chaque point d'importance des absents connus affaiblit son équipe (voir la note sous les filtres)");
+  }
+  if (niveauActif("bt")) {
+    add("Niveau de buts", "corrigé (test)",
+        "Buts attendus multipliés par le rapport buts réels ÷ prévus des 42 jours précédents (voir la note sous les filtres)");
+  }
+  if (accordActif("bt")) {
+    add("Accord des lectures", `avec ${nomAutreLecture(forcesTmActif("bt"))} (test)`,
+        "Un pari n'est gardé que si l'autre lecture le retient aussi, avec l'edge et l'espérance minimum de sa catégorie (voir la note sous les filtres)");
   }
   const alpha = $("btAlpha");
   if (alpha && parseFloat(alpha.value) !== 1) {
@@ -6411,6 +6784,8 @@ function renderBacktest() {
   majSaisonNote("bt");
   majAbsNote("bt");
   majRhoNote("bt");
+  majNiveauNote("bt");
+  majAccordNote("bt");
 
   // Le mélange avec le marché (alpha < 1) utilise TOUJOURS la probabilité
   // marché dévigée en interne (cf. blended()/pMarche()) — mélanger avec la
@@ -8163,7 +8538,9 @@ function exporterBacktestCsv() {
       pct(pTm), pct(edgeTm), pct(edgeDevigTm), pct(evTm),
       (r.source_dc ? "Dixon-Coles complet" : r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : "")
         + (r.source_rho ? " + ρ corrigé" : "")
-        + (r.source_abs ? " + absences" : ""),
+        + (r.source_niveau ? " + niveau de buts ×" + String(r.niveau_f.toFixed(3)).replace(".", ",") : "")
+        + (r.source_abs ? " + absences" : "")
+        + (accordActif("bt") ? " + accord des lectures" : ""),
       r.source_saison ? String(r.saison_f).replace(".", ",") : "",
       r.source_saison ? pct(r.p_model_sans_saison) : "",
       r.source_abs ? String(r.abs_g).replace(".", ",") : "",
@@ -9688,7 +10065,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btAccord","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
