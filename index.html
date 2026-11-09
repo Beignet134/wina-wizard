@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261109041659">
+<link rel="stylesheet" href="style.css?v=20261109061346">
 </head>
 <body>
 <div class="topbar">
@@ -527,6 +527,19 @@
             <label class="chk-cat"><input type="checkbox" id="btExclSel" aria-label="Exclure les sélections nationales" checked><span>Exclure les sélections</span></label>
           </div>
         </div>
+        <div class="field" id="btHistMinField">
+          <label for="btHistMin">Historique minimum</label>
+          <select id="btHistMin" title="Ne garde que les matchs où les deux équipes ont au moins ce nombre de matchs dans leur compétition pour estimer leurs forces : matchs à domicile pour l'équipe qui reçoit, à l'extérieur pour celle qui se déplace (les « Hist. dom. » et « Hist. ext. » de la matrice Historique). 30 = la case 30+ / 30+ de la matrice. Réglage commun avec « Paris à venir ».">
+            <option value="0">Aucun minimum</option>
+            <option value="10">10 matchs</option>
+            <option value="15">15 matchs</option>
+            <option value="20">20 matchs</option>
+            <option value="25">25 matchs</option>
+            <option value="30" selected>30 matchs</option>
+            <option value="35">35 matchs</option>
+            <option value="40">40 matchs</option>
+          </select>
+        </div>
         <div class="slider-pair-row">
           <div class="field field-wide">
             <label for="btCoteMin">Plage de cotes</label>
@@ -945,6 +958,32 @@
             <tbody id="btMbkCat"></tbody>
           </table>
         </div>
+
+        <h3 class="mbk-h3">La cote a-t-elle aussi bougé ailleurs ?</h3>
+        <p class="muted" style="margin:0 0 .6rem; font-size:.82rem">
+          Même issue chez chaque autre site, entre son premier et son dernier relevé avant le match. Avec « Mouvement
+          de la cote » à 0 → 0, tous ces paris ont une cote restée inchangée chez Winamax. Une cote n'est mesurable que si
+          le site l'a relevée au moins deux fois.
+        </p>
+        <div class="tablewrap table-scroll">
+          <table id="btMbkBougeSiteTable" class="cardify">
+            <thead><tr>
+              <th>Site</th><th class="num">Paris cotés</th><th class="num">Mesurables</th>
+              <th class="num">Inchangée</th><th class="num">Allongée</th><th class="num">Raccourcie</th>
+            </tr></thead>
+            <tbody id="btMbkBougeSite"></tbody>
+          </table>
+        </div>
+        <div class="tablewrap table-scroll">
+          <table id="btMbkBougeTable" class="cardify">
+            <thead><tr>
+              <th>Chez les autres sites</th><th class="num">Paris</th><th class="num">Réussite</th>
+              <th class="num">Net Winamax</th><th class="num">ROI</th>
+            </tr></thead>
+            <tbody id="btMbkBouge"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="btMbkBougeNote" style="margin:.6rem 0 0; font-size:.82rem"></p>
         <p class="muted" id="btMbkNotes" style="margin:.9rem 0 0; font-size:.82rem"></p>
       </div>
       </div>
@@ -1039,7 +1078,8 @@
         matrices ci-dessus, <strong>cette grille est cliquable</strong> : sélectionner une case filtre
         toute la page (KPI, tableau par catégorie, détail des paris…) sur cette combinaison précise —
         cliquez à nouveau pour l'enlever. La grille elle-même reste toujours complète, quel que soit le
-        filtre actif, pour pouvoir comparer une case avec une autre. Une pastille ambre signale un
+        filtre actif, pour pouvoir comparer une case avec une autre ; les cases estompées sont écartées
+        par le réglage « Historique minimum » des filtres (30 matchs par équipe par défaut). Une pastille ambre signale un
         échantillon inférieur à <span id="btHistSeuilTxt">5</span> paris : la teinte reste lisible, mais
         ce petit volume ne permet pas de tirer une conclusion solide.
       </p>
@@ -1606,6 +1646,19 @@
           <div class="chk-group" title="Ligue des Nations, qualifications, amicaux internationaux… Peu de matchs d'historique par équipe : le modèle y est moins fiable. Réglage commun avec « DC rétrospectif ».">
             <label class="chk-cat"><input type="checkbox" id="uExclSel" aria-label="Exclure les sélections nationales" checked><span>Exclure les sélections</span></label>
           </div>
+        </div>
+        <div class="field" id="uHistMinField">
+          <label for="uHistMin">Historique minimum</label>
+          <select id="uHistMin" title="Ne garde que les matchs où les deux équipes ont au moins ce nombre de matchs dans leur compétition pour estimer leurs forces : matchs à domicile pour l'équipe qui reçoit, à l'extérieur pour celle qui se déplace (les « Hist. dom. » et « Hist. ext. » de la matrice Historique). 30 = la case 30+ / 30+ de la matrice. Réglage commun avec « DC rétrospectif ».">
+            <option value="0">Aucun minimum</option>
+            <option value="10">10 matchs</option>
+            <option value="15">15 matchs</option>
+            <option value="20">20 matchs</option>
+            <option value="25">25 matchs</option>
+            <option value="30" selected>30 matchs</option>
+            <option value="35">35 matchs</option>
+            <option value="40">40 matchs</option>
+          </select>
         </div>
         <div class="slider-pair-row">
           <div class="field field-wide">
@@ -2443,7 +2496,7 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261109041732"></script>
-<script src="app.js?v=20261109041659"></script>
+<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261109061429"></script>
+<script src="app.js?v=20261109061346"></script>
 </body>
 </html>
