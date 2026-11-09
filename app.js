@@ -346,6 +346,24 @@ function selectionsExclues(prefixe) {
   const boite = $(prefixe + "ExclSel");
   return !!(boite && boite.checked);
 }
+
+// --- Historique minimum (08/11/2026) ----------------------------------------
+// Remplace le clic sur la case 30+ / 30+ de la matrice « Historique » : les
+// deux équipes doivent avoir au moins N matchs dans leur compétition pour
+// estimer leurs forces (n_hist_dom = matchs à domicile de l'équipe qui reçoit,
+// n_hist_ext = matchs à l'extérieur de celle qui se déplace, les mêmes
+// compteurs que la matrice). Réglage commun aux deux pages (btHistMin /
+// uHistMin, synchronisés par lierFiltres), 30 par défaut, 0 = pas de minimum.
+// Même règle que les alertes téléphone (ALERTES_FILTRES « historique_min »).
+// Un pari sans compteur ne passe pas un minimum actif.
+function histMinimum(prefixe) {
+  const el = $(prefixe + "HistMin");
+  const v = el ? parseInt(el.value, 10) : 0;
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+function passeHistMin(min, r) {
+  return !min || ((r.n_hist_dom ?? -1) >= min && (r.n_hist_ext ?? -1) >= min);
+}
 const CACHE_SELECTION_NATIONALE = new Map();
 function estSelectionNationale(pays, ligue) {
   const cle = (pays || "") + "\u0001" + (ligue || "");
@@ -3313,6 +3331,9 @@ function renderUpcoming() {
   // encore, auquel cas on ignore le filtre ici plutôt que de vider la
   // liste à tort — voir uHistNote plus bas, qui l'explique à l'écran.
   const histDispo = UPCOMING.some(v => v.n_hist_dom != null);
+  // Historique minimum (voir histMinimum) : même garde que la matrice.
+  const histMinU = histMinimum("u");
+  const histMinApplique = histDispo ? histMinU : 0;
 
   // Chaque pari reçoit ses valeurs recalculées selon le mode choisi, pour
   // que l'affichage (edge, espérance) corresponde bien au filtre appliqué.
@@ -3520,6 +3541,7 @@ function renderUpcoming() {
       if (histBucketKey(v.n_hist_dom) !== BT_HIST_SELECTION.dom) return false;
       if (histBucketKey(v.n_hist_ext) !== BT_HIST_SELECTION.ext) return false;
     }
+    if (histMinApplique && !passeHistMin(histMinApplique, v)) return false;
     // Vide sauf cote saisie qui ne passe plus un critère : la carte reste alors affichée, en rouge.
     v.motifs_manuel = v.cote_manuelle != null ? echecs.map(e => e.texte) : [];
     return true;
@@ -3670,7 +3692,12 @@ function renderUpcoming() {
   // propagerFiltreHistorique()).
   const uHistNote = $("uHistNote");
   if (uHistNote) {
-    if (!BT_HIST_SELECTION) {
+    if (!BT_HIST_SELECTION && histMinU && !histDispo) {
+      uHistNote.style.display = "";
+      uHistNote.innerHTML = `<strong>Historique minimum (${histMinU} matchs)</strong> — pas encore applicable ici : `
+        + `ce jeu de données ne contient pas encore le nombre de matchs d'historique des paris à venir. `
+        + `Relance la collecte pour qu'il s'applique aussi sur cette page.`;
+    } else if (!BT_HIST_SELECTION) {
       uHistNote.style.display = "none";
       uHistNote.innerHTML = "";
     } else if (!histDispo) {
@@ -4246,7 +4273,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uNiveau","uAccord","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uNiveau","uAccord","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel","uHistMin"].forEach(id => {
   const el=$(id); if (!el) return; el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 // Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
@@ -4270,16 +4297,21 @@ function lierFiltres(idA, idB) {
   if (!elA || !elB) return;
   // La garde (valeurs déjà égales -> ne rien redéclencher) empêche une
   // boucle infinie entre les deux écouteurs.
+  // Phase de capture (08/11/2026) : la copie vers l'autre page passe AVANT le
+  // rendu de la page où le réglage a changé. Sans cela, un changement fait
+  // sur « Paris à venir » recalculait les verdicts de catégorie (lus par
+  // btFiltered sur les contrôles « bt ») avec l'ancienne valeur, d'où des
+  // pastilles en retard d'un réglage.
   elA.addEventListener("change", () => {
     if (elB.value === elA.value) return;
     elB.value = elA.value;
     elB.dispatchEvent(new Event("change"));
-  });
+  }, true);
   elB.addEventListener("change", () => {
     if (elA.value === elB.value) return;
     elA.value = elB.value;
     elA.dispatchEvent(new Event("change"));
-  });
+  }, true);
 }
 // Même principe que lierFiltres() pour deux CASES À COCHER (propriété
 // "checked" au lieu de "value") : « Exclure les sélections nationales ».
@@ -4290,7 +4322,7 @@ function lierCases(idA, idB) {
     if (dst.checked === src.checked) return;   // garde anti-boucle
     dst.checked = src.checked;
     dst.dispatchEvent(new Event("change"));
-  });
+  }, true);   // capture : voir lierFiltres
   relier(elA, elB);
   relier(elB, elA);
 }
@@ -4370,16 +4402,17 @@ function lierDoubleSlider(champ) {
   ["Min", "Max"].forEach(suffixe => {
     const a = $("bt" + champ + suffixe), b = $("u" + champ + suffixe);
     if (!a || !b) return;
+    // Capture : la copie passe avant le rendu de la page d'origine (voir lierFiltres).
     a.addEventListener("change", () => {
       if (b.value === a.value) return;
       b.value = a.value;
       b.dispatchEvent(new Event("change"));
-    });
+    }, true);
     b.addEventListener("change", () => {
       if (a.value === b.value) return;
       a.value = b.value;
       a.dispatchEvent(new Event("change"));
-    });
+    }, true);
   });
 }
 function initMvtSlider(prefixe) { initDoubleSlider("Mvt", prefixe, MVT_SLIDER_MIN, MVT_SLIDER_MAX); }
@@ -4944,6 +4977,7 @@ cablerMenusDeroulants();
 // « Paris sans autre site » : propre à DC rétrospectif, rien à synchroniser.
 if ($("btCbkSans")) $("btCbkSans").addEventListener("change", () => renderBacktest());
 lierCases("btExclSel", "uExclSel");
+lierFiltres("btHistMin", "uHistMin");
 
 // Mouvement de la cote / Plage de cotes : curseurs doubles indépendants des
 // <select> ci-dessus (deux <input type=range> par borne), synchronisés
@@ -5689,8 +5723,9 @@ function mettreAJourBadgesCategorie(prefixe, verdicts, contexte) {
 // mise, donc un simple facteur suffit).
 // Filtre unique appliqué partout sur la page DC rétrospectif, pour que les
 // KPI, le tableau et le graphique portent toujours sur le MÊME ensemble.
-// opts.sansHist=true saute UNIQUEMENT le filtre "historique" (voir
-// BT_HIST_SELECTION / renderHistMatrix plus bas) : c'est ce que la matrice
+// opts.sansHist=true saute UNIQUEMENT les filtres "historique" (case de la
+// matrice, BT_HIST_SELECTION / renderHistMatrix plus bas, et « Historique
+// minimum », histMinimum) : c'est ce que la matrice
 // Historique elle-même utilise pour se recalculer, afin que la grille reste
 // complète et cliquable même quand une case est déjà sélectionnée — sinon
 // choisir une case ferait retomber toutes les autres à zéro et il
@@ -5702,6 +5737,9 @@ function btFiltered(opts) {
   const ligues = liguesCochees("bt");
   // Sélections nationales écartées (case commune avec « Paris à venir »).
   const exclSel = selectionsExclues("bt");
+  // Historique minimum (commun avec « Paris à venir », voir histMinimum) :
+  // sauté avec opts.sansHist, comme la case de la matrice.
+  const histMin = opts.sansHist ? 0 : histMinimum("bt");
   // Issues pariées incluses pour "Vainqueur du match" (Domicile/Nul/
   // Extérieur) — voir issuesVmCochees, filtre propre à cette catégorie.
   const issuesVm = issuesVmCochees("bt");
@@ -5909,6 +5947,7 @@ function btFiltered(opts) {
     if (cats && !cats.includes(r.categorie)) return false;
     if (ligues && !ligues.has(ligueKey(r.pays, r.ligue))) return false;
     if (exclSel && estSelectionNationale(r.pays, r.ligue)) return false;
+    if (histMin && !passeHistMin(histMin, r)) return false;
     if (f === "won" && !r.gagne) return false;
     if (f === "lost" && r.gagne) return false;
     if (pred === "accord" && r.prediction_accord !== "accord") return false;
@@ -5955,17 +5994,25 @@ function btFiltered(opts) {
 function verdictsFiltresAvenir() {
   const ids = [
     "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uRho", "uNiveau", "uAccord", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uExclSel", "uHistMin",
     "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
     "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
   ];
+  // btFiltered lit les contrôles « bt » (jumeaux synchronisés) : on prend les
+  // deux, pour qu'une synchro arrivée après un premier rendu (curseur double,
+  // bornes envoyées l'une après l'autre) relance bien le calcul.
   const controles = [
     ...ids.map(id => $(id)).filter(Boolean),
+    ...ids.map(id => $("bt" + id.slice(1))).filter(Boolean),
     ...document.querySelectorAll("#uCatFilterBlocks select, .uLigueChk, .uIssueVmChk, .uScoreExChk"),
+    ...document.querySelectorAll("#btCatFilterBlocks select, .btLigueChk, .btIssueVmChk, .btScoreExChk"),
   ];
   const signature = controles.map(el => `${el.id || el.className}:${el.value}:${el.checked ? 1 : 0}`).join("|");
   if (!CURRENT_UPCOMING_VERDICTS || signature !== CURRENT_UPCOMING_VERDICT_SIGNATURE) {
     CURRENT_UPCOMING_VERDICTS = dcCategoryVerdicts(
-      btFiltered({sansHist: true, prospectif: true, sansCategories: true}),
+      // prospectif saute déjà la case de la matrice ; l'historique minimum, lui,
+      // s'applique aux paris à venir, donc aussi à leurs verdicts.
+      btFiltered({prospectif: true, sansCategories: true}),
       CATEGORIES_DC
     );
     CURRENT_UPCOMING_VERDICT_SIGNATURE = signature;
@@ -6166,6 +6213,11 @@ function renderBtActiveFilters(rowsFiltrees) {
   if (selectionsExclues("bt")) {
     add("Sélections nationales", "exclues",
       "Ligue des Nations, qualifications, amicaux internationaux… écartés (décochez « Exclure les sélections nationales » pour les inclure)");
+  }
+  // Actif par défaut lui aussi (30 matchs) : même raison.
+  if (histMinimum("bt")) {
+    add("Historique minimum", `${histMinimum("bt")} matchs par équipe`,
+      "Les deux équipes ont au moins ce nombre de matchs dans leur compétition : à domicile pour celle qui reçoit, à l'extérieur pour celle qui se déplace");
   }
 
   const odds = coteBornesActives("bt");
@@ -6628,6 +6680,8 @@ function majBlocMeilleurBk(rowsFiltrees) {
     </tr>`;
   }).join("");
 
+  majBlocAutresBouge(rowsFiltrees);
+
   // Courbe
   dessinerMeilleurBk(C);
 
@@ -6642,6 +6696,94 @@ function majBlocMeilleurBk(rowsFiltrees) {
     + `Comparaison théorique : elle suppose qu'on ait pu miser chez le site le plus généreux au moment du relevé, sans plafond de mise ni bonus ni délai, `
     + `et le gain mesuré vient du seul prix — il ne dit rien de plus sur la qualité du modèle.`;
   $("btMbkNotes").innerHTML = txt;
+}
+
+/* ---- La cote a-t-elle aussi bougé ailleurs ? (08/11/2026) ----
+   Pour chaque pari retenu, la même issue chez chaque autre site : premier (o) et dernier (f) relevé de ce site avant le
+   coup d'envoi, nombre de relevés (n) — champs de « cbr », voir apply_cotes_bookmakers_retro. Avec « Mouvement de la
+   cote » à 0 → 0 (défaut), ce sont des cotes restées inchangées chez Winamax : la question est de savoir si le reste du
+   marché, lui, a bougé. Une cote baissée ailleurs (raccourcie) alors qu'elle ne bouge pas chez Winamax laisse Winamax
+   au-dessus du marché ; une cote montée ailleurs (allongée) le laisse en dessous. */
+function autreMouvement(q) {
+  if (q.o == null || q.f == null || !(q.n >= 2)) return null;      // non mesurable
+  if (Math.abs(q.f - q.o) < 1e-9) return "inchangee";
+  return q.f > q.o ? "allongee" : "raccourcie";
+}
+function majBlocAutresBouge(rows) {
+  const corpsSite = $("btMbkBougeSite"), corps = $("btMbkBouge"), note = $("btMbkBougeNote");
+  if (!corpsSite || !corps) return;
+  const ordre = ((WIZARD_DATA.comparaison_bk || {}).autres || ["unibet", "betclic", "bwin"]);
+  const fr = x => x.toLocaleString("fr-FR");
+  const pc = (a, b) => b ? `${Math.round(a / b * 100)} %` : "—";
+  const parSite = {};
+  ordre.forEach(b => { parSite[b] = {n: 0, mes: 0, inchangee: 0, allongee: 0, raccourcie: 0}; });
+  const groupes = {
+    inchangee: {lib: "Inchangée partout", sous: "aucun site mesuré n'a bougé", rows: []},
+    raccourcie: {lib: "Raccourcie ailleurs", sous: "au moins un site a baissé sa cote, aucun ne l'a montée", rows: []},
+    allongee: {lib: "Allongée ailleurs", sous: "au moins un site a monté sa cote, aucun ne l'a baissée", rows: []},
+    mixte: {lib: "Sens contraires", sous: "un site l'a montée, un autre l'a baissée", rows: []},
+    nonmes: {lib: "Non mesurable", sous: "aucun autre site avec deux relevés de cette cote", rows: []},
+  };
+  let ancienFormat = 0;
+  rows.forEach(r => {
+    const mv = [];
+    (r.cbr || []).forEach(q => {
+      const s = parSite[q.b] || (parSite[q.b] = {n: 0, mes: 0, inchangee: 0, allongee: 0, raccourcie: 0});
+      s.n++;
+      if (q.n === undefined) ancienFormat++;
+      const m = autreMouvement(q);
+      if (!m) return;
+      s.mes++; s[m]++; mv.push(m);
+    });
+    const a = mv.includes("allongee"), c = mv.includes("raccourcie");
+    const g = !mv.length ? "nonmes" : (a && c ? "mixte" : (a ? "allongee" : (c ? "raccourcie" : "inchangee")));
+    groupes[g].rows.push(r);
+  });
+  const sites = Object.keys(parSite).filter(b => parSite[b].n > 0);
+  corpsSite.innerHTML = sites.length ? sites.map(b => {
+    const s = parSite[b];
+    return `<tr>
+      <td data-label=""><strong>${CBK_NOMS[b] || b}</strong></td>
+      <td data-label="Paris cotés" class="num">${fr(s.n)}</td>
+      <td data-label="Mesurables" class="num">${fr(s.mes)}</td>
+      <td data-label="Inchangée" class="num">${fr(s.inchangee)} · ${pc(s.inchangee, s.mes)}</td>
+      <td data-label="Allongée" class="num">${fr(s.allongee)} · ${pc(s.allongee, s.mes)}</td>
+      <td data-label="Raccourcie" class="num">${fr(s.raccourcie)} · ${pc(s.raccourcie, s.mes)}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="muted">Aucun autre site n'a coté ces paris.</td></tr>`;
+  const ligne = (G, avecNet) => {
+    const n = G.rows.length;
+    if (!n) return "";
+    const mise = G.rows.reduce((t, r) => t + btStakeFor(r), 0);
+    const net = G.rows.reduce((t, r) => t + r.profit * btStakeFor(r), 0);
+    const gagnes = G.rows.filter(r => r.gagne).length;
+    const roi = mise > 0 ? net / mise : null;
+    const cl = x => x == null ? "" : (x >= 0 ? "pos" : "neg");
+    return `<tr>
+      <td data-label=""><div><strong>${G.lib}</strong><span class="muted mbk-sous">${G.sous}</span></div></td>
+      <td data-label="Paris" class="num">${fr(n)}</td>
+      <td data-label="Réussite" class="num">${fr(gagnes)} · ${pc(gagnes, n)}</td>
+      <td data-label="Net Winamax" class="num ${cl(net)}">${fmtEur(net)}</td>
+      <td data-label="ROI" class="num ${cl(roi)}">${fmtPct(roi)}</td>
+    </tr>`;
+  };
+  corps.innerHTML = ["inchangee", "raccourcie", "allongee", "mixte", "nonmes"].map(k => ligne(groupes[k])).join("")
+    || '<tr><td colspan="5" class="muted">Aucun pari.</td></tr>';
+  if (note) {
+    const mesures = rows.length - groupes.nonmes.rows.length;
+    let txt = `${fr(mesures)} des ${fr(rows.length)} paris retenus ont au moins un autre site mesurable. `
+      + `Betclic ne lit le score exact qu'une fois par match (page du match) : ses cotes de score exact sont donc rarement mesurables. `
+      + `Les historiques des autres sites ne commencent qu'avec leur collecte, et le premier relevé d'un site peut être plus tardif que celui de Winamax.`;
+    if (mesures && mesures < MIN_BETS) {
+      txt += ` <strong>Petit échantillon</strong> : la répartition est déjà parlante, mais les écarts de gain entre groupes ne veulent encore rien dire.`;
+    } else if (mesures && mesures < MIN_BETS * 3) {
+      txt += ` <strong>Échantillon encore mince</strong> : les écarts de gain entre groupes restent fragiles.`;
+    }
+    if (ancienFormat) {
+      txt += ` ${fr(ancienFormat)} cote${ancienFormat > 1 ? "s" : ""} viennent d'un ancien calcul sans historique : relancez le wizard.`;
+    }
+    note.innerHTML = txt;
+  }
 }
 
 function dessinerMeilleurBk(C) {
@@ -7820,6 +7962,10 @@ function renderHistMatrix(rowsSansHist) {
 
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+  // Cases entièrement sous l'« Historique minimum » des filtres : estompées
+  // (la grille reste complète, voir plus haut).
+  const histMin = histMinimum("bt");
+  const sousMin = b => histMin > 0 && b.max <= histMin;
 
   let thead = '<tr><th class="score-corner">Hist. dom. ↓ · Hist. ext. →</th>';
   HIST_BUCKETS.forEach(b => { thead += `<th class="num">${b.key}</th>`; });
@@ -7832,9 +7978,11 @@ function renderHistMatrix(rowsSansHist) {
       const key = rb.key + "|" + cb.key;
       const c = agg[key];
       const selected = !!(BT_HIST_SELECTION && BT_HIST_SELECTION.dom === rb.key && BT_HIST_SELECTION.ext === cb.key);
-      const selCls = selected ? " score-cell-selected" : "";
+      const horsMin = sousMin(rb) || sousMin(cb);
+      const selCls = (selected ? " score-cell-selected" : "") + (horsMin ? " hist-hors-min" : "");
+      const horsTxt = horsMin ? ` ; écartée par l'historique minimum de ${histMin} matchs` : "";
       if (!c) {
-        tbody += `<td class="score-cell score-cell-empty${selCls}" data-hist="${key}" tabindex="0" aria-label="Historique domicile ${rb.key}, extérieur ${cb.key} : aucun pari dans cette case"><span class="muted">—</span></td>`;
+        tbody += `<td class="score-cell score-cell-empty${selCls}" data-hist="${key}" tabindex="0" aria-label="Historique domicile ${rb.key}, extérieur ${cb.key} : aucun pari dans cette case${horsTxt}"><span class="muted">—</span></td>`;
         return;
       }
       const roi = c.roi ?? 0;
@@ -7845,7 +7993,7 @@ function renderHistMatrix(rowsSansHist) {
       const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
       // Pas de title= natif : le panneau de détail au clic remplace le tooltip
       // natif, même logique que les deux autres matrices.
-      tbody += `<td class="score-cell ${cls}${peuFiable}${selCls}" style="background:${bg}" data-hist="${key}" tabindex="0" aria-label="Afficher le détail et filtrer : historique domicile ${rb.key}, extérieur ${cb.key} ; ${c.n} paris ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+      tbody += `<td class="score-cell ${cls}${peuFiable}${selCls}" style="background:${bg}" data-hist="${key}" tabindex="0" aria-label="Afficher le détail et filtrer : historique domicile ${rb.key}, extérieur ${cb.key} ; ${c.n} paris ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}${horsTxt}">
                   <div class="score-net">${fmtEur(c.net)}</div>
                   <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
                   <div class="score-roi">${fmtPct(roi)}</div>
@@ -7863,6 +8011,7 @@ function renderHistMatrix(rowsSansHist) {
       <span class="score-legend-bar" aria-hidden="true"></span>
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
       <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
+      ${histMin ? `<span class="hist-hors-min-key"><span aria-hidden="true"></span> sous l'historique minimum (${histMin} matchs)</span>` : ""}
       <span class="muted score-legend-note">ROI par case · pastille ambre = moins de
       ${HIST_CELL_SEUIL_FIABLE} paris · cliquez sur une case pour filtrer toute la page sur cette
       combinaison (cliquez à nouveau pour l'enlever)</span>`;
@@ -7889,9 +8038,14 @@ function renderHistMatrix(rowsSansHist) {
   if (actifEl) {
     if (BT_HIST_SELECTION) {
       actifEl.style.display = "";
+      const bSel = k => HIST_BUCKETS.find(b => b.key === k);
+      const conflit = (bSel(BT_HIST_SELECTION.dom) && sousMin(bSel(BT_HIST_SELECTION.dom)))
+                   || (bSel(BT_HIST_SELECTION.ext) && sousMin(bSel(BT_HIST_SELECTION.ext)));
       actifEl.innerHTML = `Filtre « historique » actif sur toute la page : domicile
         <strong>${BT_HIST_SELECTION.dom}</strong> · extérieur <strong>${BT_HIST_SELECTION.ext}</strong>
-        — <a href="#" id="btHistClear">réinitialiser</a>`;
+        — <a href="#" id="btHistClear">réinitialiser</a>`
+        + (conflit ? `<br>Cette case est sous l'historique minimum des filtres (${histMin} matchs) :
+        aucun pari ne passe les deux. Choisissez « Aucun minimum » pour l'explorer.` : "");
       const clearLink = $("btHistClear");
       if (clearLink) clearLink.addEventListener("click", ev => {
         ev.preventDefault();
@@ -10188,7 +10342,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel","btHistMin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
