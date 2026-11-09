@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261109202151">
+<link rel="stylesheet" href="style.css?v=20261109202822">
 </head>
 <body>
 <div class="topbar">
@@ -1078,8 +1078,7 @@
         matrices ci-dessus, <strong>cette grille est cliquable</strong> : sélectionner une case filtre
         toute la page (KPI, tableau par catégorie, détail des paris…) sur cette combinaison précise —
         cliquez à nouveau pour l'enlever. La grille elle-même reste toujours complète, quel que soit le
-        filtre actif, pour pouvoir comparer une case avec une autre ; les cases estompées sont écartées
-        par le réglage « Historique minimum » des filtres (30 matchs par équipe par défaut). Une pastille ambre signale un
+        filtre actif, pour pouvoir comparer une case avec une autre. Une pastille ambre signale un
         échantillon inférieur à <span id="btHistSeuilTxt">5</span> paris : la teinte reste lisible, mais
         ce petit volume ne permet pas de tirer une conclusion solide.
       </p>
@@ -1156,6 +1155,40 @@
       <div class="score-legend" id="btMvtMatLegend"></div>
       <p class="muted" id="btMvtMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
       <p class="muted" id="btMvtMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
+
+      </div>
+    </details>
+
+<details class="panel panel-foldable" id="btEvMatPanel" open>
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="1.6" stroke="currentColor" stroke-width="1.5"/><path d="M3 8h14M3 12.5h14M8 3v14" stroke="currentColor" stroke-width="1.3"/><path d="M11.5 15.5 16 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Espérance — matrice des gains <span class="hint">— y compris ce que votre filtre d'espérance écarte</span></h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Gain net selon l'espérance calculée par le modèle pour chaque pari, avec la lecture et les réglages
+        actifs (petits scores, niveau de buts, absences, mélange avec le marché…). La matrice reprend tous vos
+        filtres de la page <strong>sauf « Espérance » et « Espérance maximum »</strong> : vous voyez aussi les
+        paris que ces réglages écartent, et les tranches qu'ils retiennent sont marquées d'un liseré. Avec « un
+        seul pari par match », chaque tranche garde son meilleur pari par match. Sous chaque tranche,
+        l'espérance moyenne de ses paris : si le modèle est juste, le ROI réel doit s'en approcher sur un
+        grand nombre de paris. Un clic sur une case affiche ses paris.
+      </p>
+      <div class="jour-modes" id="btEvMatModes" role="group" aria-label="Colonnes de la matrice">
+        <button type="button" class="jour-mode is-active" data-col="cat" aria-pressed="true">Type de pari</button>
+        <button type="button" class="jour-mode" data-col="cote" aria-pressed="false">Plage de cote</button>
+      </div>
+      <div class="tablewrap">
+        <div class="chart-holder" id="btEvMatHolder">
+          <div id="btEvMatWrap"></div>
+        </div>
+      </div>
+      <div class="matrix-inspector" id="btEvMatInspector" hidden>
+        <div class="chart-tooltip score-tooltip" id="btEvMatTooltip" hidden></div>
+      </div>
+      <p class="muted" id="btEvMatEmpty" style="display:none; font-size:.85rem">Aucun pari ne correspond à ces filtres.</p>
+      <div class="score-legend" id="btEvMatLegend"></div>
+      <p class="muted" id="btEvMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
+      <p class="muted" id="btEvMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
 
       </div>
     </details>
@@ -2496,7 +2529,48 @@
 </div>
 
 
-<script src="https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261109202245"></script>
-<script src="app.js?v=20261109202151"></script>
+<div id="chargementDonnees" class="chargement-donnees" role="status" aria-live="polite">Chargement des données…</div>
+<script>
+/* Chargement des données (09/11/2026). donnees.js dépassait 160 Mo : la page restait vide (« généré — ») tant
+   qu'il n'était pas entièrement téléchargé, surtout sur téléphone. On charge d'abord donnees_gz.js — les mêmes
+   données compressées (gzip, en base64), environ 8 fois plus légères — décompressées ici, puis app.js. Repli sur
+   donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
+   sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
+(function () {
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261109202928", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261109202928", APP = "app.js?v=20261109202822";
+  var bandeau = document.getElementById("chargementDonnees");
+  function dire(t) { if (bandeau) bandeau.textContent = t; }
+  function script(src, ok, ko) {
+    var s = document.createElement("script");
+    s.src = src; s.onload = ok; s.onerror = ko;
+    document.body.appendChild(s);
+  }
+  function lancerApp() {
+    dire("Préparation du tableau de bord…");
+    script(APP, function () { if (bandeau && bandeau.parentNode) bandeau.parentNode.removeChild(bandeau); },
+           function () { dire("Le tableau de bord n'a pas pu se charger : recharge la page."); });
+  }
+  function complet() {
+    dire("Chargement des données (version complète, plus lente)…");
+    script(DONNEES, lancerApp, function () { dire("Données introuvables : recharge la page dans une minute."); });
+  }
+  if (!("DecompressionStream" in window) || !window.Response || !window.Blob) { complet(); return; }
+  script(DONNEES_GZ, function () {
+    try {
+      var b64 = window.WIZARD_DATA_GZ;
+      window.WIZARD_DATA_GZ = null;
+      if (!b64) throw new Error("données compressées vides");
+      dire("Décompression des données…");
+      var bin = atob(b64), n = bin.length, octets = new Uint8Array(n);
+      b64 = null;
+      for (var i = 0; i < n; i++) octets[i] = bin.charCodeAt(i);
+      bin = null;
+      new Response(new Blob([octets]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
+        .then(function (texte) { window.WIZARD_DATA = JSON.parse(texte); lancerApp(); })
+        .catch(complet);
+    } catch (e) { complet(); }
+  }, complet);
+})();
+</script>
 </body>
 </html>
