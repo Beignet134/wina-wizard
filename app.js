@@ -5897,8 +5897,10 @@ function btFiltered(opts) {
     // le commentaire plus haut). Comparée au mode actif : avec α < 1
     // l'espérance est celle du mélange, pas celle du modèle seul — sinon le
     // filtre contredirait les chiffres affichés dans les colonnes.
-    const seuilEv = parseFloat(valCat("btEvPos", r.categorie, "-999"));
-    const seuilEvMax = parseFloat(valCat("btEvMax", r.categorie, "999"));
+    // opts.sansEv (09/11/2026) : tout sauf l'espérance — c'est ce que la
+    // matrice des gains par espérance doit voir (voir renderEvMatrix).
+    const seuilEv = opts.sansEv ? -999 : parseFloat(valCat("btEvPos", r.categorie, "-999"));
+    const seuilEvMax = opts.sansEv ? 999 : parseFloat(valCat("btEvMax", r.categorie, "999"));
     if (seuilEv > -900 || seuilEvMax < 900) {
       const ev = alpha < 1 ? blended(r, alpha).ev : r.ev;
       if (seuilEv > -900) {
@@ -6970,6 +6972,11 @@ function renderBacktest() {
   renderMvtMatrix(mvtBornesActives("bt").actif || dedupBt
                     ? btFiltered({sansMvt: true, sansDedup: true}) : rowsFiltrees,
                   rowsFiltrees);
+  // Matrice des gains par espérance (09/11/2026) : même principe, sans le
+  // filtre d'espérance.
+  renderEvMatrix(evMatFiltreActif() || dedupBt
+                   ? btFiltered({sansEv: true, sansDedup: true}) : rowsFiltrees,
+                 rowsFiltrees);
   renderBtActiveFilters(rowsFiltrees);
   majBlocCbkRetro(rowsFiltrees);
   majBlocMeilleurBk(rowsFiltrees);
@@ -7962,8 +7969,8 @@ function renderHistMatrix(rowsSansHist) {
 
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
-  // Cases entièrement sous l'« Historique minimum » des filtres : estompées
-  // (la grille reste complète, voir plus haut).
+  // Cases entièrement sous l'« Historique minimum » des filtres (la grille reste
+  // complète, voir plus haut) : signalées au clic par le bandeau de conflit.
   const histMin = histMinimum("bt");
   const sousMin = b => histMin > 0 && b.max <= histMin;
 
@@ -7978,9 +7985,11 @@ function renderHistMatrix(rowsSansHist) {
       const key = rb.key + "|" + cb.key;
       const c = agg[key];
       const selected = !!(BT_HIST_SELECTION && BT_HIST_SELECTION.dom === rb.key && BT_HIST_SELECTION.ext === cb.key);
+      // Couleurs normales pour toutes les cases (demande du 09/11 : plus d'estompage
+      // des cases sous l'historique minimum) ; seul le libellé d'accessibilité le signale.
       const horsMin = sousMin(rb) || sousMin(cb);
-      const selCls = (selected ? " score-cell-selected" : "") + (horsMin ? " hist-hors-min" : "");
-      const horsTxt = horsMin ? ` ; écartée par l'historique minimum de ${histMin} matchs` : "";
+      const selCls = selected ? " score-cell-selected" : "";
+      const horsTxt = horsMin ? ` ; sous l'historique minimum de ${histMin} matchs` : "";
       if (!c) {
         tbody += `<td class="score-cell score-cell-empty${selCls}" data-hist="${key}" tabindex="0" aria-label="Historique domicile ${rb.key}, extérieur ${cb.key} : aucun pari dans cette case${horsTxt}"><span class="muted">—</span></td>`;
         return;
@@ -8011,7 +8020,6 @@ function renderHistMatrix(rowsSansHist) {
       <span class="score-legend-bar" aria-hidden="true"></span>
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
       <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
-      ${histMin ? `<span class="hist-hors-min-key"><span aria-hidden="true"></span> sous l'historique minimum (${histMin} matchs)</span>` : ""}
       <span class="muted score-legend-note">ROI par case · pastille ambre = moins de
       ${HIST_CELL_SEUIL_FIABLE} paris · cliquez sur une case pour filtrer toute la page sur cette
       combinaison (cliquez à nouveau pour l'enlever)</span>`;
@@ -8555,6 +8563,284 @@ initMatrixCellInspector({
     r => mvtMatMetaPari(r)
   )
 });
+/* ---- Espérance — matrice des gains (09/11/2026) ----
+   Demande de l'utilisateur : « ajoute une autre matrice de résultat par rapport à l'espérance calculée ».
+   Même construction que la matrice par mouvement de cote (renderMvtMatrix) : lignes = tranches d'espérance
+   (celle du mode affiché : modèle seul, ou mélange avec le marché si α < 1, comme le filtre), colonnes = type
+   de pari ou plage de cote, une colonne Total. Calculée sur btFiltered({sansEv: true}) : tous les filtres de la
+   page sauf « Espérance » et « Espérance maximum ». Liseré = tranche retenue par ces réglages, pour toutes
+   les catégories présentes (en partie : à cheval sur un seuil, ou retenue pour certaines catégories seulement).
+   Tranches positives ouvertes à gauche, fermées à droite (« Max +50 % » garde 50 %, « Positive » écarte 0). */
+const EV_MAT_TRANCHES = [
+  {k: "neg",  lo: -Infinity, hi: 0,  label: "≤ 0 %"},
+  {k: "e0",   lo: 0,    hi: 0.05,     label: "0 à +5 %"},
+  {k: "e5",   lo: 0.05, hi: 0.10,     label: "+5 à +10 %"},
+  {k: "e10",  lo: 0.10, hi: 0.20,     label: "+10 à +20 %"},
+  {k: "e20",  lo: 0.20, hi: 0.30,     label: "+20 à +30 %"},
+  {k: "e30",  lo: 0.30, hi: 0.50,     label: "+30 à +50 %"},
+  {k: "e50",  lo: 0.50, hi: 1,        label: "+50 à +100 %"},
+  {k: "e100", lo: 1,    hi: Infinity, label: "> +100 %"},
+];
+const EV_MAT_NON_CALC = {k: "nc", label: "Non calculée", lo: null, hi: null};
+const EV_MAT_PAR_CLE = Object.fromEntries([...EV_MAT_TRANCHES, EV_MAT_NON_CALC].map(t => [t.k, t]));
+const EV_MAT_COLONNES = {cat: MVT_MAT_COLONNES.cat, cote: MVT_MAT_COLONNES.cote};
+const EV_MAT_LS = "ww_bt_evmat_col";
+let BT_EV_MAT_COL = (() => {
+  try { const v = localStorage.getItem(EV_MAT_LS); return EV_MAT_COLONNES[v] ? v : "cat"; }
+  catch (e) { return "cat"; }
+})();
+let EV_MAT_DATA = {};
+let EV_MAT_DERNIER = null;
+
+function evMatValeur(r) {
+  const alpha = blendAlpha("btAlpha");
+  const ev = alpha < 1 ? blended(r, alpha).ev : r.ev;
+  return ev == null || isNaN(ev) ? null : ev;
+}
+function evMatTranche(r) {
+  const ev = evMatValeur(r);
+  if (ev == null) return EV_MAT_NON_CALC.k;
+  if (ev <= 0) return "neg";
+  const t = EV_MAT_TRANCHES.find(x => x.k !== "neg" && ev > x.lo && ev <= x.hi);
+  return t ? t.k : null;
+}
+function evMatBornes(cat) {
+  return {lo: parseFloat(valCat("btEvPos", cat, "-999")), hi: parseFloat(valCat("btEvMax", cat, "999"))};
+}
+function evMatFiltreActif(cats) {
+  return (cats || CATEGORIES_DC).some(c => { const b = evMatBornes(c); return b.lo > -900 || b.hi < 900; });
+}
+// Une tranche face aux réglages d'UNE catégorie : "tout", "partiel" ou "".
+function evMatCouvreCat(t, cat) {
+  const b = evMatBornes(cat);
+  const L = b.lo > -900 ? b.lo : -Infinity, H = b.hi < 900 ? b.hi : Infinity;
+  if (t.k === "nc") return L === -Infinity ? "tout" : "";
+  if (t.hi <= L || t.lo >= H) return "";
+  return (t.lo >= L && t.hi <= H) ? "tout" : "partiel";
+}
+function evMatCouverture(t, cats) {
+  const v = cats.map(c => evMatCouvreCat(t, c));
+  if (!v.length) return "";
+  if (v.every(x => x === "tout")) return "tout";
+  if (v.every(x => x === "")) return "";
+  return "partiel";
+}
+function evMatPct(v) {
+  return v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1}) + " %";
+}
+function marquerModesEvMat() {
+  document.querySelectorAll("#btEvMatModes .jour-mode[data-col]").forEach(b => {
+    const actif = b.dataset.col === BT_EV_MAT_COL;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+
+function renderEvMatrix(rowsBruts, rowsPage) {
+  const wrap = $("btEvMatWrap");
+  if (!wrap) return;
+  const empty = $("btEvMatEmpty"), legend = $("btEvMatLegend");
+  const note = $("btEvMatNote"), bestEl = $("btEvMatBest");
+  EV_MAT_DERNIER = {rowsBruts, rowsPage};
+  marquerModesEvMat();
+  const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
+  const rowsSansFiltre = dedupActif
+    ? mvtMatDedup(rowsBruts, r => `${r.match}|${r.date}|${r.categorie}`) : rowsBruts;
+  const rows = dedupActif
+    ? mvtMatDedup(rowsBruts, r => `${r.match}|${r.date}|${r.categorie}|${evMatTranche(r)}`) : rowsBruts;
+
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    [legend, note].forEach(el => { if (el) el.innerHTML = ""; });
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    EV_MAT_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  const dim = EV_MAT_COLONNES[BT_EV_MAT_COL] || EV_MAT_COLONNES.cat;
+  const gLabel = {};
+  dim.groupes.forEach(g => { gLabel[g.k] = g.label; });
+  const parCase = {};
+  let nSansGroupe = 0;
+  const ajouter = (t, g, r) => {
+    const k = t + "|" + g;
+    (parCase[k] = parCase[k] || {t, g, rows: []}).rows.push(r);
+  };
+  rows.forEach(r => {
+    const t = evMatTranche(r);
+    if (!t) return;
+    const g = dim.cle(r);
+    if (g != null && gLabel[g] != null) ajouter(t, g, r); else nSansGroupe++;
+    ajouter(t, "*", r);
+  });
+  const presents = new Set(Object.values(parCase).map(c => c.g));
+  const groupes = dim.groupes.filter(g => presents.has(g.k));
+  const avecTotal = groupes.length !== 1 || nSansGroupe > 0;
+  const totalTeinte = groupes.length === 0;
+
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const c = parCase[k];
+    const s = btAgg(c.rows);
+    const net = c.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    const attMarche = c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0);
+    const evs = c.rows.map(evMatValeur).filter(v => v != null);
+    const evMoy = evs.length ? evs.reduce((a, b) => a + b, 0) / evs.length : null;
+    agg[k] = Object.assign({
+      net, t: c.t, g: c.g, rows: c.rows, attMarche, evMoy,
+      gLabel: c.g === "*" ? "toutes colonnes" : (gLabel[c.g] || c.g),
+      fiable: s.n >= MVT_TRANCHE_SEUIL_FIABLE,
+    }, s);
+  });
+  EV_MAT_DATA = agg;
+
+  const teintees = Object.values(agg).filter(c => (c.g === "*") === totalTeinte && c.roi != null);
+  const roiVals = teintees.map(c => c.roi);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+
+  const cats = [...new Set(rowsBruts.map(r => r.categorie))];
+  const filtreActif = evMatFiltreActif(cats);
+  const tranches = EV_MAT_TRANCHES.filter(t => t.k !== "neg" || Object.values(agg).some(c => c.t === "neg"))
+    .concat(Object.values(agg).some(c => c.t === "nc") ? [EV_MAT_NON_CALC] : []);
+  let partiels = false;
+
+  const cellule = (key, c, desc, estTotal) => {
+    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+    const roi = c.roi ?? 0;
+    const neutre = estTotal && !totalTeinte;
+    const cls = roi >= 0 ? "pos" : "neg";
+    const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
+    let style = "";
+    if (!neutre) {
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    return `<td class="score-cell ${cls}${peuFiable}${neutre ? " score-cell-total" : ""}"${style} data-evmat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+        <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
+        <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+        <div class="score-roi">${fmtPct(roi)}</div>
+      </td>`;
+  };
+
+  let thead = `<tr><th class="score-corner">Espérance ↓<br>${dim.coin}</th>`;
+  groupes.forEach(g => { thead += `<th class="num">${g.label}</th>`; });
+  if (avecTotal) thead += `<th class="num score-total-head">Total</th>`;
+  thead += "</tr>";
+
+  let tbody = "";
+  tranches.forEach(t => {
+    const couv = filtreActif ? evMatCouverture(t, cats) : "";
+    if (couv === "partiel") partiels = true;
+    const cls = [t.k === "nc" ? "mvt-row-nm" : "",
+                 couv === "tout" ? "mvt-row-filtre" : "", couv === "partiel" ? "mvt-row-filtre-partiel" : ""]
+                .filter(Boolean).join(" ");
+    const tot = agg[`${t.k}|*`];
+    const moy = tot && tot.evMoy != null ? `moy. ${evMatPct(tot.evMoy)}` : "";
+    const couvTxt = couv === "tout" ? " (retenue par votre filtre)" : couv === "partiel" ? " (en partie retenue par votre filtre)" : "";
+    tbody += `<tr${cls ? ` class="${cls}"` : ""}><th class="num" scope="row" title="Espérance ${t.label}${couvTxt}">${t.label}<span class="mvt-sens">${moy}</span></th>`;
+    groupes.forEach(g => {
+      tbody += cellule(`${t.k}|${g.k}`, agg[`${t.k}|${g.k}`], `espérance ${t.label}, ${g.label}`, false);
+    });
+    if (avecTotal) tbody += cellule(`${t.k}|*`, agg[`${t.k}|*`], `espérance ${t.label}, toutes colonnes`, true);
+    tbody += "</tr>";
+  });
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix ev-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  if (legend) {
+    const pire = roiVals.length ? arrMin(roiVals) : 0;
+    const meilleur = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pire, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${MVT_TRANCHE_SEUIL_FIABLE} paris</span>
+      ${filtreActif ? `<span class="mvt-filtre-key"><span aria-hidden="true"></span> retenu par votre filtre d'espérance</span>` : ""}
+      ${partiels ? `<span class="mvt-filtre-key partiel"><span aria-hidden="true"></span> en partie (seuil dans la tranche, ou selon la catégorie)</span>` : ""}
+      <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise ·
+      ✓ = paris gagnés · cliquez une case pour voir ses paris</span>`;
+  }
+  const resume = rs => {
+    const s = btAgg(rs);
+    const net = rs.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    return `<strong>${fmtEur(net)}</strong> (ROI ${fmtPct(s.roi)}, ${s.n} pari${s.n > 1 ? "s" : ""})`;
+  };
+  if (note) {
+    let txt = `${rowsSansFiltre.length} pari${rowsSansFiltre.length > 1 ? "s" : ""} sur vos filtres hors espérance`;
+    if (dedupActif) txt += " · chaque tranche garde son meilleur pari par match et par catégorie";
+    if (!filtreActif) {
+      txt += " · filtre d'espérance inactif.";
+    } else {
+      const reglages = cats.map(c => {
+        const b = evMatBornes(c);
+        const lo = b.lo > -900 ? (b.lo === 0 ? "> 0 %" : `≥ ${evMatPct(b.lo)}`) : "";
+        const hi = b.hi < 900 ? `≤ ${evMatPct(b.hi)}` : "";
+        return `${MVT_MAT_CAT_COURT[c] || c} : ${[lo, hi].filter(Boolean).join(" et ") || "aucun"}`;
+      });
+      txt += ` · vos réglages : ${reglages.join(" ; ")}`;
+      // Un match peut avoir un pari dans deux tranches retenues : la page n'en
+      // garde qu'un, la matrice un par tranche (comme la matrice par mouvement).
+      const nMarques = rows.filter(r => {
+        const t = EV_MAT_PAR_CLE[evMatTranche(r)];
+        return t && evMatCouvreCat(t, r.categorie) !== "";
+      }).length;
+      if (dedupActif && rowsPage && nMarques !== rowsPage.length) {
+        txt += ` · la page compte ${rowsPage.length} paris : elle ne garde qu'un pari par match et par catégorie sur toute votre plage d'espérance`;
+      }
+      txt += ".";
+    }
+    note.textContent = txt;
+  }
+  if (bestEl) {
+    const phrases = [];
+    if (filtreActif && rowsPage) {
+      phrases.push(`Avec votre filtre d'espérance : ${resume(rowsPage)} · sans ce filtre : ${resume(rowsSansFiltre)}.`);
+    }
+    const totaux = tranches.map(t => agg[`${t.k}|*`]).filter(c => c && c.fiable);
+    if (totaux.length >= 2) {
+      const parNet = totaux.slice().sort((x, y) => y.net - x.net);
+      const decrire = c => `<strong>espérance ${EV_MAT_PAR_CLE[c.t].label}</strong> (${fmtEur(c.net)}, ROI ${fmtPct(c.roi)} pour ${evMatPct(c.evMoy)} attendus, ${c.n} paris)`;
+      phrases.push(`Toutes colonnes confondues : ${decrire(parNet[0])} rapporte le plus · ${decrire(parNet[parNet.length - 1])} le moins.`);
+    } else {
+      phrases.push(`Pas encore assez de tranches d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris pour comparer.`);
+    }
+    bestEl.innerHTML = phrases.join("<br>");
+  }
+}
+
+(function initEvMatModes() {
+  const groupe = $("btEvMatModes");
+  if (!groupe) return;
+  marquerModesEvMat();
+  groupe.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-col]");
+    if (!bouton || !groupe.contains(bouton) || bouton.dataset.col === BT_EV_MAT_COL) return;
+    if (!EV_MAT_COLONNES[bouton.dataset.col]) return;
+    BT_EV_MAT_COL = bouton.dataset.col;
+    try { localStorage.setItem(EV_MAT_LS, BT_EV_MAT_COL); } catch (e) { /* confort seulement */ }
+    if (EV_MAT_DERNIER) renderEvMatrix(EV_MAT_DERNIER.rowsBruts, EV_MAT_DERNIER.rowsPage);
+    else marquerModesEvMat();
+  });
+})();
+
+initMatrixCellInspector({
+  holderId: "btEvMatHolder", panelId: "btEvMatPanel",
+  inspectorId: "btEvMatInspector", tooltipId: "btEvMatTooltip",
+  dataKey: "evmat", getData: () => EV_MAT_DATA,
+  rowMeta: r => evMatMetaPari(r),
+  buildDetails: c => matrixDetailMarkup(
+    c, `Espérance ${EV_MAT_PAR_CLE[c.t].label} · ${c.gLabel}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} pour ${evMatPct(c.evMoy)} d'espérance moyenne · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+      + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+    r => evMatMetaPari(r)
+  )
+});
+function evMatMetaPari(r) {
+  return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.colonne} · cote ${r.cote} · espérance ${evMatPct(evMatValeur(r))}`;
+}
+
 function mvtMatMetaPari(r) {
   const mvt = r.raccourcit == null ? "1 capture"
     : `${mvtMatPtsTxt(mvtMatPoints(r))} · ${r.n_captures} relevés`;
