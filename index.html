@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261109202822">
+<link rel="stylesheet" href="style.css?v=20261109204932">
 </head>
 <body>
 <div class="topbar">
@@ -1171,11 +1171,19 @@
         paris que ces réglages écartent, et les tranches qu'ils retiennent sont marquées d'un liseré. Avec « un
         seul pari par match », chaque tranche garde son meilleur pari par match. Sous chaque tranche,
         l'espérance moyenne de ses paris : si le modèle est juste, le ROI réel doit s'en approcher sur un
-        grand nombre de paris. Un clic sur une case affiche ses paris.
+        grand nombre de paris. <strong>Tranches</strong> : chaque pari n'est compté qu'une fois, pour voir où se
+        fait l'argent. <strong>Au moins</strong> : une ligne par réglage du filtre « Espérance », pour voir ce que
+        chacun donnerait. Un clic sur une case affiche ses paris.
       </p>
-      <div class="jour-modes" id="btEvMatModes" role="group" aria-label="Colonnes de la matrice">
-        <button type="button" class="jour-mode is-active" data-col="cat" aria-pressed="true">Type de pari</button>
-        <button type="button" class="jour-mode" data-col="cote" aria-pressed="false">Plage de cote</button>
+      <div class="ev-mat-commandes">
+        <div class="jour-modes" id="btEvMatVue" role="group" aria-label="Lignes de la matrice">
+          <button type="button" class="jour-mode is-active" data-vue="tranches" aria-pressed="true" title="Une ligne par tranche d'espérance : chaque pari n'est compté qu'une fois">Tranches</button>
+          <button type="button" class="jour-mode" data-vue="cumul" aria-pressed="false" title="Une ligne par réglage du filtre « Espérance » : ce que donnerait la page avec ce réglage">Au moins</button>
+        </div>
+        <div class="jour-modes" id="btEvMatModes" role="group" aria-label="Colonnes de la matrice">
+          <button type="button" class="jour-mode is-active" data-col="cat" aria-pressed="true">Type de pari</button>
+          <button type="button" class="jour-mode" data-col="cote" aria-pressed="false">Plage de cote</button>
+        </div>
       </div>
       <div class="tablewrap">
         <div class="chart-holder" id="btEvMatHolder">
@@ -2537,7 +2545,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261109202928", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261109202928", APP = "app.js?v=20261109202822";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261109205020", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261109205020", APP = "app.js?v=20261109204932";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
