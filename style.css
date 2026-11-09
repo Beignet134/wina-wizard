@@ -681,6 +681,18 @@ tbody tr:hover { background: rgba(128,175,255,.08); }
 .hist-matrix .score-cell:not(.score-cell-empty):hover {
   outline: 2px solid var(--violet); outline-offset: -2px;
 }
+/* Cases sous l'« Historique minimum » des filtres (voir histMinimum) :
+   estompées, toujours lisibles et cliquables pour le détail. */
+.hist-matrix .score-cell.hist-hors-min { opacity: .38; filter: saturate(.4); }
+.hist-matrix .score-cell.hist-hors-min:hover, .hist-matrix .score-cell.hist-hors-min:focus-visible { opacity: .8; }
+.hist-hors-min-key {
+  display: inline-flex; align-items: center; gap: .35rem; font-size: .7rem;
+  color: var(--ink-dim); white-space: nowrap;
+}
+.hist-hors-min-key > span {
+  display: inline-block; width: .9rem; height: .9rem; border-radius: 3px;
+  background: rgba(60,232,143,.5); opacity: .38; filter: saturate(.4);
+}
 /* Matrice des gains par mouvement de cote (voir renderMvtMatrix) : cases
    cliquables pour le détail, en-têtes de ligne figés au défilement
    horizontal (8 colonnes ne tiennent pas sur un téléphone), et un liseré
