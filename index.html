@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261111104030">
+<link rel="stylesheet" href="style.css?v=20261111110153">
 </head>
 <body>
 <div class="topbar">
@@ -1056,7 +1056,7 @@
         rouge au vert selon le ROI de la case, et la diagonale encadrée marque les paris gagnés
         (issue pariée = issue réelle). Une pastille ambre signale un échantillon inférieur à <span id="btResultSeuilTxt">5</span> paris : la teinte reste lisible, mais ce petit volume ne permet pas de tirer une conclusion solide. La colonne « Total » additionne
         le gain net des 3 cases de la ligne : le résultat de tous les paris joués sur cette issue,
-        quel qu'ait été le résultat réel.
+        quel qu'ait été le résultat réel. La ligne « Total » fait de même par résultat réel du match.
       </p>
       <div class="tablewrap">
         <div class="chart-holder" id="btResultHolder">
@@ -2594,7 +2594,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111104124", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111104124", APP = "app.js?v=20261111104030";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111110236", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111110236", APP = "app.js?v=20261111110153";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
