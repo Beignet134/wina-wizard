@@ -1052,7 +1052,8 @@ function niveauProba(lh, la, rho, col, r = null) {
 }
 
 function corrigerNiveau(rows, actif, rho = false) {
-  if (!actif || !niveauDispo()) return rows;
+  // actif : true ou code de niveauCode() ("n", "nd"…), voir _avecNiveau.
+  if (!_avecNiveau(actif) || !niveauDispo()) return rows;
   const r0 = rho ? MODELE_RHO.corrige : MODELE_RHO.actuel;
   const arr = v => (v == null ? v : Math.round(v * 100) / 100);
   return rows.map(r => {
@@ -1128,6 +1129,229 @@ function majNiveauNote(prefixe) {
     + `(passé seulement, au moins ${NIVEAU_MIN_MATCHS} matchs). Aujourd'hui : ×${v(fa.f)} pour la lecture actuelle `
     + `(${fa.n} matchs)${fl ? `, ×${v(fl.f)} pour la lecture « ${lect === "dc" ? "Dixon-Coles complet" : "tous matchs"} »` : ""}. `
     + `Moins de petits scores et de nuls annoncés ; « Les 2 équipes marquent » ne bouge pas. Combinable avec les autres réglages.`;
+}
+
+// ---------------------------------------------------------------------------
+// DÉFENSE CORRIGÉE (réglage « Défense », option ajoutée le 11/11/2026). Les
+// notes de défense des forces « Actuelles » exagèrent leur effet sur le
+// NOMBRE de buts : sur 3 029 matchs du 26/08 au 10/11, les matchs aux défenses
+// notées solides (moyenne des deux < 0,8) ont vu 3,03 buts pour 2,41 prévus,
+// ceux aux défenses fragiles (≥ 1,2) 2,94 pour 3,26 ; les notes d'attaque,
+// elles, tombent juste. En revanche, elles disent juste sur le RAPPORT DE
+// FORCES : rapprocher chaque note de la moyenne équipe par équipe améliorait
+// le score exact et le plus/moins mais dégradait le 1X2 (log-loss +8,6 sur
+// 2 716 matchs, dans chacune des trois périodes). D'où la correction retenue :
+// les buts attendus du match sont recalculés avec des notes rapprochées de la
+// moyenne, défense' = 1 + k × (défense − 1), puis ce NOUVEAU TOTAL est
+// réparti entre les deux équipes dans le même rapport qu'avant (λ dom. et λ
+// ext. multipliés par le même facteur) : qui est favori et de combien ne
+// change pas, seul le nombre de buts attendus bouge. Banc d'essai (log-loss,
+// plus bas = mieux, 2 716 matchs, niveau de buts corrigé des deux côtés) :
+// score exact −24,4, plus/moins 2,5 −16,3, 1X2 −3,7, nul oui/non −3,4.
+// k (0 à 1, pas de 0,05) est appris SUR LE PASSÉ SEULEMENT : pour un pari du
+// jour J, la valeur qui explique le mieux le total de buts (vraisemblance de
+// Poisson) des matchs joués entre J − 42 jours et la veille, au moins
+// DEFENSE_MIN_MATCHS matchs, sinon k = 1 (pas de correction). Un facteur commun
+// ramène ensuite le total de buts attendus de la fenêtre à son niveau d'avant :
+// ce réglage ne change que la répartition des buts entre matchs, le niveau
+// d'ensemble reste l'affaire de « Niveau de buts » (appliqué après,
+// combinable). k est appris séparément pour chaque lecture des forces
+// (actuelle, « tous matchs », « Dixon-Coles complet » : cette dernière,
+// estimée d'un bloc, en a bien moins besoin). La probabilité de chaque pari
+// est multipliée par P(issue | λ corrigés) ÷ P(issue | λ), sur la grille
+// complète des scores avec le ρ choisi ; edge, edge dévigué et espérance sont
+// recalculés. Les notes de défense affichées (matrice des forces, export)
+// restent celles du modèle. « Les 2 équipes marquent » et la lecture xG (sans
+// notes de défense) ne bougent pas. Limite : un pari que SEULE cette
+// correction aurait retenu à la collecte n'est pas dans les données.
+// « Actuelle » (défaut) : strictement les mêmes valeurs qu'avant.
+const DEFENSE_MIN_MATCHS = 300;
+const DEFENSE_GRILLE = Array.from({length: 21}, (_, i) => i / 20);
+let _DEFENSE_TABLE = null;
+const DEFENSE = {
+  get table() { return _DEFENSE_TABLE || (_DEFENSE_TABLE = _construireDefense()); },
+  // {k, c, n, gain} : retrait, facteur de niveau, matchs de la fenêtre, gain de
+  // log-vraisemblance sur k = 1 ; k = c = 1 sans assez de matchs.
+  facteur(lecture, date) { return this.table.facteur(lecture, date); },
+  get n() { return this.table.n; },
+};
+// Total de buts attendus du match avec les notes de défense retirées de k.
+const _totalDefense = (lh, la, dd, de, k) => lh * (1 + k * (de - 1)) / de + la * (1 + k * (dd - 1)) / dd;
+function _construireDefense() {
+  const vus = new Set(), m = [];
+  const quad = (lh, la, dd, de) => (lh > 0 && la > 0 && dd > 0 && de > 0 ? [lh, la, dd, de] : null);
+  for (const r of (WIZARD_DATA.dc_backtest || [])) {
+    if (!r.date || !r.match) continue;
+    const cle = r.date + "|" + r.match;
+    if (vus.has(cle)) continue;
+    const sc = /^(\d+)\s*-\s*(\d+)$/.exec(String(r.score_reel || "").trim());
+    if (!sc) continue;
+    if (estSelectionNationale(r.pays, r.ligue)) continue;
+    const act = quad(r.lam_home, r.lam_away, r.force_def_dom, r.force_def_ext);
+    const tm = r.tm ? quad(r.tm[1], r.tm[2], r.tm[4], r.tm[6]) : null;
+    const dc = r.dc ? quad(r.dc[1], r.dc[2], r.dc[4], r.dc[6]) : null;
+    if (!act && !tm && !dc) continue;
+    vus.add(cle);
+    m.push({j: _jourNum(r.date), buts: +sc[1] + +sc[2], act, tm, dc});
+  }
+  m.sort((a, b) => a.j - b.j);
+  const jours = m.map(x => x.j), N = m.length, G = DEFENSE_GRILLE.length;
+  // Sommes cumulées par lecture et par k : Σ buts·log T' et Σ T' (T' = total
+  // attendu avec la défense retirée de k), plus Σ buts réels, Σ total
+  // d'origine et nombre de matchs.
+  const cumul = {};
+  ["act", "tm", "dc"].forEach(lect => {
+    const A = new Float64Array((N + 1) * G), B = new Float64Array((N + 1) * G);
+    const Y = new Float64Array(N + 1), B0 = new Float64Array(N + 1), n = new Float64Array(N + 1);
+    m.forEach((x, i) => {
+      const q = x[lect], o = i * G, o2 = (i + 1) * G;
+      for (let g = 0; g < G; g++) { A[o2 + g] = A[o + g]; B[o2 + g] = B[o + g]; }
+      Y[i + 1] = Y[i]; B0[i + 1] = B0[i]; n[i + 1] = n[i];
+      if (!q) return;
+      const [lh, la, dd, de] = q;
+      for (let g = 0; g < G; g++) {
+        const t = _totalDefense(lh, la, dd, de, DEFENSE_GRILLE[g]);
+        A[o2 + g] += x.buts * Math.log(t);
+        B[o2 + g] += t;
+      }
+      Y[i + 1] += x.buts; B0[i + 1] += lh + la; n[i + 1] += 1;
+    });
+    cumul[lect] = {A, B, Y, B0, n};
+  });
+  const borne = j => { let lo = 0, hi = jours.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (jours[mid] < j) lo = mid + 1; else hi = mid; } return lo; };
+  const memo = new Map();
+  const facteur = (lecture, date) => {
+    const cle = lecture + "|" + date;
+    if (memo.has(cle)) return memo.get(cle);
+    const c = cumul[lecture] || cumul.act;
+    const j = _jourNum(date), i1 = borne(j), i0 = borne(j - NIVEAU_FENETRE_J);
+    const n = c.n[i1] - c.n[i0], y = c.Y[i1] - c.Y[i0];
+    let res = {k: 1, c: 1, n, gain: 0};
+    if (n >= DEFENSE_MIN_MATCHS && y > 0) {
+      // Log-vraisemblance de Poisson du total, échelle commune libre (profilée) :
+      // LL(k) = Σ buts·log T' + Y·log(Y ÷ Σ T') − Y.
+      const ll = g => {
+        const a = c.A[i1 * G + g] - c.A[i0 * G + g], b = c.B[i1 * G + g] - c.B[i0 * G + g];
+        return a + y * Math.log(y / b) - y;
+      };
+      let gMax = G - 1, llMax = ll(G - 1);
+      for (let g = G - 2; g >= 0; g--) { const v = ll(g); if (v > llMax + 1e-9) { llMax = v; gMax = g; } }
+      const bk = c.B[i1 * G + gMax] - c.B[i0 * G + gMax];
+      res = {k: DEFENSE_GRILLE[gMax], c: bk > 0 ? (c.B0[i1] - c.B0[i0]) / bk : 1, n, gain: llMax - ll(G - 1)};
+      if (res.k === 1) res.c = 1;
+    }
+    memo.set(cle, res);
+    return res;
+  };
+  return {facteur, n: N};
+}
+function defenseDispo() { return !!(MODELE_RHO && DEFENSE.n >= DEFENSE_MIN_MATCHS); }
+
+function defenseActif(prefixe) {
+  const s = $(prefixe + "Defense");
+  return !!(s && s.value === "cor" && defenseDispo());
+}
+
+// Code des corrections de buts passé à lectureModele : "n" = niveau de buts,
+// "d" = défense, "nd" = les deux, "" = aucune (true reste compris comme "n").
+function niveauCode(prefixe) {
+  return (niveauActif(prefixe) ? "n" : "") + (defenseActif(prefixe) ? "d" : "");
+}
+const _avecNiveau = code => code === true || (typeof code === "string" && code.includes("n"));
+const _avecDefense = code => typeof code === "string" && code.includes("d");
+
+// Facteur commun aux deux λ d'un match (1 = rien à faire).
+function facteurDefense(f, lh, la, dd, de) {
+  if (f.k === 1 || !(lh > 0) || !(la > 0) || !(dd > 0) || !(de > 0)) return 1;
+  return f.c * _totalDefense(lh, la, dd, de, f.k) / (lh + la);
+}
+
+function corrigerDefense(rows, code, rho = false) {
+  if (!_avecDefense(code) || !defenseDispo()) return rows;
+  const r0 = rho ? MODELE_RHO.corrige : MODELE_RHO.actuel;
+  const arr = v => (v == null ? v : Math.round(v * 100) / 100);
+  return rows.map(r => {
+    if (r.categorie === "Les 2 équipes marquent" || !r.date) return r;
+    const col = r.colonne;
+    if (!niveauIssue(col)) return r;
+    const pm = pMarche(r);                 // marché dévigué : calculé AVANT correction
+    const c = r.cote;
+    const fAct = DEFENSE.facteur("act", r.date);
+    const s = facteurDefense(fAct, r.lam_home, r.lam_away, r.force_def_dom, r.force_def_ext);
+    let o = null;
+    const lecture = (kp, ke, ked, kev, nb = null) => {
+      if (r[kp] == null) return;
+      const base = niveauProba(r.lam_home, r.lam_away, r0, col, nb);
+      if (!(base > 0)) return;
+      const pp = Math.min(0.999, Math.max(0, r[kp] * niveauProba(r.lam_home * s, r.lam_away * s, r0, col, nb) / base));
+      o[kp] = pp;
+      if (c) {
+        o[ke] = pp - 1 / c;
+        o[kev] = pp * (c - 1) - (1 - pp);
+      }
+      if (pm != null) o[ked] = pp - pm;
+    };
+    if (s !== 1) {
+      o = {...r, source_defense: true, defense_k: fAct.k, defense_f: s, p_model_avant_defense: r.p_model};
+      lecture("p_model", "edge", "edge_devig", "ev");
+      lecture("p_model_nb", "edge_nb", "edge_devig_nb", "ev_nb", NB_R);
+      o.lam_home = arr(r.lam_home * s);
+      o.lam_away = arr(r.lam_away * s);
+    }
+    // « Tous matchs » / « Dixon-Coles complet » (r.tm porte la lecture choisie,
+    // au format [p, λ dom., λ ext., att. dom., déf. dom., att. ext., déf. ext.]).
+    const t = r.tm;
+    if (t && t[0] != null && t[1] > 0 && t[2] > 0) {
+      const ft = DEFENSE.facteur(r._dc ? "dc" : "tm", r.date);
+      const st = facteurDefense(ft, t[1], t[2], t[4], t[6]);
+      const base = st !== 1 ? niveauProba(t[1], t[2], r0, col) : 0;
+      if (base > 0) {
+        const pt = Math.min(0.999, Math.max(0, t[0] * niveauProba(t[1] * st, t[2] * st, r0, col) / base));
+        if (!o) o = {...r, source_defense: true};
+        o.tm = [pt, arr(t[1] * st), arr(t[2] * st), ...t.slice(3)];
+        o.defense_k_tm = ft.k;
+      }
+    }
+    return o || r;
+  });
+}
+
+function majDefenseNote(prefixe) {
+  const sel = $(prefixe + "Defense");
+  const note = $(prefixe + "DefenseNote");
+  if (!sel) return;
+  if (!defenseDispo()) {
+    sel.value = "act";
+    sel.disabled = true;
+    sel.title = `Pas assez de matchs joués dans les données de cette collecte pour mesurer l'excès des notes de défense (il en faut au moins ${DEFENSE_MIN_MATCHS}).`;
+    if (note) note.style.display = "none";
+    return;
+  }
+  sel.disabled = false;
+  if (!note) return;
+  if (sel.value !== "cor") {
+    note.style.display = "none";
+    return;
+  }
+  const auj = new Date(), iso = auj.getFullYear() + "-" + String(auj.getMonth() + 1).padStart(2, "0") + "-" + String(auj.getDate()).padStart(2, "0");
+  const v = x => x.toFixed(2).replace(".", ",");
+  const lect = forcesTmActif(prefixe);
+  const cle = lect === "dc" ? "dc" : lect ? "tm" : "act";
+  const nom = lect === "dc" ? "« Dixon-Coles complet »" : lect ? "« tous matchs »" : "actuelle";
+  const f = DEFENSE.facteur(cle, iso);
+  // Exemple : deux équipes à 1,3 but attendu chacune, défenses notées 0,70 ou 1,30.
+  const ex = d => facteurDefense(f, 1.3, 1.3, d, d);
+  const exemple = f.k < 1
+    ? ` : deux défenses notées 0,70, buts attendus du match × ${v(ex(0.7))} ; deux défenses notées 1,30, × ${v(ex(1.3))}`
+    : " : pas de correction en ce moment pour cette lecture";
+  note.style.display = "";
+  note.innerHTML = `<strong>Défense corrigée</strong> (test) — les notes de défense exagèrent le nombre de buts, `
+    + `pas le rapport de forces : le total de buts attendus du match est recalculé avec des notes rapprochées de `
+    + `la moyenne, défense' = 1 + k × (défense − 1), puis réparti entre les deux équipes comme avant (qui est favori `
+    + `ne change pas). k est appris sur les buts des matchs joués dans les ${NIVEAU_FENETRE_J} jours précédents `
+    + `(passé seulement, au moins ${DEFENSE_MIN_MATCHS} matchs). Aujourd'hui k = ${v(f.k)} pour la lecture ${nom} `
+    + `(${f.n.toLocaleString("fr-FR")} matchs)${exemple}. Le niveau d'ensemble des buts ne change pas (c'est le rôle de `
+    + `« Niveau de buts ») ; « Les 2 équipes marquent » et la lecture xG ne bougent pas.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1358,7 +1582,10 @@ function lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison = fal
 }
 function _lectureModele(rows, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau) {
   if (forcesTm === "dc") rows = versLectureDc(rows);
-  rows = corrigerNiveau(corrigerRho(appliquerAbsences(appliquerSaison(rows, saison), absences), rho), niveau, rho);
+  // niveau = code de niveauCode() : défense corrigée d'abord (répartition des
+  // buts entre matchs), puis niveau de buts (niveau d'ensemble).
+  rows = corrigerNiveau(corrigerDefense(corrigerRho(appliquerAbsences(appliquerSaison(rows, saison), absences), rho),
+                                        niveau, rho), niveau, rho);
   if (forcesTm) return calibrer(appliquerForces(rows, true), calibActif,
                                 forcesTm === "dc" ? CALIB_RATIO_DC : CALIB_RATIO_TM);
   return appliquerXg(appliquerNb(calibrer(appliquerForces(rows, false), calibActif), nbActif), modeXg);
@@ -3309,8 +3536,9 @@ function renderUpcoming() {
   const absences = absencesActive("u");
   // Petits scores (ρ) corrigés (option) : combinable avec tout, voir corrigerRho.
   const rho = rhoActif("u");
-  // Niveau de buts corrigé (option) : combinable avec tout, voir corrigerNiveau.
-  const niveau = niveauActif("u");
+  // Niveau de buts et défense corrigés (options) : combinables avec tout, voir
+  // corrigerNiveau et corrigerDefense ; niveau = leur code ("", "n", "d", "nd").
+  const niveau = niveauCode("u");
   const entreeU = upcomingAvecCotesManuelles(lignesLecture(UPCOMING_COMPLET, UPCOMING, forcesTm, saison, absences, rho));
   let source = lectureModele(entreeU, forcesTm, calibActif, nbActif, modeXg, saison, absences, rho, niveau);
   // Accord des lectures (option) : l'autre lecture sur les mêmes lignes (cotes
@@ -3320,6 +3548,7 @@ function renderUpcoming() {
   majForcesNote("u");
   majRhoNote("u");
   majNiveauNote("u");
+  majDefenseNote("u");
   majAccordNote("u");
   majSaisonNote("u");
   majAbsNote("u");
@@ -4273,7 +4502,7 @@ function attachPredTooltips() {
     el.addEventListener("mouseleave", () => { tip.hidden = true; });
   });
 }
-["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uNiveau","uAccord","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel","uHistMin"].forEach(id => {
+["uStake","uSort","uDevig","uAlpha","uForces","uSaison","uAbs","uRho","uNiveau","uDefense","uAccord","uPred","uEnrichi","uLoi","uDedup","uCalib","uMise2","uExclSel","uHistMin"].forEach(id => {
   const el=$(id); if (!el) return; el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 // Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
@@ -4962,7 +5191,7 @@ function cablerMenusDeroulants() {
 cablerMenusDeroulants();
 
 [["btDevig","uDevig"], ["btAlpha","uAlpha"], ["btForces","uForces"], ["btSaison","uSaison"], ["btAbs","uAbs"],
- ["btRho","uRho"], ["btNiveau","uNiveau"], ["btAccord","uAccord"],
+ ["btRho","uRho"], ["btNiveau","uNiveau"], ["btDefense","uDefense"], ["btAccord","uAccord"],
  ["btPred","uPred"], ["btEnrichi","uEnrichi"], ["btLoi","uLoi"],
  ["btDedup","uDedup"],
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
@@ -5787,8 +6016,9 @@ function btFiltered(opts) {
   const absences = absencesActive("bt");
   // Petits scores (ρ) corrigés (option) : combinable avec tout, voir corrigerRho.
   const rho = rhoActif("bt");
-  // Niveau de buts corrigé (option) : combinable avec tout, voir corrigerNiveau.
-  const niveau = niveauActif("bt");
+  // Niveau de buts et défense corrigés (options) : combinables avec tout, voir
+  // corrigerNiveau et corrigerDefense ; niveau = leur code ("", "n", "d", "nd").
+  const niveau = niveauCode("bt");
   // Moment du pari (option) : paris rejoués au relevé de ce moment-là, voir momentLignes.
   const moment = momentPari();
   const entreeBt = lignesLecture(momentLignes(BT_ROWS_COMPLET, moment), momentLignes(BT_ROWS, moment),
@@ -5995,7 +6225,7 @@ function btFiltered(opts) {
 // relance que si un filtre réellement utilisé par « Paris à venir » bouge.
 function verdictsFiltresAvenir() {
   const ids = [
-    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uRho", "uNiveau", "uAccord", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
+    "uDevig", "uAlpha", "uForces", "uSaison", "uAbs", "uRho", "uNiveau", "uDefense", "uAccord", "uPred", "uEnrichi", "uLoi", "uDedup", "uCalib",
     "uExclSel", "uHistMin",
     "uCoteMin", "uCoteMax", "uCoteMinNum", "uCoteMaxNum",
     "uMvtMin", "uMvtMax", "uMvtMinNum", "uMvtMaxNum",
@@ -6252,6 +6482,10 @@ function renderBtActiveFilters(rowsFiltrees) {
   if (niveauActif("bt")) {
     add("Niveau de buts", "corrigé (test)",
         "Buts attendus multipliés par le rapport buts réels ÷ prévus des 42 jours précédents (voir la note sous les filtres)");
+  }
+  if (defenseActif("bt")) {
+    add("Défense", "corrigée (test)",
+        "Total de buts attendus recalculé avec des notes de défense rapprochées de la moyenne, rapport de forces inchangé (voir la note sous les filtres)");
   }
   if (accordActif("bt")) {
     add("Accord des lectures", `avec ${nomAutreLecture(forcesTmActif("bt"))} (test)`,
@@ -7029,6 +7263,7 @@ function renderBacktest() {
   majAbsNote("bt");
   majRhoNote("bt");
   majNiveauNote("bt");
+  majDefenseNote("bt");
   majAccordNote("bt");
   majMomentNote();
 
@@ -10927,7 +11162,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel","btHistMin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btDefense","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel","btHistMin"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
