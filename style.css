@@ -502,6 +502,13 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
   box-shadow: inset 0 0 0 1px rgba(128, 175, 255, .36);
 }
 .jour-mode:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+/* Matrices de DC rétrospectif regroupées (11/11/2026) : un sélecteur, puis la
+   seule matrice choisie, collée à lui pour se lire comme un même bloc. */
+.matrices-groupe { margin: 1.3rem 0; }
+.matrices-groupe > .matrices-choix { margin: 0; padding-bottom: 1rem; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.matrices-choix h2 { margin-bottom: .75rem; }
+.matrices-onglets { margin: 0; }
+.matrices-groupe > details.panel { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 /* Raccourcis de période de la page Bankroll (mêmes boutons que le sélecteur
    d'histogramme) et phrase qui rappelle la période retenue. */
 .bk-periodes { margin: .8rem 0 .2rem; }
@@ -2067,6 +2074,24 @@ header { padding-top: 1rem; padding-bottom: .6rem; }
   border-color: rgba(128, 175, 255, .36);
 }
 .btn-primary:hover { background: rgba(84, 142, 242, .23); border-color: var(--violet); }
+/* Action qui efface (remise à zéro de la bankroll, 11/11/2026). */
+.btn-danger { color: #ffc6d1; background: rgba(255, 92, 124, .10); border-color: rgba(255, 92, 124, .42); }
+.btn-danger:hover { background: rgba(255, 92, 124, .18); border-color: var(--coral); }
+
+/* Bankroll : télécharger / remettre à zéro (11/11/2026). La confirmation
+   s'ouvre sous les boutons ; la note de remise à zéro garde « Restaurer ». */
+.bk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .2rem 0 .9rem; }
+.bk-actions-fb { font-size: .82rem; }
+.bk-raz-confirm {
+  margin: 0 0 1rem; padding: .85rem 1rem; font-size: .87rem; line-height: 1.55;
+  border: 1px solid rgba(255, 92, 124, .34); border-radius: var(--radius-sm);
+  background: rgba(255, 92, 124, .055);
+}
+.bk-raz-confirm p { margin: 0 0 .7rem; }
+.bk-raz-confirm .bk-actions { margin: 0; }
+.bk-raz-note { margin: -.3rem 0 1rem; font-size: .82rem; }
+.bk-raz-note .btn { margin-left: .35rem; padding: .22rem .6rem; font-size: .78rem; }
+.bk-raz-confirm[hidden], .bk-raz-note[hidden] { display: none; }
 
 .tablewrap { border: 1px solid rgba(119, 134, 154, .13); border-radius: 9px; }
 table { font-size: .84rem; }
@@ -2592,7 +2617,7 @@ details.panel-foldable[open] > summary::before {
   background: rgba(84,217,206,.075);
 }
 #page-backtest [id="btSectionSynthese"],
-#page-backtest #btScorePanel,
+#page-backtest #btMatricesGroupe,
 #page-backtest #btMvtFiltrePanel,
 #page-backtest #btLeaguePanel,
 #page-backtest #btDetailPanel,
@@ -3106,6 +3131,9 @@ a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
   .jour-modes { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .3rem; max-width: 100%; }
   .jour-modes::-webkit-scrollbar { display: none; }
   .jour-modes > * { flex: none; white-space: nowrap; min-height: 38px; }
+  /* Choix de la matrice : six boutons, sur plusieurs lignes plutôt qu'un
+     défilement où les derniers seraient cachés. */
+  .matrices-onglets { flex-wrap: wrap; overflow-x: visible; }
 
   /* ---------- Graphiques en SVG : textes à taille réelle ---------- */
   .chart-tip { font-size: 11px; }
