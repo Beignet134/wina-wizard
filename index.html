@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261111101056">
+<link rel="stylesheet" href="style.css?v=20261111102809">
 </head>
 <body>
 <div class="topbar">
@@ -630,6 +630,13 @@
             <option value="cor" selected>Corrigé (test)</option>
           </select>
         </div>
+        <div class="field" id="btDefenseField">
+          <label for="btDefense">Défense</label>
+          <select id="btDefense" title="Actuelle : buts attendus du modèle tels quels (ses notes de défense exagèrent : les matchs aux défenses notées solides ont plus de buts que prévu, ceux aux défenses fragiles moins). Corrigée (test) : total de buts attendus du match recalculé avec des notes de défense rapprochées de la moyenne (facteur appris sur les 42 jours précédents, passé seulement), réparti entre les deux équipes comme avant : qui est favori ne change pas, le niveau d'ensemble des buts non plus. Combinable avec les autres réglages.">
+            <option value="act" selected>Actuelle</option>
+            <option value="cor">Corrigée (test)</option>
+          </select>
+        </div>
         <div class="field" id="btAccordField">
           <label for="btAccord">Accord des lectures</label>
           <select id="btAccord" title="Non : chaque pari est jugé sur la seule lecture choisie dans « Forces d'équipe ». Oui (test) : un pari n'est gardé que si l'autre lecture le retient aussi, avec l'edge minimum et l'espérance minimum de sa catégorie — Dixon-Coles complet quand les forces sont « Actuelles » ou « Tous matchs », les forces actuelles quand c'est « Dixon-Coles complet ». Mêmes corrections (saison, absences, ρ) pour les deux lectures.">
@@ -850,6 +857,7 @@
       <p class="muted" id="btAbsNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btRhoNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btNiveauNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="btDefenseNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btAccordNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMomentNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="btMiseNote" style="display:none; margin:.5rem 0 0; font-size:.82rem"></p>
@@ -1815,6 +1823,13 @@
             <option value="cor" selected>Corrigé (test)</option>
           </select>
         </div>
+        <div class="field" id="uDefenseField">
+          <label for="uDefense">Défense</label>
+          <select id="uDefense" title="Actuelle : buts attendus du modèle tels quels (ses notes de défense exagèrent : les matchs aux défenses notées solides ont plus de buts que prévu, ceux aux défenses fragiles moins). Corrigée (test) : total de buts attendus du match recalculé avec des notes de défense rapprochées de la moyenne (facteur appris sur les 42 jours précédents, passé seulement), réparti entre les deux équipes comme avant : qui est favori ne change pas, le niveau d'ensemble des buts non plus. Combinable avec les autres réglages.">
+            <option value="act" selected>Actuelle</option>
+            <option value="cor">Corrigée (test)</option>
+          </select>
+        </div>
         <div class="field" id="uAccordField">
           <label for="uAccord">Accord des lectures</label>
           <select id="uAccord" title="Non : chaque pari est jugé sur la seule lecture choisie dans « Forces d'équipe ». Oui (test) : un pari n'est gardé que si l'autre lecture le retient aussi, avec l'edge minimum et l'espérance minimum de sa catégorie — Dixon-Coles complet quand les forces sont « Actuelles » ou « Tous matchs », les forces actuelles quand c'est « Dixon-Coles complet ». Mêmes corrections (saison, absences, ρ) pour les deux lectures.">
@@ -1988,6 +2003,7 @@
       <p class="muted" id="uAbsNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uRhoNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uNiveauNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
+      <p class="muted" id="uDefenseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uAccordNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
@@ -2578,7 +2594,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111101142", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111101142", APP = "app.js?v=20261111101056";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111102857", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111102857", APP = "app.js?v=20261111102809";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
