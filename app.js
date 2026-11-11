@@ -9588,6 +9588,41 @@ function renderForceMatrix(rowsPage) {
   });
 })();
 
+// --- Matrices de DC rétrospectif : une seule affichée (11/11/2026) ---------
+// Le sélecteur montre la matrice choisie et masque les autres (elles restent
+// calculées à chaque rendu, donc à jour au changement). Choix retenu dans ce
+// navigateur ; la matrice choisie s'ouvre si elle était repliée.
+const MATRICES_LS = "ww_bt_matrice";
+(function initChoixMatrice() {
+  const groupe = $("btMatricesChoix");
+  if (!groupe) return;
+  const boutons = [...groupe.querySelectorAll(".jour-mode[data-matrice]")];
+  const ids = boutons.map(b => b.dataset.matrice);
+  const afficher = (id, ouvrir) => {
+    if (!ids.includes(id)) id = ids[0];
+    boutons.forEach(b => {
+      const actif = b.dataset.matrice === id;
+      b.classList.toggle("is-active", actif);
+      b.setAttribute("aria-pressed", actif ? "true" : "false");
+    });
+    ids.forEach(pid => {
+      const panneau = $(pid);
+      if (!panneau) return;
+      panneau.style.display = pid === id ? "" : "none";
+      if (pid === id && ouvrir) panneau.open = true;
+    });
+  };
+  let initial = ids[0];
+  try { const v = localStorage.getItem(MATRICES_LS); if (ids.includes(v)) initial = v; } catch (e) { /* confort seulement */ }
+  afficher(initial, false);
+  groupe.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-matrice]");
+    if (!bouton || !groupe.contains(bouton)) return;
+    afficher(bouton.dataset.matrice, true);
+    try { localStorage.setItem(MATRICES_LS, bouton.dataset.matrice); } catch (e) { /* confort seulement */ }
+  });
+})();
+
 function forceMatMetaPari(r) {
   return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.colonne} · cote ${r.cote}`
     + ` · dom. att. ${fmtForce(r.force_att_dom)} déf. ${fmtForce(r.force_def_dom)}`
@@ -12306,12 +12341,10 @@ function periodeBankroll(code) {
   return {deb: "", fin: ""};
 }
 
-function renderBankroll() {
-  const departEl = $("bkDepart");
-  const evoWrap = $("bkEvoWrap"), body = $("bkBody");
-  if (!departEl || !evoWrap || !body) return;
-  const depart = parseFloat(departEl.value) || 0;
-
+// Tous les paris joués, dans l'ordre, avec leur statut, leur résultat en euros
+// et la bankroll après chacun (à partir de `depart`). Partagé par la page et
+// par le téléchargement (bouton « Télécharger la bankroll »).
+function calculerBankroll(depart) {
   const {parCle, matchsFinis} = resolutionParisJoues();
 
   const paris = [...PLACED.entries()].map(([cle, info]) => {
@@ -12347,6 +12380,15 @@ function renderBankroll() {
     }
     return {...p, resultatEuros, statut, bankrollApres};
   });
+  return toutes;
+}
+
+function renderBankroll() {
+  const departEl = $("bkDepart");
+  const evoWrap = $("bkEvoWrap"), body = $("bkBody");
+  if (!departEl || !evoWrap || !body) return;
+  const depart = parseFloat(departEl.value) || 0;
+  const toutes = calculerBankroll(depart);
 
   // 2) Période choisie (« Du » / « Au », l'un ou l'autre peut rester vide). Les
   //    dates sont au format AAAA-MM-JJ, celui d'un champ date : comparaison de
@@ -12628,6 +12670,184 @@ if ($("bkDepart")) {
   $("bkDepart").addEventListener("input", renderBankroll);
   $("bkDepart").addEventListener("change", renderBankroll);
 }
+
+// --- Télécharger / remettre à zéro la bankroll (11/11/2026) -----------------
+// Demande : « dans l'onglet bankroll j'aimerais pouvoir télécharger et remettre
+// la bankroll à 0 ».
+// Télécharger : tout l'historique (pas seulement la période affichée), en CSV
+// pour Excel (point-virgule, virgule décimale, BOM pour les accents).
+// Remettre à zéro : chaque pari joué devient une pierre tombale {supprime,
+// maj} — le mécanisme d'un décochage : la version la plus récente gagne
+// partout (ce navigateur, GitHub si la synchronisation est active, puis
+// wina_wizard.py qui relit GitHub), sans quoi le fichier paris_joues.json ou
+// GitHub, restés anciens, feraient réapparaître les paris. Une copie des paris
+// retirés reste dans ce navigateur (BK_RAZ_LS) pour « Restaurer ».
+const BK_RAZ_LS = "wina_bankroll_raz_v1";
+function lireSauvegardeRaz() {
+  try {
+    const o = JSON.parse(localStorage.getItem(BK_RAZ_LS) || "null");
+    return o && o.entrees && typeof o.entrees === "object" ? o : null;
+  } catch (e) { return null; }
+}
+function ecrireSauvegardeRaz(o) {
+  try {
+    if (o) localStorage.setItem(BK_RAZ_LS, JSON.stringify(o));
+    else localStorage.removeItem(BK_RAZ_LS);
+    return true;
+  } catch (e) { return false; }
+}
+function syncPartout() {
+  return !!(typeof SYNC_CFG !== "undefined" && SYNC_CFG && typeof lireJeton === "function" && lireJeton());
+}
+// Après un changement en bloc des paris joués : tout ce qui en dépend.
+function apresChangementParisJoues() {
+  if (typeof planifierSynchro === "function") planifierSynchro();
+  updatePlacedSummary();
+  renderPlacedExport();
+  renderBankroll();
+  if (typeof renderUpcoming === "function") renderUpcoming();
+}
+
+function telechargerBankroll() {
+  const depart = parseFloat(($("bkDepart") || {}).value) || 0;
+  const toutes = calculerBankroll(depart);
+  const nombre = (v, d = 2) => v == null || !isFinite(v) ? "" : Number(v).toFixed(d).replace(".", ",");
+  const champ = v => {
+    const t = String(v ?? "");
+    return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const entetes = ["Date", "Match", "Pari", "Catégorie", "Site", "Cote jouée", "Cote saisie par vous",
+                   "Cote de clôture", "CLV (pt)", "Mise (€)", "Statut", "Résultat (€)", "Bankroll après (€)",
+                   "Coché le", "Coup d'envoi"];
+  const lignes = toutes.map(l => [
+    l.date, l.match, l.pari, l.cat || "", l.site ? (CBK_NOMS[l.site] || l.site) : "",
+    nombre(l.coteJouee), l.coteJouee == null ? "" : (l.confirmee ? "Oui" : "Non"),
+    nombre(l.coteCloture),
+    l.coteJouee != null && l.confirmee && l.coteCloture != null ? nombre(ecartPrixPt(l.coteCloture, l.coteJouee)) : "",
+    nombre(l.mise), l.statut, nombre(l.resultatEuros), nombre(l.bankrollApres),
+    (l.ts || "").replace("T", " "), (l.kickoff || "").replace("T", " "),
+  ].map(champ).join(";"));
+  const resolus = toutes.filter(l => l.resultatEuros != null);
+  const net = resolus.reduce((t, l) => t + l.resultatEuros, 0);
+  const pied = ["", `Bankroll de départ : ${nombre(depart)} € · résultat net : ${nombre(net)} € · `
+    + `bankroll finale : ${nombre(depart + net)} € · ${toutes.length} pari(s) joué(s), dont `
+    + `${toutes.length - resolus.length} en attente`].map(champ);
+  const csv = "\uFEFF" + entetes.join(";") + "\n" + lignes.join("\n") + "\n\n" + pied.join(";") + "\n";
+  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `wina_bankroll_${isoAujourdhui()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return toutes.length;
+}
+
+function remettreBankrollAZero() {
+  const maintenant = Date.now();
+  const entrees = {};
+  [...PLACED.entries()].forEach(([cle, v]) => {
+    entrees[cle] = v;
+    LOCAL_OVERRIDES[cle] = {supprime: true, maj: maintenant};
+  });
+  sauverOverridesLocaux();
+  reconstruirePlaced();
+  const n = Object.keys(entrees).length;
+  if (n) ecrireSauvegardeRaz({quand: isoLocalNaif(new Date()), entrees});
+  apresChangementParisJoues();
+  return n;
+}
+
+// Remet les paris retirés à la dernière remise à zéro (sauf ceux recochés depuis).
+function restaurerBankroll() {
+  const sauv = lireSauvegardeRaz();
+  if (!sauv) return 0;
+  const maintenant = Date.now();
+  let n = 0;
+  Object.entries(sauv.entrees).forEach(([cle, v]) => {
+    if (PLACED.has(cle)) return;
+    LOCAL_OVERRIDES[cle] = Object.assign({}, v, {maj: maintenant});
+    n++;
+  });
+  sauverOverridesLocaux();
+  reconstruirePlaced();
+  ecrireSauvegardeRaz(null);
+  apresChangementParisJoues();
+  return n;
+}
+
+(function initActionsBankroll() {
+  const btnDl = $("bkTelecharger"), btnRaz = $("bkRazOuvrir"), boite = $("bkRazConfirm");
+  if (!btnDl || !btnRaz || !boite) return;
+  const fb = $("bkActionsFb"), note = $("bkRazNote");
+  let minuterie = null;
+  const signaler = txt => {
+    if (!fb) return;
+    fb.textContent = txt;
+    clearTimeout(minuterie);
+    minuterie = setTimeout(() => { fb.textContent = ""; }, 7000);
+  };
+  const eur = v => v.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+  const fmtQuand = iso => {
+    const [d, h] = String(iso || "").split("T");
+    return d ? `le ${d.split("-").reverse().join("/")}${h ? " à " + h.slice(0, 5).replace(":", "h") : ""}` : "";
+  };
+  const majNote = () => {
+    if (!note) return;
+    const sauv = lireSauvegardeRaz();
+    if (!sauv) { note.hidden = true; note.innerHTML = ""; return; }
+    const n = Object.keys(sauv.entrees).length;
+    note.hidden = false;
+    note.innerHTML = `Bankroll remise à zéro ${fmtQuand(sauv.quand)} : ${n} pari${n > 1 ? "s" : ""} retiré${n > 1 ? "s" : ""}, `
+      + `gardé${n > 1 ? "s" : ""} dans ce navigateur.<button type="button" class="btn" id="bkRestaurer">Restaurer</button>`;
+  };
+  const fermer = () => { boite.hidden = true; btnRaz.setAttribute("aria-expanded", "false"); };
+
+  btnDl.addEventListener("click", () => {
+    const n = telechargerBankroll();
+    signaler(n ? `${n} pari${n > 1 ? "s" : ""} téléchargé${n > 1 ? "s" : ""} (tout l'historique).` : "Aucun pari joué : fichier vide.");
+  });
+  btnRaz.addEventListener("click", () => {
+    if (!boite.hidden) { fermer(); return; }
+    const paris = [...PLACED.values()];
+    const n = paris.length;
+    if (!n) { signaler("Aucun pari joué : la bankroll est déjà à zéro."); return; }
+    const mise = paris.reduce((t, p) => t + (p.mise || 0), 0);
+    const depart = parseFloat(($("bkDepart") || {}).value) || 0;
+    const attente = calculerBankroll(depart).filter(l => l.resultatEuros == null).length;
+    $("bkRazTexte").innerHTML = `<strong>Retirer les ${n} pari${n > 1 ? "s" : ""} joué${n > 1 ? "s" : ""}</strong> (${eur(mise)} misés`
+      + (attente ? `, dont ${attente} en attente du résultat` : "") + `) ? La bankroll repartira de sa valeur de départ, `
+      + `et ces paris ne seront plus cochés sur « Paris à venir ». `
+      + (syncPartout()
+        ? "La synchronisation GitHub est active : la remise à zéro vaut aussi pour vos autres appareils et pour <code>wina_wizard.py</code>."
+        : "La synchronisation GitHub n'est pas active dans ce navigateur : la remise à zéro ne vaut qu'ici. Pour que vos autres appareils et "
+          + "<code>wina_wizard.py</code> suivent, activez-la (page « Paris à venir ») ou remplacez ensuite <code>paris_joues.json</code>.")
+      + " Vous pourrez restaurer ces paris depuis ce navigateur.";
+    boite.hidden = false;
+    btnRaz.setAttribute("aria-expanded", "true");
+    $("bkRazValider").focus();
+  });
+  $("bkRazTelecharger").addEventListener("click", () => {
+    const n = telechargerBankroll();
+    signaler(`${n} pari${n > 1 ? "s" : ""} téléchargé${n > 1 ? "s" : ""}. Vous pouvez maintenant remettre à zéro.`);
+  });
+  $("bkRazAnnuler").addEventListener("click", () => { fermer(); btnRaz.focus(); });
+  $("bkRazValider").addEventListener("click", () => {
+    const n = remettreBankrollAZero();
+    fermer();
+    majNote();
+    signaler(`Bankroll remise à zéro : ${n} pari${n > 1 ? "s" : ""} retiré${n > 1 ? "s" : ""}.`);
+  });
+  if (note) note.addEventListener("click", ev => {
+    if (!ev.target.closest("#bkRestaurer")) return;
+    const n = restaurerBankroll();
+    majNote();
+    signaler(n ? `${n} pari${n > 1 ? "s" : ""} restauré${n > 1 ? "s" : ""}.` : "Rien à restaurer.");
+  });
+  majNote();
+})();
 // Période : calendrier (change) ou raccourcis (7 / 30 jours, ce mois-ci, tout).
 ["bkDateDebut", "bkDateFin"].forEach(id => {
   if ($(id)) $(id).addEventListener("change", renderBankroll);
