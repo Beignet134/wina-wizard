@@ -6977,6 +6977,8 @@ function renderBacktest() {
   renderEvMatrix(evMatFiltreActif() || dedupBt
                    ? btFiltered({sansEv: true, sansDedup: true}) : rowsFiltrees,
                  rowsFiltrees);
+  // Matrice par forces d'attaque et de défense (10/11/2026) : les paris de la page.
+  renderForceMatrix(rowsFiltrees);
   renderBtActiveFilters(rowsFiltrees);
   majBlocCbkRetro(rowsFiltrees);
   majBlocMeilleurBk(rowsFiltrees);
@@ -8947,6 +8949,193 @@ initMatrixCellInspector({
     r => evMatMetaPari(r)
   )
 });
+/* ---- Forces d'attaque et de défense — matrice des gains (10/11/2026) ----
+   Demande de l'utilisateur : « ajoute une matrice par force d'attaque et de défense ». Lignes = force
+   d'attaque, colonnes = force de défense, telles que le modèle les avait le jour du match (champs
+   force_att_dom / force_def_dom = à domicile de l'équipe qui reçoit, force_att_ext / force_def_ext = à
+   l'extérieur de celle qui se déplace ; 1 = moyenne de la ligue, défense > 1 = encaisse plus que la
+   moyenne). Trois lectures : moyenne des deux équipes (profil du match), équipe à domicile, équipe à
+   l'extérieur. Calculée sur les paris de la page (tous les filtres, dédoublonnage compris) : la colonne
+   Total retrouve donc la page. Tranches à peu près aux quantiles 10/25/75/90 % des paris du backtest. */
+const FORCE_MAT_SEUILS = [0.8, 0.95, 1.05, 1.2];
+const FORCE_MAT_ATT = ["< 0,8 · faible", "0,8 à 0,95", "0,95 à 1,05 · moyenne", "1,05 à 1,2", "≥ 1,2 · forte"];
+const FORCE_MAT_DEF = ["< 0,8 · solide", "0,8 à 0,95", "0,95 à 1,05 · moyenne", "1,05 à 1,2", "≥ 1,2 · fragile"];
+const FORCE_MAT_EQ = {
+  moy: {nom: "moyenne des deux équipes", att: r => (r.force_att_dom + r.force_att_ext) / 2, def: r => (r.force_def_dom + r.force_def_ext) / 2},
+  dom: {nom: "équipe à domicile", att: r => r.force_att_dom, def: r => r.force_def_dom},
+  ext: {nom: "équipe à l'extérieur", att: r => r.force_att_ext, def: r => r.force_def_ext},
+};
+const FORCE_MAT_LS = "ww_bt_forcemat_eq";
+let BT_FORCE_MAT_EQ = (() => {
+  try { const v = localStorage.getItem(FORCE_MAT_LS); return FORCE_MAT_EQ[v] ? v : "moy"; }
+  catch (e) { return "moy"; }
+})();
+let FORCE_MAT_DATA = {};
+let FORCE_MAT_DERNIER = null;
+
+function forceMatTranche(v) {
+  if (v == null || isNaN(v)) return null;
+  let i = 0;
+  while (i < FORCE_MAT_SEUILS.length && v >= FORCE_MAT_SEUILS[i] - 1e-9) i++;
+  return i;
+}
+function forceMatAPas(r) {
+  return [r.force_att_dom, r.force_def_dom, r.force_att_ext, r.force_def_ext].every(v => v != null && !isNaN(v));
+}
+function marquerEqForceMat() {
+  document.querySelectorAll("#btForceMatEq .jour-mode[data-eq]").forEach(b => {
+    const actif = b.dataset.eq === BT_FORCE_MAT_EQ;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+function fmtForce(v) {
+  return v == null || isNaN(v) ? "—" : v.toLocaleString("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function renderForceMatrix(rowsPage) {
+  const wrap = $("btForceMatWrap");
+  if (!wrap) return;
+  const empty = $("btForceMatEmpty"), legend = $("btForceMatLegend");
+  const note = $("btForceMatNote"), bestEl = $("btForceMatBest");
+  FORCE_MAT_DERNIER = rowsPage;
+  marquerEqForceMat();
+  const eq = FORCE_MAT_EQ[BT_FORCE_MAT_EQ] || FORCE_MAT_EQ.moy;
+  const rows = rowsPage.filter(forceMatAPas);
+  const sansForce = rowsPage.length - rows.length;
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    [legend, note].forEach(el => { if (el) el.innerHTML = ""; });
+    if (bestEl) bestEl.textContent = "";
+    if (empty) empty.style.display = "";
+    FORCE_MAT_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  const parCase = {};
+  const ajouter = (a, d, r) => {
+    const k = a + "|" + d;
+    (parCase[k] = parCase[k] || {a, d, rows: []}).rows.push(r);
+  };
+  rows.forEach(r => {
+    const a = forceMatTranche(eq.att(r)), d = forceMatTranche(eq.def(r));
+    if (a == null || d == null) return;
+    ajouter(a, d, r);
+    ajouter(a, "*", r);
+  });
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const c = parCase[k];
+    const s = btAgg(c.rows);
+    const net = c.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+    const attMarche = c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0);
+    agg[k] = Object.assign({
+      net, a: c.a, d: c.d, rows: c.rows, attMarche,
+      fiable: s.n >= MVT_TRANCHE_SEUIL_FIABLE,
+    }, s);
+  });
+  FORCE_MAT_DATA = agg;
+  const teintees = Object.values(agg).filter(c => c.d !== "*" && c.roi != null);
+  const roiVals = teintees.map(c => c.roi);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+
+  const cellule = (key, c, desc, estTotal) => {
+    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+    const roi = c.roi ?? 0;
+    const cls = roi >= 0 ? "pos" : "neg";
+    const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
+    let style = "";
+    if (!estTotal) {
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    return `<td class="score-cell ${cls}${peuFiable}${estTotal ? " score-cell-total" : ""}"${style} data-forcemat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+        <div class="score-net${estTotal ? " " + cls : ""}">${fmtEur(c.net)}</div>
+        <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+        <div class="score-roi">${fmtPct(roi)}</div>
+      </td>`;
+  };
+  let thead = `<tr><th class="score-corner">Attaque ↓<br>Défense →</th>`;
+  FORCE_MAT_DEF.forEach(l => { thead += `<th class="num">${l}</th>`; });
+  thead += `<th class="num score-total-head">Total</th></tr>`;
+  let tbody = "";
+  FORCE_MAT_ATT.forEach((la, a) => {
+    tbody += `<tr><th class="num" scope="row" title="Attaque ${la}">${la}</th>`;
+    FORCE_MAT_DEF.forEach((ld, d) => {
+      tbody += cellule(`${a}|${d}`, agg[`${a}|${d}`], `attaque ${la}, défense ${ld}`, false);
+    });
+    tbody += cellule(`${a}|*`, agg[`${a}|*`], `attaque ${la}, toutes défenses`, true);
+    tbody += "</tr>";
+  });
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix force-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  if (legend) {
+    const pire = roiVals.length ? arrMin(roiVals) : 0;
+    const meilleur = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pire, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${MVT_TRANCHE_SEUIL_FIABLE} paris</span>
+      <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise ·
+      ✓ = paris gagnés · cliquez une case pour voir ses paris</span>`;
+  }
+  if (note) {
+    let txt = `${rows.length} pari${rows.length > 1 ? "s" : ""} de la page · forces : ${eq.nom}.`;
+    if (sansForce) txt += ` ${sansForce} pari${sansForce > 1 ? "s" : ""} sans forces connues, laissé${sansForce > 1 ? "s" : ""} de côté.`;
+    note.textContent = txt;
+  }
+  if (bestEl) {
+    const fiables = teintees.filter(c => c.fiable);
+    if (fiables.length >= 2) {
+      const tri = fiables.slice().sort((x, y) => y.net - x.net);
+      const decrire = c => `<strong>attaque ${FORCE_MAT_ATT[c.a]}, défense ${FORCE_MAT_DEF[c.d]}</strong> (${fmtEur(c.net)}, ROI ${fmtPct(c.roi)}, ${c.n} paris)`;
+      bestEl.innerHTML = `Parmi les cases d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris : ${decrire(tri[0])} rapporte le plus · `
+        + `${decrire(tri[tri.length - 1])} le moins. Une case choisie après coup profite aussi de la chance de la période :
+          vérifiez-la sur une autre période (dates) avant d'en faire un filtre.`;
+    } else {
+      bestEl.textContent = `Pas encore assez de cases d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris pour comparer.`;
+    }
+  }
+}
+
+(function initForceMatEq() {
+  const groupe = $("btForceMatEq");
+  if (!groupe) return;
+  marquerEqForceMat();
+  groupe.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-eq]");
+    if (!bouton || !groupe.contains(bouton) || bouton.dataset.eq === BT_FORCE_MAT_EQ) return;
+    if (!FORCE_MAT_EQ[bouton.dataset.eq]) return;
+    BT_FORCE_MAT_EQ = bouton.dataset.eq;
+    try { localStorage.setItem(FORCE_MAT_LS, BT_FORCE_MAT_EQ); } catch (e) { /* confort seulement */ }
+    const inspecteur = $("btForceMatInspector");
+    if (inspecteur) inspecteur.hidden = true;
+    if (FORCE_MAT_DERNIER) renderForceMatrix(FORCE_MAT_DERNIER);
+    else marquerEqForceMat();
+  });
+})();
+
+function forceMatMetaPari(r) {
+  return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.colonne} · cote ${r.cote}`
+    + ` · dom. att. ${fmtForce(r.force_att_dom)} déf. ${fmtForce(r.force_def_dom)}`
+    + ` · ext. att. ${fmtForce(r.force_att_ext)} déf. ${fmtForce(r.force_def_ext)}`;
+}
+initMatrixCellInspector({
+  holderId: "btForceMatHolder", panelId: "btForceMatPanel",
+  inspectorId: "btForceMatInspector", tooltipId: "btForceMatTooltip",
+  dataKey: "forcemat", getData: () => FORCE_MAT_DATA,
+  rowMeta: r => forceMatMetaPari(r),
+  buildDetails: c => matrixDetailMarkup(
+    c, `Attaque ${FORCE_MAT_ATT[c.a]} · ${c.d === "*" ? "toutes défenses" : `défense ${FORCE_MAT_DEF[c.d]}`} (${(FORCE_MAT_EQ[BT_FORCE_MAT_EQ] || FORCE_MAT_EQ.moy).nom})`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+      + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+    r => forceMatMetaPari(r)
+  )
+});
+
 function evMatMetaPari(r) {
   return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.colonne} · cote ${r.cote} · espérance ${evMatPct(evMatValeur(r))}`;
 }
