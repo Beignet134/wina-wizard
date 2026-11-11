@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261110222144">
+<link rel="stylesheet" href="style.css?v=20261111093438">
 </head>
 <body>
 <div class="topbar">
@@ -1197,6 +1197,39 @@
       <div class="score-legend" id="btEvMatLegend"></div>
       <p class="muted" id="btEvMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
       <p class="muted" id="btEvMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
+
+      </div>
+    </details>
+
+<details class="panel panel-foldable" id="btForceMatPanel" open>
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="1.6" stroke="currentColor" stroke-width="1.5"/><path d="M3 8h14M3 12.5h14M8 3v14" stroke="currentColor" stroke-width="1.3"/><path d="M11 10.5h4M13 8.5v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Forces d'attaque et de défense — matrice des gains</h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Gain net des paris affichés sur la page selon les forces que le modèle donnait aux équipes le jour
+        du match, par rapport à la moyenne de leur ligue (1 = moyenne). <strong>Attaque</strong> : buts marqués,
+        au-dessus de 1 = attaque forte. <strong>Défense</strong> : buts encaissés, au-dessous de 1 = défense
+        solide, au-dessus = défense fragile. Forces à domicile pour l'équipe qui reçoit, à l'extérieur pour
+        celle qui se déplace. Tous vos filtres s'appliquent. Un clic sur une case affiche ses paris.
+      </p>
+      <div class="jour-modes" id="btForceMatEq" role="group" aria-label="Équipe">
+        <button type="button" class="jour-mode is-active" data-eq="moy" aria-pressed="true" title="Moyenne des deux équipes : le profil du match">Les deux équipes</button>
+        <button type="button" class="jour-mode" data-eq="dom" aria-pressed="false" title="Attaque et défense à domicile de l'équipe qui reçoit">Domicile</button>
+        <button type="button" class="jour-mode" data-eq="ext" aria-pressed="false" title="Attaque et défense à l'extérieur de l'équipe qui se déplace">Extérieur</button>
+      </div>
+      <div class="tablewrap">
+        <div class="chart-holder" id="btForceMatHolder">
+          <div id="btForceMatWrap"></div>
+        </div>
+      </div>
+      <div class="matrix-inspector" id="btForceMatInspector" hidden>
+        <div class="chart-tooltip score-tooltip" id="btForceMatTooltip" hidden></div>
+      </div>
+      <p class="muted" id="btForceMatEmpty" style="display:none; font-size:.85rem">Aucun pari ne correspond à ces filtres.</p>
+      <div class="score-legend" id="btForceMatLegend"></div>
+      <p class="muted" id="btForceMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
+      <p class="muted" id="btForceMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
 
       </div>
     </details>
@@ -2545,7 +2578,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261110222233", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261110222233", APP = "app.js?v=20261110222144";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111093453", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111093453", APP = "app.js?v=20261111093438";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
