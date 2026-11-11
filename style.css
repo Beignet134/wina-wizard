@@ -651,6 +651,13 @@ tbody tr:hover { background: rgba(128,175,255,.08); }
 }
 .score-cell-total .score-net.pos { color: var(--up); }
 .score-cell-total .score-net.neg { color: var(--down); }
+/* Ligne « Total » en bas des matrices (11/11/2026) : bilan de chaque colonne,
+   même fond neutre que la colonne Total, séparée par un double liseré. La case
+   du coin (ligne Total × colonne Total) porte le bilan de toute la grille. */
+.score-total-row > th, .score-total-row > td { border-top: 2px solid var(--line); }
+.score-total-row > th { color: var(--ink-dim); }
+.score-total-row > td.score-cell-total { border-left: 1px solid var(--line-soft); }
+.score-total-row > td.score-cell-total.score-cell-coin { border-left: 2px solid var(--line); }
 .score-legend {
   display: flex; align-items: center; gap: .5rem; margin-top: .9rem; flex-wrap: wrap;
 }
