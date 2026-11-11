@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261111162252">
+<link rel="stylesheet" href="style.css?v=20261111180124">
 </head>
 <body>
 <div class="topbar">
@@ -432,7 +432,7 @@
       <nav class="bt-section-links" aria-label="Sections de l’analyse">
         <button type="button" class="bt-section-link" data-bt-target="btSectionSynthese" aria-current="location">Synthèse</button>
         <button type="button" class="bt-section-link" id="btNavMeilleurBk" data-bt-target="btMeilleurBkPanel" style="display:none">Bookmakers</button>
-        <button type="button" class="bt-section-link" data-bt-target="btScorePanel">Matrices</button>
+        <button type="button" class="bt-section-link" data-bt-target="btMatricesGroupe">Matrices</button>
         <button type="button" class="bt-section-link" data-bt-target="btMvtFiltrePanel">CLV</button>
         <button type="button" class="bt-section-link" data-bt-target="btLeaguePanel">Ligues</button>
         <button type="button" class="bt-section-link" data-bt-target="btDetailPanel">Détail</button>
@@ -1017,6 +1017,21 @@
       </div>
     </details>
 
+<!-- Matrices regroupées (11/11/2026, demande : « la page est trop longue, peux-tu ranger toutes les
+     matrices ensemble avec un sous-menu pour choisir laquelle afficher ? ») : une seule affichée à la
+     fois, choix retenu dans ce navigateur (voir initChoixMatrice). -->
+<section class="matrices-groupe" id="btMatricesGroupe" aria-label="Matrices">
+  <div class="panel matrices-choix">
+    <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/></svg>Matrices <span class="hint">— une à la fois, toutes suivent les filtres de la page</span></h2>
+    <div class="jour-modes matrices-onglets" id="btMatricesChoix" role="group" aria-label="Matrice affichée">
+        <button type="button" class="jour-mode is-active" data-matrice="btScorePanel" aria-pressed="true" aria-controls="btScorePanel">Score exact</button>
+        <button type="button" class="jour-mode" data-matrice="btResultPanel" aria-pressed="false" aria-controls="btResultPanel">Vainqueur du match</button>
+        <button type="button" class="jour-mode" data-matrice="btHistPanel" aria-pressed="false" aria-controls="btHistPanel">Historique</button>
+        <button type="button" class="jour-mode" data-matrice="btMvtMatPanel" aria-pressed="false" aria-controls="btMvtMatPanel">Mouvement de cote</button>
+        <button type="button" class="jour-mode" data-matrice="btEvMatPanel" aria-pressed="false" aria-controls="btEvMatPanel">Espérance</button>
+        <button type="button" class="jour-mode" data-matrice="btForceMatPanel" aria-pressed="false" aria-controls="btForceMatPanel">Forces</button>
+    </div>
+  </div>
 <details class="panel panel-foldable" id="btScorePanel" open>
       <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/></svg>Score exact — matrice de rentabilité</h2>
       <span class="panel-fold-label" aria-hidden="true"></span>
@@ -1082,8 +1097,8 @@
       <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
         Croise le nombre de matchs ayant servi à estimer la force de l'équipe à domicile (Hist. dom.,
         en ligne) et de l'équipe à l'extérieur (Hist. ext., en colonne) dans leur compétition actuelle —
-        typiquement faible juste après une montée ou une descente de division. Contrairement aux deux
-        matrices ci-dessus, <strong>cette grille est cliquable</strong> : sélectionner une case filtre
+        typiquement faible juste après une montée ou une descente de division. Contrairement aux
+        autres matrices, <strong>cette grille est cliquable</strong> : sélectionner une case filtre
         toute la page (KPI, tableau par catégorie, détail des paris…) sur cette combinaison précise —
         cliquez à nouveau pour l'enlever. La grille elle-même reste toujours complète, quel que soit le
         filtre actif, pour pouvoir comparer une case avec une autre. Une pastille ambre signale un
@@ -1103,29 +1118,6 @@
       <p class="muted" id="btHistEmpty" style="display:none; font-size:.85rem">Aucun pari ne correspond à ces filtres.</p>
       <div class="score-legend" id="btHistLegend"></div>
       <p class="muted" id="btHistBest" style="margin:.7rem 0 0; font-size:.85rem"></p>
-    
-      </div>
-    </details>
-
-<details class="panel panel-foldable" id="btMvtFiltrePanel" open>
-      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14l4-5 3.5 3L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Mouvement de cote — sur vos paris filtrés <span class="hint">— le CLV en détail</span></h2>
-      <span class="panel-fold-label" aria-hidden="true"></span>
-      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-      <div class="panel-fold-body">
-      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
-        Répartit les paris qui passent vos filtres ci-dessus selon que la cote a raccourci ou
-        s'est allongée entre la première et la dernière capture avant le coup d'envoi. Ce signal a
-        un nom dans le jargon des paris sportifs : le <strong>CLV</strong> (Closing Line Value —
-        l'écart entre le prix obtenu et celui du marché à la clôture). Un CLV positif de façon
-        répétée est considéré comme l'un des meilleurs indicateurs de savoir-faire à long terme,
-        plus stable qu'un ROI mesuré sur un échantillon encore restreint — c'est ce que le KPI
-        « CLV moyen » plus haut résume en un chiffre, et ce que le détail par tranche ci-dessous
-        permet de vérifier. Il ne porte que sur les paris qui correspondent à vos réglages actuels : pratique pour voir en direct l'effet d'exclure les cotes qui ont déjà bougé.
-      </p>
-      <div id="btMvtFiltreWrap"></div>
-      <p class="muted" id="btMvtFiltreEmpty" style="display:none; font-size:.85rem">Aucun pari filtré ne dispose d'un mouvement de cote mesuré (il faut au moins deux captures avant le coup d'envoi).</p>
-      <p class="muted" id="btMvtFiltreNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
-      <p class="muted" id="btMvtFiltreBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
     
       </div>
     </details>
@@ -1239,6 +1231,30 @@
       <p class="muted" id="btForceMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
       <p class="muted" id="btForceMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
 
+      </div>
+    </details>
+</section>
+
+<details class="panel panel-foldable" id="btMvtFiltrePanel" open>
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14l4-5 3.5 3L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Mouvement de cote — sur vos paris filtrés <span class="hint">— le CLV en détail</span></h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Répartit les paris qui passent vos filtres ci-dessus selon que la cote a raccourci ou
+        s'est allongée entre la première et la dernière capture avant le coup d'envoi. Ce signal a
+        un nom dans le jargon des paris sportifs : le <strong>CLV</strong> (Closing Line Value —
+        l'écart entre le prix obtenu et celui du marché à la clôture). Un CLV positif de façon
+        répétée est considéré comme l'un des meilleurs indicateurs de savoir-faire à long terme,
+        plus stable qu'un ROI mesuré sur un échantillon encore restreint — c'est ce que le KPI
+        « CLV moyen » plus haut résume en un chiffre, et ce que le détail par tranche ci-dessous
+        permet de vérifier. Il ne porte que sur les paris qui correspondent à vos réglages actuels : pratique pour voir en direct l'effet d'exclure les cotes qui ont déjà bougé.
+      </p>
+      <div id="btMvtFiltreWrap"></div>
+      <p class="muted" id="btMvtFiltreEmpty" style="display:none; font-size:.85rem">Aucun pari filtré ne dispose d'un mouvement de cote mesuré (il faut au moins deux captures avant le coup d'envoi).</p>
+      <p class="muted" id="btMvtFiltreNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
+      <p class="muted" id="btMvtFiltreBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
+    
       </div>
     </details>
 
@@ -2147,6 +2163,23 @@
       </div>
       <p class="muted bk-periode-note" id="bkPeriodeNote"></p>
 
+      <!-- Télécharger / remettre à zéro (11/11/2026), voir initActionsBankroll. -->
+      <div class="bk-actions">
+        <button type="button" class="btn btn-primary" id="bkTelecharger"
+                title="Tout l'historique des paris joués, quelle que soit la période choisie, dans un fichier qu'Excel ouvre directement">Télécharger la bankroll (CSV)</button>
+        <button type="button" class="btn btn-danger" id="bkRazOuvrir" aria-expanded="false" aria-controls="bkRazConfirm">Remettre à zéro…</button>
+        <span class="muted bk-actions-fb" id="bkActionsFb" role="status"></span>
+      </div>
+      <div class="bk-raz-confirm" id="bkRazConfirm" hidden>
+        <p id="bkRazTexte"></p>
+        <div class="bk-actions">
+          <button type="button" class="btn btn-primary" id="bkRazTelecharger">Télécharger d'abord</button>
+          <button type="button" class="btn btn-danger" id="bkRazValider">Oui, remettre à zéro</button>
+          <button type="button" class="btn" id="bkRazAnnuler">Annuler</button>
+        </div>
+      </div>
+      <p class="muted bk-raz-note" id="bkRazNote" hidden></p>
+
       <div class="kpis">
         <div class="kpi"><div class="k" id="bkActuelleLabel">Bankroll actuelle</div><div class="v" id="bkActuelle">—</div><div class="kpi-sub" id="bkActuelleSub"></div></div>
         <div class="kpi"><div class="k">Résultat net (résolu)</div><div class="v" id="bkNet">—</div><div class="kpi-sub" id="bkNetSub"></div></div>
@@ -2594,7 +2627,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111162334", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111162334", APP = "app.js?v=20261111162252";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261111180213", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261111180213", APP = "app.js?v=20261111180124";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
