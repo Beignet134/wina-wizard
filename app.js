@@ -181,6 +181,12 @@ function passeCote(bornes, cote) {
 // 0,5–1,8 : 1er et 99e centiles des paris Score exact du backtest à 0,65–1,47.
 const FORCE_SLIDER_MIN = 0.5;
 const FORCE_SLIDER_MAX = 1.8;
+// Réglage par défaut (11/11/2026, demande : « ajoute dans le filtre par défaut
+// (et celui des alertes) que la force d'attaque max sur score exact est à
+// 1,05 ») : attaque moyenne < 1,05, défense sans limite. Mêmes bornes dans
+// ALERTES_FILTRES côté script. « Réinitialiser les filtres » y revient ;
+// « Tout inclure » lève la limite.
+const FORCE_DEFAUT = {AttSe: {lo: FORCE_SLIDER_MIN, hi: 1.05}, DefSe: {lo: FORCE_SLIDER_MIN, hi: FORCE_SLIDER_MAX}};
 // Les paris à venir ne portent leurs forces que depuis le 11/11/2026 : avec
 // des données plus anciennes, le filtre ne s'applique qu'à DC rétrospectif.
 const FORCES_PARIS_AVENIR_DISPO = (WIZARD_DATA.value_bets || []).some(v => v.force_att_dom != null);
@@ -4890,7 +4896,7 @@ function blocFiltreCategorie(prefixe, cat) {
       </div>
     </div>`;
     // Curseurs « Attaque » / « Défense » (11/11/2026), voir forcesSeBornes.
-    const curseurForce = (champ, titre, aide) => `
+    const curseurForce = (champ, titre, aide, d = FORCE_DEFAUT[champ]) => `
     <div class="field field-wide">
       <label for="${prefixe}${champ}Min">${titre}</label>
       <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">${aide}</p>
@@ -4898,18 +4904,18 @@ function blocFiltreCategorie(prefixe, cat) {
         <div class="mvt-slider-track">
           <div class="mvt-slider-rail" aria-hidden="true"></div>
           <div class="mvt-slider-fill" id="${prefixe}${champ}Fill"></div>
-          <input type="range" id="${prefixe}${champ}Min" class="mvt-range" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MIN}" aria-label="${titre} — borne basse (incluse)">
-          <input type="range" id="${prefixe}${champ}Max" class="mvt-range" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MAX}" aria-label="${titre} — borne haute (exclue)">
+          <input type="range" id="${prefixe}${champ}Min" class="mvt-range" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${d.lo}" aria-label="${titre} — borne basse (incluse)">
+          <input type="range" id="${prefixe}${champ}Max" class="mvt-range" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${d.hi}" aria-label="${titre} — borne haute (exclue)">
         </div>
         <div class="mvt-slider-readout">
-          <input type="number" id="${prefixe}${champ}MinNum" class="mvt-num" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MIN}" aria-label="${titre} — borne basse (incluse)"><span>à moins de</span>
-          <input type="number" id="${prefixe}${champ}MaxNum" class="mvt-num" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MAX}" aria-label="${titre} — borne haute (exclue)"><span></span>
+          <input type="number" id="${prefixe}${champ}MinNum" class="mvt-num" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${d.lo}" aria-label="${titre} — borne basse (incluse)"><span>à moins de</span>
+          <input type="number" id="${prefixe}${champ}MaxNum" class="mvt-num" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${d.hi}" aria-label="${titre} — borne haute (exclue)"><span></span>
           <button type="button" class="msel-action mvt-reset" id="${prefixe}${champ}Reset">Tout inclure</button>
         </div>
       </div>
     </div>`;
     champs += curseurForce("AttSe", "Attaque (moyenne des deux équipes)",
-      "1 = moyenne de la ligue, plus haut = attaques plus fortes. Mêmes tranches que la matrice des forces : borne haute exclue, poignée au bout = pas de limite.");
+      "1 = moyenne de la ligue, plus haut = attaques plus fortes. Mêmes tranches que la matrice des forces : borne haute exclue, poignée au bout = pas de limite. Par défaut : moins de 1,05.");
     champs += curseurForce("DefSe", "Défense (moyenne des deux équipes)",
       "Plus bas = défenses plus solides, plus haut = plus fragiles. Note du modèle à manier avec prudence : elle exagère l'effet des défenses sur le nombre de buts.");
   }
@@ -5567,14 +5573,24 @@ function renderOverview() {
     CURRENT_UPCOMING_ROWS,
     CURRENT_UPCOMING_VERDICTS || verdictsFiltresAvenir()
   );
+  renderOverviewTest();
+  renderOverviewDonnees();
+}
 
+// « Résistance au test » : depuis le 11/11/2026 (demande : « sur l'onglet vue
+// générale la résistance au test doit se faire avec mes filtres DC
+// rétrospectif également »), sur les paris retenus par les filtres et réglages
+// de DC rétrospectif (btFiltered), comme sa propre validation hors
+// échantillon (renderOosValidation, qui rappelle cette fonction à chaque
+// rendu) ; avant, sur toutes les lignes du backtest sans aucun filtre.
+function renderOverviewTest() {
   const dateCourte = value => {
     const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
     return match ? match[3] + "/" + match[2] + "/" + match[1] : (value || "");
   };
   // Même split chronologique et même agrégateur que renderOosValidation().
   // On ne crée pas de test artificiel quand l'historique compte moins de 8 paris.
-  const rowsChrono = BT_ROWS.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const rowsChrono = btFiltered().slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const splitPossible = rowsChrono.length >= 8;
   const coupe = splitPossible ? Math.floor(rowsChrono.length / 2) : 0;
   const apprentissage = splitPossible ? rowsChrono.slice(0, coupe) : [];
@@ -5595,8 +5611,8 @@ function renderOverview() {
   if (sampleEl) sampleEl.textContent = test.length.toLocaleString("fr-FR");
   const sampleSub = $("ovTestSampleSub");
   if (sampleSub) sampleSub.textContent = splitPossible
-    ? "sur " + rowsChrono.length.toLocaleString("fr-FR") + " value bets · seuil indicatif " + OOS_MIN
-    : rowsChrono.length + " au total · 8 nécessaires pour créer un test";
+    ? "sur " + rowsChrono.length.toLocaleString("fr-FR") + " paris retenus par vos filtres · seuil indicatif " + OOS_MIN
+    : rowsChrono.length + " retenus par vos filtres · 8 nécessaires pour créer un test";
 
   const clvRows = test.filter(r => r.raccourcit !== undefined);
   const clvEl = $("ovTestClv");
@@ -5611,8 +5627,11 @@ function renderOverview() {
       const raccourcis = clvRows.filter(r => r.variation_proba > 0).length;
       clvEl.textContent = (clv >= 0 ? "+" : "") + clv.toFixed(2) + " pt";
       clvEl.className = "ov-metric-value " + (clv >= 0 ? "pos" : "neg");
-      if (clvSub) clvSub.textContent = clvRows.length + "/" + test.length +
-        " mesurés · " + Math.round(raccourcis / clvRows.length * 100) + " % raccourcis";
+      // Filtre « Mouvement de la cote » à 0 → 0 : la CLV est nulle par construction.
+      const sansMouvement = clvRows.every(r => !r.variation_proba);
+      if (clvSub) clvSub.textContent = sansMouvement
+        ? "nulle par construction : votre filtre ne garde que les cotes inchangées"
+        : clvRows.length + "/" + test.length + " mesurés · " + Math.round(raccourcis / clvRows.length * 100) + " % raccourcis";
     }
   }
 
@@ -5621,7 +5640,7 @@ function renderOverview() {
     let niveau = "is-low", titre, texte;
     if (!splitPossible) {
       titre = "Pas assez de données pour créer un test.";
-      texte = rowsChrono.length + " value bet(s) disponibles ; il en faut au moins 8 pour séparer apprentissage et test chronologique.";
+      texte = rowsChrono.length + " pari(s) retenu(s) par vos filtres DC rétrospectif ; il en faut au moins 8 pour séparer apprentissage et test chronologique.";
     } else if (test.length < OOS_MIN) {
       titre = "Échantillon de test trop faible pour conclure.";
       texte = test.length + " paris dans la moitié récente, sous le seuil indicatif de " + OOS_MIN +
@@ -5646,7 +5665,9 @@ function renderOverview() {
     validationNote.className = "ov-validation-note " + niveau;
     validationNote.innerHTML = "<strong>" + titre + "</strong><span>" + texte + "</span>";
   }
+}
 
+function renderOverviewDonnees() {
   // Fraîcheur, rapprochements et accès direct aux diagnostics existants.
   const meta = WIZARD_DATA.meta || {};
   const updatedEl = $("ovDataUpdated");
@@ -10023,6 +10044,8 @@ document.querySelectorAll("#btTable th.sortable").forEach(th => {
    ============================================================ */
 
 function renderOosValidation() {
+  // La « Résistance au test » de la vue d'ensemble suit les mêmes filtres.
+  if (typeof renderOverviewTest === "function") renderOverviewTest();
   const box = $("btOos");
   if (!box) return;
 
