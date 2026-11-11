@@ -167,6 +167,63 @@ function passeCote(bornes, cote) {
   return true;
 }
 
+// --- Forces d'attaque et de défense (bloc « Score exact ») : curseurs doubles
+// Demande du 11/11/2026 : « installe dans les filtres score exact 2 curseurs
+// permettant de choisir l'intervalle d'attaque et de défense à conserver ».
+// Valeur comparée = moyenne des deux équipes (attaque à domicile de celle qui
+// reçoit et à l'extérieur de celle qui se déplace ; 1 = moyenne de la ligue ;
+// défense > 1 = encaisse plus), comme la vue par défaut de la matrice des
+// forces, dans la lecture des forces choisie. Borne basse INCLUSE, borne haute
+// EXCLUE, comme les tranches de la matrice : [0,80 ; 1,05] garde exactement
+// les colonnes « 0,8 à 0,95 » et « 0,95 à 1,05 ». Poignée à l'extrémité du
+// domaine = pas de limite de ce côté ; les deux aux extrémités = filtre
+// inactif. Filtre actif : un pari sans forces connues est écarté. Domaine
+// 0,5–1,8 : 1er et 99e centiles des paris Score exact du backtest à 0,65–1,47.
+const FORCE_SLIDER_MIN = 0.5;
+const FORCE_SLIDER_MAX = 1.8;
+// Les paris à venir ne portent leurs forces que depuis le 11/11/2026 : avec
+// des données plus anciennes, le filtre ne s'applique qu'à DC rétrospectif.
+const FORCES_PARIS_AVENIR_DISPO = (WIZARD_DATA.value_bets || []).some(v => v.force_att_dom != null);
+function forcesSeBornes(prefixe) {
+  const lire = champ => {
+    const elMin = $(prefixe + champ + "Min"), elMax = $(prefixe + champ + "Max");
+    const lo = elMin ? parseFloat(elMin.value) : FORCE_SLIDER_MIN;
+    const hi = elMax ? parseFloat(elMax.value) : FORCE_SLIDER_MAX;
+    return {lo, hi, actif: lo > FORCE_SLIDER_MIN || hi < FORCE_SLIDER_MAX};
+  };
+  const att = lire("AttSe"), def = lire("DefSe");
+  return {att, def, actif: att.actif || def.actif};
+}
+function forceMoyenne(r, cle) {
+  const a = cle === "att" ? r.force_att_dom : r.force_def_dom;
+  const b = cle === "att" ? r.force_att_ext : r.force_def_ext;
+  return a != null && b != null && !isNaN(a) && !isNaN(b) ? (a + b) / 2 : null;
+}
+// Motif d'exclusion (texte) ou null. Ne regarde pas la catégorie : à
+// l'appelant de ne l'appliquer qu'au Score exact.
+function echecForces(bornes, r) {
+  if (!bornes.actif) return null;
+  for (const [cle, nom] of [["att", "attaque"], ["def", "défense"]]) {
+    const x = bornes[cle];
+    if (!x.actif) continue;
+    const v = forceMoyenne(r, cle);
+    if (v == null) return `${nom} des équipes inconnue`;
+    if (x.lo > FORCE_SLIDER_MIN && v < x.lo - 1e-9) return `${nom} moyenne ${fmtForceFiltre(v)}, sous votre minimum de ${fmtForceFiltre(x.lo)}`;
+    if (x.hi < FORCE_SLIDER_MAX && v >= x.hi - 1e-9) return `${nom} moyenne ${fmtForceFiltre(v)}, pas sous votre maximum de ${fmtForceFiltre(x.hi)}`;
+  }
+  return null;
+}
+function fmtForceFiltre(v) {
+  return Number(v).toLocaleString("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 3});
+}
+// « 0,80 à moins de 1,05 », « au moins 0,80 », « moins de 1,05 ».
+function bornesForceTxt(x) {
+  const bas = x.lo > FORCE_SLIDER_MIN, haut = x.hi < FORCE_SLIDER_MAX;
+  if (bas && haut) return `${fmtForceFiltre(x.lo)} à moins de ${fmtForceFiltre(x.hi)}`;
+  if (bas) return `au moins ${fmtForceFiltre(x.lo)}`;
+  return `moins de ${fmtForceFiltre(x.hi)}`;
+}
+
 /* ============================================================
    MÉLANGE AVEC LE MARCHÉ
    ------------------------------------------------------------
@@ -3508,6 +3565,7 @@ function renderUpcoming() {
   // Plage de cotes : réglage global (curseur double), voir le commentaire
   // détaillé dans btFiltered (page DC rétrospectif).
   const bornesCoteU = coteBornesActives("u");
+  const bornesForcesU = forcesSeBornes("u");
   const pred = $("uPred") ? $("uPred").value : "";
   const devig = $("uDevig") ? $("uDevig").value === "1" : false;
   const alpha = blendAlpha("uAlpha");
@@ -3758,6 +3816,10 @@ function renderUpcoming() {
     // "Score(s) pariés" — ne concerne que "Score exact" (colonne "H - A") ;
     // les autres catégories ne sont jamais filtrées ici.
     if (v.categorie === CATEGORY_SCORE && scoresEx && !scoresEx.has(v.colonne)) return false;
+    // Intervalles d'attaque et de défense — Score exact seulement, comme sur
+    // DC rétrospectif (ignorés avec des données d'avant le 11/11/2026, sans forces).
+    if (v.categorie === CATEGORY_SCORE && bornesForcesU.actif && FORCES_PARIS_AVENIR_DISPO
+        && echecForces(bornesForcesU, v)) return false;
     if (pred === "accord" && v.prediction_accord !== "accord") return false;
     if (pred === "desaccord" && v.prediction_accord !== "desaccord") return false;
     if (pred === "neutre" && !(v.prediction && !v.prediction_accord)) return false;
@@ -4827,6 +4889,29 @@ function blocFiltreCategorie(prefixe, cat) {
         </div>
       </div>
     </div>`;
+    // Curseurs « Attaque » / « Défense » (11/11/2026), voir forcesSeBornes.
+    const curseurForce = (champ, titre, aide) => `
+    <div class="field field-wide">
+      <label for="${prefixe}${champ}Min">${titre}</label>
+      <p class="muted" style="margin:0 0 .5rem; font-size:.75rem">${aide}</p>
+      <div class="mvt-slider">
+        <div class="mvt-slider-track">
+          <div class="mvt-slider-rail" aria-hidden="true"></div>
+          <div class="mvt-slider-fill" id="${prefixe}${champ}Fill"></div>
+          <input type="range" id="${prefixe}${champ}Min" class="mvt-range" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MIN}" aria-label="${titre} — borne basse (incluse)">
+          <input type="range" id="${prefixe}${champ}Max" class="mvt-range" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MAX}" aria-label="${titre} — borne haute (exclue)">
+        </div>
+        <div class="mvt-slider-readout">
+          <input type="number" id="${prefixe}${champ}MinNum" class="mvt-num" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MIN}" aria-label="${titre} — borne basse (incluse)"><span>à moins de</span>
+          <input type="number" id="${prefixe}${champ}MaxNum" class="mvt-num" min="${FORCE_SLIDER_MIN}" max="${FORCE_SLIDER_MAX}" step="0.01" value="${FORCE_SLIDER_MAX}" aria-label="${titre} — borne haute (exclue)"><span></span>
+          <button type="button" class="msel-action mvt-reset" id="${prefixe}${champ}Reset">Tout inclure</button>
+        </div>
+      </div>
+    </div>`;
+    champs += curseurForce("AttSe", "Attaque (moyenne des deux équipes)",
+      "1 = moyenne de la ligue, plus haut = attaques plus fortes. Mêmes tranches que la matrice des forces : borne haute exclue, poignée au bout = pas de limite.");
+    champs += curseurForce("DefSe", "Défense (moyenne des deux équipes)",
+      "Plus bas = défenses plus solides, plus haut = plus fragiles. Note du modèle à manier avec prudence : elle exagère l'effet des défenses sur le nombre de buts.");
   }
   return `<details class="cat-filter-block" data-cat="${cat}">
     <summary>${cat}</summary>
@@ -4892,6 +4977,13 @@ remplirScoreExOptionsPartout();
 cablerCasesCategorie();
 majVisibiliteBlocsCategorie("bt");
 majVisibiliteBlocsCategorie("u");
+// Curseurs « Attaque » / « Défense » du bloc Score exact (11/11/2026) : même
+// widget que Plage de cotes, synchronisé entre les deux pages.
+["AttSe", "DefSe"].forEach(champ => {
+  initDoubleSlider(champ, "bt", FORCE_SLIDER_MIN, FORCE_SLIDER_MAX);
+  initDoubleSlider(champ, "u", FORCE_SLIDER_MIN, FORCE_SLIDER_MAX);
+  lierDoubleSlider(champ);
+});
 
 // --- "Issue pariée" (Vainqueur du match) : 3 cases fixes, même mécanique de
 // câblage que cablerCasesLigue (synchro bt<->u + redessin), mais sans la
@@ -6090,6 +6182,8 @@ function btFiltered(opts) {
   // de la cote. Domaine calé sur les données réelles (p99 ≈ 30, max = 65 sur
   // le backtest) — voir COTE_SLIDER_MIN/MAX.
   const bornesCote = coteBornesActives("bt");
+  // Forces d'attaque / de défense, Score exact seulement (voir forcesSeBornes).
+  const bornesForces = forcesSeBornes("bt");
   // Substitution AVANT tout filtrage : un pari sauvé par la garantie doit
   // être vu comme gagnant par TOUS les filtres qui suivent (y compris
   // "Afficher : gagnés/perdus") et par les statistiques, pas seulement
@@ -6174,6 +6268,8 @@ function btFiltered(opts) {
     // "Score(s) pariés" — ne concerne que "Score exact" (colonne "H - A") ;
     // les autres catégories ne sont jamais filtrées ici.
     if (r.categorie === CATEGORY_SCORE && scoresEx && !scoresEx.has(r.colonne)) return false;
+    // Intervalles d'attaque et de défense — Score exact seulement.
+    if (r.categorie === CATEGORY_SCORE && bornesForces.actif && echecForces(bornesForces, r)) return false;
     if (dateDebut && r.date < dateDebut) return false;
     if (dateFin && r.date > dateFin) return false;
     if (cats && !cats.includes(r.categorie)) return false;
@@ -6236,8 +6332,8 @@ function verdictsFiltresAvenir() {
   const controles = [
     ...ids.map(id => $(id)).filter(Boolean),
     ...ids.map(id => $("bt" + id.slice(1))).filter(Boolean),
-    ...document.querySelectorAll("#uCatFilterBlocks select, .uLigueChk, .uIssueVmChk, .uScoreExChk"),
-    ...document.querySelectorAll("#btCatFilterBlocks select, .btLigueChk, .btIssueVmChk, .btScoreExChk"),
+    ...document.querySelectorAll("#uCatFilterBlocks select, #uCatFilterBlocks input[type=range], .uLigueChk, .uIssueVmChk, .uScoreExChk"),
+    ...document.querySelectorAll("#btCatFilterBlocks select, #btCatFilterBlocks input[type=range], .btLigueChk, .btIssueVmChk, .btScoreExChk"),
   ];
   const signature = controles.map(el => `${el.id || el.className}:${el.value}:${el.checked ? 1 : 0}`).join("|");
   if (!CURRENT_UPCOMING_VERDICTS || signature !== CURRENT_UPCOMING_VERDICT_SIGNATURE) {
@@ -6547,6 +6643,15 @@ function renderBtActiveFilters(rowsFiltrees) {
     if (selectedScores.length && selectedScores.length < scoreBoxes.length) {
       const names = selectedScores.map(box => box.value);
       add(shortCat(cat), `Scores · ${selectedScores.length} sélectionné(s)`, `Scores inclus : ${names.join(", ")}`);
+    }
+
+    if (cat === CATEGORY_SCORE) {
+      const bf = forcesSeBornes("bt");
+      [["att", "Attaque"], ["def", "Défense"]].forEach(([cle, nom]) => {
+        if (!bf[cle].actif) return;
+        add(shortCat(cat), `${nom} · ${bornesForceTxt(bf[cle])}`,
+            `${nom} moyenne des deux équipes : ${bornesForceTxt(bf[cle])} (borne haute exclue)`);
+      });
     }
   });
 
@@ -7689,6 +7794,28 @@ function renderLigueComparaison(rowsFiltrees) {
 // le monde à une teinte quasi neutre). Le gain net reste le chiffre affiché
 // en gras dans la case : c'est lui qu'on demande de "tracer", le ROI ne
 // sert qu'à la mise en forme conditionnelle.
+// Totaux des matrices (11/11/2026, demande : « pourquoi le total des lignes et pas des
+// colonnes aussi ? ») : chaque matrice a sa colonne Total (bilan de la ligne), sa ligne
+// Total (bilan de la colonne) et, au coin, le bilan de toute la grille.
+function matAgreger(rows, extra, seuil) {
+  const s = btAgg(rows);
+  const net = rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
+  return Object.assign({net, rows, total: true, fiable: s.n >= seuil}, extra, s);
+}
+// Case de total : fond neutre, gain net coloré selon son signe. `attr` = attribut
+// data-… qui ouvre le détail au clic ; `coin` = case ligne Total × colonne Total.
+function matCaseTotal(c, attr, desc, coin = false, sousTitre = null) {
+  const coinCls = coin ? " score-cell-coin" : "";
+  if (!c || !c.n) return `<td class="score-cell score-cell-empty score-cell-total${coinCls}"><span class="muted">—</span></td>`;
+  const cls = c.net >= 0 ? "pos" : "neg";
+  return `<td class="score-cell score-cell-total${coinCls}${!c.fiable ? " score-cell-lowdata" : ""}" ${attr} tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)}">
+      <div class="score-net ${cls}">${fmtEur(c.net)}</div>
+      <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+      <div class="score-roi">${sousTitre != null ? sousTitre : fmtPct(c.roi ?? 0)}</div>
+    </td>`;
+}
+const MAT_TOTAUX_LEGENDE = "colonne Total = toute la ligne · ligne Total = toute la colonne · coin = toute la grille";
+
 function renderScoreMatrix(rowsFiltrees) {
   const wrap = $("btScoreMatrixWrap");
   const empty = $("btScoreEmpty");
@@ -7728,14 +7855,25 @@ function renderScoreMatrix(rowsFiltrees) {
     const net = cr.rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
     agg[k] = Object.assign({net, h: cr.h, a: cr.a, fiable: s.n >= SCORE_CELL_SEUIL_FIABLE, rows: cr.rows}, s);
   });
-  SCORE_MATRIX_DATA = agg;
+  // Totaux : par buts domicile (colonne Total), par buts extérieur (ligne Total), grille entière.
+  const totaux = {};
+  for (let h = 0; h <= maxH; h++) {
+    const rs = rows.filter(r => +SCORE_RE.exec(r.colonne)[1] === h);
+    if (rs.length) totaux[h + "-*"] = matAgreger(rs, {h, a: "*"}, SCORE_CELL_SEUIL_FIABLE);
+  }
+  for (let a = 0; a <= maxA; a++) {
+    const rs = rows.filter(r => +SCORE_RE.exec(r.colonne)[2] === a);
+    if (rs.length) totaux["*-" + a] = matAgreger(rs, {h: "*", a}, SCORE_CELL_SEUIL_FIABLE);
+  }
+  totaux["*-*"] = matAgreger(rows, {h: "*", a: "*"}, SCORE_CELL_SEUIL_FIABLE);
+  SCORE_MATRIX_DATA = Object.assign({}, agg, totaux);
 
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
 
   let thead = '<tr><th class="score-corner">Domicile ↓ · Extérieur →</th>';
   for (let a = 0; a <= maxA; a++) thead += `<th class="num">${a}</th>`;
-  thead += "</tr>";
+  thead += '<th class="num score-total-head">Total</th></tr>';
 
   let tbody = "";
   for (let h = 0; h <= maxH; h++) {
@@ -7760,8 +7898,14 @@ function renderScoreMatrix(rowsFiltrees) {
                   <div class="score-roi">${fmtPct(roi)}</div>
                 </td>`;
     }
+    tbody += matCaseTotal(totaux[h + "-*"], `data-score="${h}-*"`, `${h} but${h > 1 ? "s" : ""} à domicile, tous scores`);
     tbody += "</tr>";
   }
+  tbody += '<tr class="score-total-row"><th class="num">Total</th>';
+  for (let a = 0; a <= maxA; a++) {
+    tbody += matCaseTotal(totaux["*-" + a], `data-score="*-${a}"`, `${a} but${a > 1 ? "s" : ""} à l'extérieur, tous scores`);
+  }
+  tbody += matCaseTotal(totaux["*-*"], 'data-score="*-*"', "tous les scores", true) + "</tr>";
   wrap.innerHTML = `<table class="score-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 
   // Légende : dégradé calé sur les bornes réellement atteintes, pas des
@@ -7774,7 +7918,8 @@ function renderScoreMatrix(rowsFiltrees) {
       <span class="score-legend-bar" aria-hidden="true"></span>
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleurRoi, 0))}</span>
       <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
-      <span class="muted score-legend-note">ROI par case · pastille ambre = moins de ${SCORE_CELL_SEUIL_FIABLE} paris</span>`;
+      <span class="muted score-legend-note">ROI par case · pastille ambre = moins de ${SCORE_CELL_SEUIL_FIABLE} paris
+      · ${MAT_TOTAUX_LEGENDE}</span>`;
   }
 
   // Résumé : le(s) score(s) le(s) plus rentable(s) en gain net, parmi les
@@ -7929,7 +8074,10 @@ initMatrixCellInspector({
   dataKey: "score", getData: () => SCORE_MATRIX_DATA,
   rowMeta: r => `${ligueLabel(r.pays, r.ligue)} · ${r.date}`,
   buildDetails: c => matrixDetailMarkup(
-    c, `Score ${c.h}-${c.a}`,
+    c, c.h === "*" && c.a === "*" ? "Tous les scores exacts"
+      : c.a === "*" ? `Scores à ${c.h} but${c.h > 1 ? "s" : ""} pour le domicile`
+      : c.h === "*" ? `Scores à ${c.a} but${c.a > 1 ? "s" : ""} pour l'extérieur`
+      : `Score ${c.h}-${c.a}`,
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`,
     r => `${ligueLabel(r.pays, r.ligue)} · ${r.date}`
   )
@@ -7991,17 +8139,6 @@ function renderResultMatrix(rowsFiltrees) {
     totalLigne[p] = RESULT_ORDER.reduce((s, c) =>
       s + ((parCase[p + "|" + c] || {rows: []}).rows.length), 0);
   });
-  // Gain net TOTAL par ligne (colonne "Total" de la matrice, voir plus bas) :
-  // somme des 3 cases de la ligne, donc le résultat net de tous les paris
-  // joués sur cette issue, tous résultats réels confondus.
-  const netLigne = {};
-  RESULT_ORDER.forEach(p => {
-    netLigne[p] = RESULT_ORDER.reduce((s, c) => {
-      const rows = (parCase[p + "|" + c] || {rows: []}).rows;
-      return s + rows.reduce((sum, r) => sum + r.profit * btStakeFor(r), 0);
-    }, 0);
-  });
-
   const agg = {};
   Object.keys(parCase).forEach(k => {
     const cr = parCase[k];
@@ -8014,7 +8151,17 @@ function renderResultMatrix(rowsFiltrees) {
       pctLigne: totLigne ? s.n / totLigne : 0,
     }, s);
   });
-  RESULT_MATRIX_DATA = agg;
+  // Totaux : par issue pariée (colonne Total), par résultat réel (ligne Total), grille entière.
+  const reelDe = r => { const m = SCORE_RE.exec(r.score_reel); return issueReelle(parseInt(m[1], 10), parseInt(m[2], 10)); };
+  const totaux = {};
+  RESULT_ORDER.forEach(o => {
+    const parPari = rows.filter(r => r.colonne === o);
+    if (parPari.length) totaux[o + "|*"] = matAgreger(parPari, {pari: o, reel: "*"}, RESULT_CELL_SEUIL_FIABLE);
+    const parReel = rows.filter(r => reelDe(r) === o);
+    if (parReel.length) totaux["*|" + o] = matAgreger(parReel, {pari: "*", reel: o, part: parReel.length / rows.length}, RESULT_CELL_SEUIL_FIABLE);
+  });
+  totaux["*|*"] = matAgreger(rows, {pari: "*", reel: "*"}, RESULT_CELL_SEUIL_FIABLE);
+  RESULT_MATRIX_DATA = Object.assign({}, agg, totaux);
 
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
@@ -8054,14 +8201,18 @@ function renderResultMatrix(rowsFiltrees) {
     // tous résultats réels confondus — pas une case de la grille (pas
     // d'issue réelle unique associée), donc pas de heatmap par ROI ici,
     // juste le texte coloré selon le signe.
-    const netTot = netLigne[pari];
-    const nTot = totalLigne[pari];
-    tbody += `<td class="score-cell score-cell-total">
-                <div class="score-net ${netTot >= 0 ? 'pos' : 'neg'}">${fmtEur(netTot)}</div>
-                <div class="score-sub">${nTot} pari${nTot > 1 ? "s" : ""}</div>
-              </td>`;
+    tbody += matCaseTotal(totaux[pari + "|*"], `data-result="${pari}|*"`, `paris ${RESULT_LABEL[pari]}, tous résultats réels`);
     tbody += "</tr>";
   });
+  // Ligne "Total" : tous les paris dont le match a fini sur ce résultat réel,
+  // quelle que soit l'issue pariée ; sous le montant, leur part de tous les paris.
+  tbody += '<tr class="score-total-row"><th class="num">Total</th>';
+  RESULT_ORDER.forEach(reel => {
+    const c = totaux["*|" + reel];
+    tbody += matCaseTotal(c, `data-result="*|${reel}"`, `résultat réel ${RESULT_LABEL[reel]}, toutes issues pariées`,
+                          false, c ? `${(c.part * 100).toFixed(0)} % des paris` : null);
+  });
+  tbody += matCaseTotal(totaux["*|*"], 'data-result="*|*"', "tous les paris Vainqueur du match", true) + "</tr>";
   wrap.innerHTML = `<table class="score-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 
   if (legend) {
@@ -8075,7 +8226,8 @@ function renderResultMatrix(rowsFiltrees) {
       <span class="muted score-legend-note">ROI par case (fond) · % en gras = part de la ligne
       (parmi les paris sur cette issue) · pastille ambre = moins de ${RESULT_CELL_SEUIL_FIABLE} paris
       · diagonale encadrée = pari gagné · colonne Total = gain net de tous les paris joués sur cette
-      issue, quel qu'ait été le résultat réel</span>`;
+      issue, quel qu'ait été le résultat réel · ligne Total = gain net selon le résultat réel du match,
+      quelle qu'ait été l'issue pariée (sous le montant : part de tous les paris) · coin = tous les paris</span>`;
   }
 
   // Résumé : calibration de chaque issue pariée — quand on parie sur X,
@@ -8099,8 +8251,15 @@ initMatrixCellInspector({
   dataKey: "result", getData: () => RESULT_MATRIX_DATA,
   rowMeta: r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · score ${r.score_reel}`,
   buildDetails: c => matrixDetailMarkup(
-    c, `Pari ${RESULT_LABEL[c.pari]} → réel ${RESULT_LABEL[c.reel]}`,
-    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${(c.pctLigne * 100).toFixed(0)} % des paris sur ${RESULT_LABEL[c.pari]}`,
+    c, c.total
+      ? (c.pari === "*" && c.reel === "*" ? "Tous les paris Vainqueur du match"
+        : c.reel === "*" ? `Pari ${RESULT_LABEL[c.pari]}, tous résultats réels`
+        : `Résultat réel ${RESULT_LABEL[c.reel]}, toutes issues pariées`)
+      : `Pari ${RESULT_LABEL[c.pari]} → réel ${RESULT_LABEL[c.reel]}`,
+    c.total
+      ? `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+        + (c.part != null ? ` · ${(c.part * 100).toFixed(0)} % de tous les paris` : "")
+      : `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${(c.pctLigne * 100).toFixed(0)} % des paris sur ${RESULT_LABEL[c.pari]}`,
     r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · score ${r.score_reel}`
   )
 });
@@ -8202,7 +8361,18 @@ function renderHistMatrix(rowsSansHist) {
     agg[k] = Object.assign({net, dom: cr.dom, ext: cr.ext, rows: cr.rows,
                              fiable: s.n >= HIST_CELL_SEUIL_FIABLE}, s);
   });
-  HIST_MATRIX_DATA = agg;
+  // Totaux : par historique domicile (colonne Total), extérieur (ligne Total),
+  // grille entière. Ils ouvrent le détail au clic mais ne filtrent pas la page.
+  const totaux = {};
+  const dansGrille = rows.filter(r => histBucketKey(r.n_hist_dom) && histBucketKey(r.n_hist_ext));
+  HIST_BUCKETS.forEach(b => {
+    const parDom = dansGrille.filter(r => histBucketKey(r.n_hist_dom) === b.key);
+    if (parDom.length) totaux[b.key + "|*"] = matAgreger(parDom, {dom: b.key, ext: "*"}, HIST_CELL_SEUIL_FIABLE);
+    const parExt = dansGrille.filter(r => histBucketKey(r.n_hist_ext) === b.key);
+    if (parExt.length) totaux["*|" + b.key] = matAgreger(parExt, {dom: "*", ext: b.key}, HIST_CELL_SEUIL_FIABLE);
+  });
+  totaux["*|*"] = matAgreger(dansGrille, {dom: "*", ext: "*"}, HIST_CELL_SEUIL_FIABLE);
+  HIST_MATRIX_DATA = Object.assign({}, agg, totaux);
 
   const roiVals = Object.values(agg).map(c => c.roi).filter(v => v != null);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
@@ -8213,7 +8383,7 @@ function renderHistMatrix(rowsSansHist) {
 
   let thead = '<tr><th class="score-corner">Hist. dom. ↓ · Hist. ext. →</th>';
   HIST_BUCKETS.forEach(b => { thead += `<th class="num">${b.key}</th>`; });
-  thead += "</tr>";
+  thead += '<th class="num score-total-head">Total</th></tr>';
 
   let tbody = "";
   HIST_BUCKETS.forEach(rb => {
@@ -8245,8 +8415,14 @@ function renderHistMatrix(rowsSansHist) {
                   <div class="score-roi">${fmtPct(roi)}</div>
                 </td>`;
     });
+    tbody += matCaseTotal(totaux[rb.key + "|*"], `data-hist="${rb.key}|*"`, `historique domicile ${rb.key}, tous historiques extérieur`);
     tbody += "</tr>";
   });
+  tbody += '<tr class="score-total-row"><th class="num">Total</th>';
+  HIST_BUCKETS.forEach(cb => {
+    tbody += matCaseTotal(totaux["*|" + cb.key], `data-hist="*|${cb.key}"`, `historique extérieur ${cb.key}, tous historiques domicile`);
+  });
+  tbody += matCaseTotal(totaux["*|*"], 'data-hist="*|*"', "toutes les combinaisons", true) + "</tr>";
   wrap.innerHTML = `<table class="score-matrix hist-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 
   if (legend) {
@@ -8259,7 +8435,8 @@ function renderHistMatrix(rowsSansHist) {
       <span class="score-lowdata-key"><span aria-hidden="true"></span> échantillon limité</span>
       <span class="muted score-legend-note">ROI par case · pastille ambre = moins de
       ${HIST_CELL_SEUIL_FIABLE} paris · cliquez sur une case pour filtrer toute la page sur cette
-      combinaison (cliquez à nouveau pour l'enlever)</span>`;
+      combinaison (cliquez à nouveau pour l'enlever) · ${MAT_TOTAUX_LEGENDE} (les totaux ouvrent
+      leur détail sans filtrer la page)</span>`;
   }
 
   // Résumé : combinaison(s) la/les plus rentable(s) en gain net, parmi les
@@ -8318,7 +8495,8 @@ function renderHistMatrix(rowsSansHist) {
     const cell = ev.target.closest(".score-cell");
     if (!cell || !holder.contains(cell) || cell.classList.contains("score-cell-empty")) return;
     const key = cell.dataset.hist;
-    if (!key) return;
+    // Cases de total (« * ») : détail seulement, pas de filtre.
+    if (!key || key.includes("*")) return;
     const [dom, ext] = key.split("|");
     BT_HIST_SELECTION = (BT_HIST_SELECTION && BT_HIST_SELECTION.dom === dom && BT_HIST_SELECTION.ext === ext)
       ? null : {dom, ext};
@@ -8334,10 +8512,12 @@ initMatrixCellInspector({
   dataKey: "hist", getData: () => HIST_MATRIX_DATA,
   rowMeta: r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · hist. ${r.n_hist_dom}/${r.n_hist_ext}`,
   buildDetails: c => matrixDetailMarkup(
-    c, `Dom. ${c.dom} / Ext. ${c.ext}`,
+    c, c.dom === "*" && c.ext === "*" ? "Toutes les combinaisons d'historique"
+      : `Dom. ${c.dom === "*" ? "tous" : c.dom} / Ext. ${c.ext === "*" ? "tous" : c.ext}`,
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`,
     r => `${ligueLabel(r.pays, r.ligue)} · ${r.date} · hist. ${r.n_hist_dom}/${r.n_hist_ext}`,
-    "Le filtre historique est actif sur toute la page. Recliquez cette case pour le retirer."
+    c.total ? "Case de total : elle ne filtre pas la page."
+      : "Le filtre historique est actif sur toute la page. Recliquez cette case pour le retirer."
   )
 });
 
@@ -8657,7 +8837,19 @@ function renderMvtMatrix(rowsBruts, rowsPage) {
       fiable: s.n >= MVT_TRANCHE_SEUIL_FIABLE,
     }, s);
   });
-  MVT_MAT_DATA = agg;
+  // Ligne Total : tous les paris hors filtre de mouvement, par colonne, avec le
+  // dédoublonnage de la page (un match présent dans deux tranches n'y compte
+  // qu'une fois) ; le coin = tous ces paris.
+  const totauxLigne = {};
+  const avecAttMarche = c => Object.assign(c, {
+    attMarche: c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0)});
+  groupes.forEach(g => {
+    const rs = rowsSansFiltre.filter(r => dim.cle(r) === g.k);
+    if (rs.length) totauxLigne[g.k] = avecAttMarche(matAgreger(rs, {t: "*", g: g.k, gLabel: g.label}, MVT_TRANCHE_SEUIL_FIABLE));
+  });
+  totauxLigne["*"] = avecAttMarche(matAgreger(rowsSansFiltre, {t: "*", g: "*", gLabel: "toutes colonnes"}, MVT_TRANCHE_SEUIL_FIABLE));
+  MVT_MAT_DATA = Object.assign({}, agg);
+  Object.keys(totauxLigne).forEach(g => { MVT_MAT_DATA["*|" + g] = totauxLigne[g]; });
 
   const teintees = Object.values(agg).filter(c => (c.g === "*") === totalTeinte && c.roi != null);
   const roiVals = teintees.map(c => c.roi);
@@ -8668,8 +8860,8 @@ function renderMvtMatrix(rowsBruts, rowsPage) {
     Object.values(agg).some(c => c.t === "nm") ? [MVT_MAT_NON_MESURE] : []);
   let partiels = false;
 
-  const cellule = (key, c, desc, estTotal) => {
-    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+  const cellule = (key, c, desc, estTotal, coin = false) => {
+    if (!c) return `<td class="score-cell score-cell-empty${estTotal ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"><span class="muted">—</span></td>`;
     const roi = c.roi ?? 0;
     const neutre = estTotal && !totalTeinte;
     const cls = roi >= 0 ? "pos" : "neg";
@@ -8680,7 +8872,7 @@ function renderMvtMatrix(rowsBruts, rowsPage) {
       const alpha = (0.12 + intensite * 0.58).toFixed(2);
       style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
     }
-    return `<td class="score-cell ${cls}${peuFiable}${neutre ? " score-cell-total" : ""}"${style} data-mvtmat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+    return `<td class="score-cell ${cls}${peuFiable}${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-mvtmat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
         <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
         <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
         <div class="score-roi">${fmtPct(roi)}</div>
@@ -8708,6 +8900,10 @@ function renderMvtMatrix(rowsBruts, rowsPage) {
     if (avecTotal) tbody += cellule(`${t.k}|*`, agg[`${t.k}|*`], `${nom}, toutes colonnes`, true);
     tbody += "</tr>";
   });
+  tbody += `<tr class="score-total-row"><th class="num" scope="row" title="Tous les paris hors filtre de mouvement">Total<span class="mvt-sens">toutes tranches</span></th>`;
+  groupes.forEach(g => { tbody += cellule(`*|${g.k}`, totauxLigne[g.k], `toutes tranches, ${g.label}`, true); });
+  if (avecTotal) tbody += cellule("*|*", totauxLigne["*"], "toutes tranches, toutes colonnes", true, true);
+  tbody += "</tr>";
   wrap.innerHTML = `<table class="score-matrix mvt-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 
   const nombrePts = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("fr-FR");
@@ -8726,7 +8922,7 @@ function renderMvtMatrix(rowsBruts, rowsPage) {
       ${b.actif ? `<span class="mvt-filtre-key"><span aria-hidden="true"></span> retenu par votre filtre (${bornesTxt})</span>` : ""}
       ${partiels ? `<span class="mvt-filtre-key partiel"><span aria-hidden="true"></span> en partie</span>` : ""}
       <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise ·
-      ✓ = paris gagnés · cliquez une case pour voir ses paris</span>`;
+      ✓ = paris gagnés · cliquez une case pour voir ses paris · ${MAT_TOTAUX_LEGENDE}</span>`;
   }
 
   // Effet du filtre « Mouvement de la cote » sur la page : avec / sans.
@@ -8737,9 +8933,9 @@ function renderMvtMatrix(rowsBruts, rowsPage) {
   };
   if (note) {
     const nMesure = rowsSansFiltre.filter(r => r.raccourcit != null).length;
-    let txt = `${rowsSansFiltre.length} pari${rowsSansFiltre.length > 1 ? "s" : ""} sur vos filtres hors mouvement · `
+    let txt = `${rowsSansFiltre.length} pari${rowsSansFiltre.length > 1 ? "s" : ""} sur vos filtres hors mouvement (ligne Total) · `
       + `${nMesure} avec un mouvement mesuré`;
-    if (dedupActif) txt += " · chaque tranche garde son meilleur pari par match et par catégorie";
+    if (dedupActif) txt += " · chaque tranche garde son meilleur pari par match et par catégorie, la ligne Total un seul pour toutes les tranches";
     if (!b.actif) {
       txt += " · filtre « Mouvement de la cote » inactif.";
     } else {
@@ -8794,7 +8990,7 @@ initMatrixCellInspector({
   dataKey: "mvtmat", getData: () => MVT_MAT_DATA,
   rowMeta: r => mvtMatMetaPari(r),
   buildDetails: c => matrixDetailMarkup(
-    c, `${mvtMatNomTranche(MVT_MAT_PAR_CLE[c.t])} · ${c.gLabel}`,
+    c, `${c.t === "*" ? "Toutes tranches (sans le filtre de mouvement)" : mvtMatNomTranche(MVT_MAT_PAR_CLE[c.t])} · ${c.gLabel}`,
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
       + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
     r => mvtMatMetaPari(r)
@@ -8894,6 +9090,7 @@ let BT_EV_MAT_VUE = (() => {
   catch (e) { return "tranches"; }
 })();
 function evMatNomLigne(k) {
+  if (k === "*") return "toutes espérances (sans le filtre d'espérance)";
   const t = EV_MAT_PAR_CLE[k];
   if (!t) return k;
   return t.nom || (k === "nc" ? "espérance non calculée" : `espérance ${t.label}`);
@@ -8995,7 +9192,25 @@ function renderEvMatrix(rowsBruts, rowsPage) {
       fiable: s.n >= MVT_TRANCHE_SEUIL_FIABLE,
     }, s);
   });
-  EV_MAT_DATA = agg;
+  // Ligne Total (vue « Tranches » seulement : en vue « Au moins », la ligne
+  // « Peu importe » est déjà le total) : tous les paris hors filtre d'espérance,
+  // par colonne, avec le dédoublonnage de la page.
+  const totauxLigne = {};
+  if (!cumul) {
+    const completer = c => {
+      const evs = c.rows.map(evMatValeur).filter(v => v != null);
+      return Object.assign(c, {
+        attMarche: c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0),
+        evMoy: evs.length ? evs.reduce((a, b) => a + b, 0) / evs.length : null});
+    };
+    groupes.forEach(g => {
+      const rs = rowsSansFiltre.filter(r => dim.cle(r) === g.k);
+      if (rs.length) totauxLigne[g.k] = completer(matAgreger(rs, {t: "*", g: g.k, gLabel: g.label}, MVT_TRANCHE_SEUIL_FIABLE));
+    });
+    totauxLigne["*"] = completer(matAgreger(rowsSansFiltre, {t: "*", g: "*", gLabel: "toutes colonnes"}, MVT_TRANCHE_SEUIL_FIABLE));
+  }
+  EV_MAT_DATA = Object.assign({}, agg);
+  Object.keys(totauxLigne).forEach(g => { EV_MAT_DATA["*|" + g] = totauxLigne[g]; });
 
   const teintees = Object.values(agg).filter(c => (c.g === "*") === totalTeinte && c.roi != null);
   const roiVals = teintees.map(c => c.roi);
@@ -9013,8 +9228,8 @@ function renderEvMatrix(rowsBruts, rowsPage) {
   };
   let partiels = false, pleins = false;
 
-  const cellule = (key, c, desc, estTotal) => {
-    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+  const cellule = (key, c, desc, estTotal, coin = false) => {
+    if (!c) return `<td class="score-cell score-cell-empty${estTotal ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"><span class="muted">—</span></td>`;
     const roi = c.roi ?? 0;
     const neutre = estTotal && !totalTeinte;
     const cls = roi >= 0 ? "pos" : "neg";
@@ -9025,7 +9240,7 @@ function renderEvMatrix(rowsBruts, rowsPage) {
       const alpha = (0.12 + intensite * 0.58).toFixed(2);
       style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
     }
-    return `<td class="score-cell ${cls}${peuFiable}${neutre ? " score-cell-total" : ""}"${style} data-evmat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+    return `<td class="score-cell ${cls}${peuFiable}${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-evmat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
         <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
         <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
         <div class="score-roi">${fmtPct(roi)}</div>
@@ -9057,6 +9272,13 @@ function renderEvMatrix(rowsBruts, rowsPage) {
     if (avecTotal) tbody += cellule(`${t.k}|*`, agg[`${t.k}|*`], `${nom}, toutes colonnes`, true);
     tbody += "</tr>";
   });
+  if (!cumul) {
+    const tot = totauxLigne["*"];
+    tbody += `<tr class="score-total-row"><th class="num" scope="row" title="Tous les paris hors filtre d'espérance">Total<span class="mvt-sens">${tot && tot.evMoy != null ? `moy. ${evMatPct(tot.evMoy)}` : ""}</span></th>`;
+    groupes.forEach(g => { tbody += cellule(`*|${g.k}`, totauxLigne[g.k], `toutes espérances, ${g.label}`, true); });
+    if (avecTotal) tbody += cellule("*|*", tot, "toutes espérances, toutes colonnes", true, true);
+    tbody += "</tr>";
+  }
   wrap.innerHTML = `<table class="score-matrix mvt-matrix ev-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 
   if (legend) {
@@ -9072,7 +9294,9 @@ function renderEvMatrix(rowsBruts, rowsPage) {
       ${pleins ? `<span class="mvt-filtre-key"><span aria-hidden="true"></span> ${cle}</span>` : ""}
       ${partiels ? `<span class="mvt-filtre-key partiel"><span aria-hidden="true"></span> ${clePart}</span>` : ""}
       <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise ·
-      ✓ = paris gagnés · cliquez une case pour voir ses paris</span>`;
+      ✓ = paris gagnés · cliquez une case pour voir ses paris · ${cumul
+        ? "colonne Total = toute la ligne · la ligne « Peu importe » donne le total de chaque colonne"
+        : MAT_TOTAUX_LEGENDE}</span>`;
   }
   const resume = rs => {
     const s = btAgg(rs);
@@ -9097,8 +9321,8 @@ function renderEvMatrix(rowsBruts, rowsPage) {
         + (dedupActif ? " et un pari par match et par catégorie" : "")
         + `. Les lignes s'emboîtent : un pari compte dans toutes celles dont il passe le seuil.`;
     } else {
-      txt = `${rowsSansFiltre.length} pari${rowsSansFiltre.length > 1 ? "s" : ""} sur vos filtres hors espérance`;
-      if (dedupActif) txt += " · chaque tranche garde son meilleur pari par match et par catégorie";
+      txt = `${rowsSansFiltre.length} pari${rowsSansFiltre.length > 1 ? "s" : ""} sur vos filtres hors espérance (ligne Total)`;
+      if (dedupActif) txt += " · chaque tranche garde son meilleur pari par match et par catégorie, la ligne Total un seul pour toutes les tranches";
       if (!filtreActif) {
         txt += " · filtre d'espérance inactif.";
       } else {
@@ -9258,6 +9482,8 @@ function renderForceMatrix(rowsPage) {
     if (a == null || d == null) return;
     ajouter(a, d, r);
     ajouter(a, "*", r);
+    ajouter("*", d, r);     // ligne Total (par tranche de défense)
+    ajouter("*", "*", r);   // coin : tous les paris de la grille
   });
   const agg = {};
   Object.keys(parCase).forEach(k => {
@@ -9271,12 +9497,12 @@ function renderForceMatrix(rowsPage) {
     }, s);
   });
   FORCE_MAT_DATA = agg;
-  const teintees = Object.values(agg).filter(c => c.d !== "*" && c.roi != null);
+  const teintees = Object.values(agg).filter(c => c.d !== "*" && c.a !== "*" && c.roi != null);
   const roiVals = teintees.map(c => c.roi);
   const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
 
-  const cellule = (key, c, desc, estTotal) => {
-    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+  const cellule = (key, c, desc, estTotal, coin = false) => {
+    if (!c) return `<td class="score-cell score-cell-empty${estTotal ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"><span class="muted">—</span></td>`;
     const roi = c.roi ?? 0;
     const cls = roi >= 0 ? "pos" : "neg";
     const peuFiable = !c.fiable ? " score-cell-lowdata" : "";
@@ -9286,7 +9512,7 @@ function renderForceMatrix(rowsPage) {
       const alpha = (0.12 + intensite * 0.58).toFixed(2);
       style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
     }
-    return `<td class="score-cell ${cls}${peuFiable}${estTotal ? " score-cell-total" : ""}"${style} data-forcemat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+    return `<td class="score-cell ${cls}${peuFiable}${estTotal ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-forcemat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
         <div class="score-net${estTotal ? " " + cls : ""}">${fmtEur(c.net)}</div>
         <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
         <div class="score-roi">${fmtPct(roi)}</div>
@@ -9304,6 +9530,9 @@ function renderForceMatrix(rowsPage) {
     tbody += cellule(`${a}|*`, agg[`${a}|*`], `attaque ${la}, toutes défenses`, true);
     tbody += "</tr>";
   });
+  tbody += `<tr class="score-total-row"><th class="num" scope="row" title="Toutes attaques">Total</th>`;
+  FORCE_MAT_DEF.forEach((ld, d) => { tbody += cellule(`*|${d}`, agg[`*|${d}`], `toutes attaques, défense ${ld}`, true); });
+  tbody += cellule("*|*", agg["*|*"], "toutes attaques, toutes défenses", true, true) + "</tr>";
   wrap.innerHTML = `<table class="score-matrix mvt-matrix force-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 
   if (legend) {
@@ -9315,11 +9544,17 @@ function renderForceMatrix(rowsPage) {
       <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
       <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${MVT_TRANCHE_SEUIL_FIABLE} paris</span>
       <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise ·
-      ✓ = paris gagnés · cliquez une case pour voir ses paris</span>`;
+      ✓ = paris gagnés · cliquez une case pour voir ses paris · ${MAT_TOTAUX_LEGENDE}</span>`;
   }
   if (note) {
     let txt = `${rows.length} pari${rows.length > 1 ? "s" : ""} de la page · forces : ${eq.nom}.`;
     if (sansForce) txt += ` ${sansForce} pari${sansForce > 1 ? "s" : ""} sans forces connues, laissé${sansForce > 1 ? "s" : ""} de côté.`;
+    const bf = forcesSeBornes("bt");
+    if (bf.actif) {
+      txt += " Filtre de forces actif sur le Score exact ("
+        + [["att", "attaque"], ["def", "défense"]].filter(([k]) => bf[k].actif).map(([k, nom]) => `${nom} ${bornesForceTxt(bf[k])}`).join(", ")
+        + ") : ses paris hors de ces intervalles ne figurent pas dans la grille.";
+    }
     note.textContent = txt;
   }
   if (bestEl) {
@@ -9364,7 +9599,7 @@ initMatrixCellInspector({
   dataKey: "forcemat", getData: () => FORCE_MAT_DATA,
   rowMeta: r => forceMatMetaPari(r),
   buildDetails: c => matrixDetailMarkup(
-    c, `Attaque ${FORCE_MAT_ATT[c.a]} · ${c.d === "*" ? "toutes défenses" : `défense ${FORCE_MAT_DEF[c.d]}`} (${(FORCE_MAT_EQ[BT_FORCE_MAT_EQ] || FORCE_MAT_EQ.moy).nom})`,
+    c, `${c.a === "*" ? "Toutes attaques" : `Attaque ${FORCE_MAT_ATT[c.a]}`} · ${c.d === "*" ? "toutes défenses" : `défense ${FORCE_MAT_DEF[c.d]}`} (${(FORCE_MAT_EQ[BT_FORCE_MAT_EQ] || FORCE_MAT_EQ.moy).nom})`,
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
       + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
     r => forceMatMetaPari(r)
