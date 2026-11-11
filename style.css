@@ -688,6 +688,7 @@ tbody tr:hover { background: rgba(128,175,255,.08); }
    retient — en pointillé quand il n'en retient qu'une partie. */
 #btMvtMatModes { margin-bottom: .7rem; }
 .ev-mat-commandes { display: flex; flex-wrap: wrap; gap: .5rem .9rem; margin-bottom: .7rem; }
+#btForceMatEq { margin-bottom: .7rem; }
 .mvt-matrix .score-cell:not(.score-cell-empty) { cursor: pointer; }
 .mvt-matrix .score-cell:not(.score-cell-empty):hover {
   outline: 2px solid var(--violet); outline-offset: -2px;
