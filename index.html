@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261113192248">
+<link rel="stylesheet" href="style.css?v=20261113210218">
 </head>
 <body>
 <div class="topbar">
@@ -596,9 +596,9 @@
         </div>
         <div class="field" id="btForcesField">
           <label for="btForces">Forces d'équipe</label>
-          <select id="btForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs. Dixon-Coles complet (test) : forces de toutes les équipes d'une compétition estimées ensemble, en tenant compte de la force des adversaires rencontrés.">
+          <select id="btForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément (lecture de vos filtres). Prix juste (test) : réglages appris sur 10 ans de championnats (une attaque et une défense par équipe, notes rapprochées de la moyenne), mélangés aux forces tirées des cotes Score exact des matchs déjà joués : bien plus proche du marché, pour juger une cote, pas pour choisir des paris. Dixon-Coles complet (test) : forces de toutes les équipes d'une compétition estimées ensemble, en tenant compte de la force des adversaires rencontrés.">
             <option value="act" selected>Actuelles</option>
-            <option value="tm">Tous matchs (test)</option>
+            <option value="tm">Prix juste : 10 ans + cotes (test)</option>
             <option value="dc">Dixon-Coles complet (test)</option>
           </select>
         </div>
@@ -1421,8 +1421,9 @@
       <div class="panel-fold-body">
       <p class="muted" style="margin:-.5rem 0 1rem; font-size:.85rem">
         Compare la lecture <strong>actuelle</strong> des forces d'équipe (attaque et défense à
-        domicile et à l'extérieur estimées séparément) à la lecture <strong>« tous matchs »</strong>
-        (une attaque et une défense par équipe, sur l'ensemble de ses matchs) et à la lecture
+        domicile et à l'extérieur estimées séparément) à la lecture <strong>« Prix juste »</strong>
+        (une attaque et une défense par équipe, réglages appris sur 10 ans de championnats,
+        mélangées aux forces tirées des cotes Score exact des matchs déjà joués) et à la lecture
         <strong>« Dixon-Coles complet »</strong> (forces de toutes les équipes d'une compétition
         estimées ensemble, en tenant compte de la force des adversaires rencontrés), toutes
         recalculées à chaque collecte, jour après jour, avec le seul passé connu à la date du match.
@@ -1805,9 +1806,9 @@
         </div>
         <div class="field" id="uForcesField">
           <label for="uForces">Forces d'équipe</label>
-          <select id="uForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément. Tous matchs (test) : une attaque et une défense par équipe, sur l'ensemble de ses matchs. Dixon-Coles complet (test) : forces de toutes les équipes d'une compétition estimées ensemble, en tenant compte de la force des adversaires rencontrés.">
+          <select id="uForces" title="Actuelles : attaque et défense à domicile et à l'extérieur estimées séparément (lecture de vos filtres). Prix juste (test) : réglages appris sur 10 ans de championnats (une attaque et une défense par équipe, notes rapprochées de la moyenne), mélangés aux forces tirées des cotes Score exact des matchs déjà joués : bien plus proche du marché, pour juger une cote, pas pour choisir des paris. Dixon-Coles complet (test) : forces de toutes les équipes d'une compétition estimées ensemble, en tenant compte de la force des adversaires rencontrés.">
             <option value="act" selected>Actuelles</option>
-            <option value="tm">Tous matchs (test)</option>
+            <option value="tm">Prix juste : 10 ans + cotes (test)</option>
             <option value="dc">Dixon-Coles complet (test)</option>
           </select>
         </div>
@@ -2627,7 +2628,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261113192338", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261113192338", APP = "app.js?v=20261113192248";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261113210308", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261113210308", APP = "app.js?v=20261113210218";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
