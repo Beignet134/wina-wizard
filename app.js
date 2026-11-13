@@ -1190,7 +1190,7 @@ function majNiveauNote(prefixe) {
   note.innerHTML = `<strong>Niveau de buts corrigé</strong> (test) — buts attendus multipliés, pour chaque pari, `
     + `par le rapport buts réels ÷ buts prévus des matchs joués dans les ${NIVEAU_FENETRE_J} jours précédents `
     + `(passé seulement, au moins ${NIVEAU_MIN_MATCHS} matchs). Aujourd'hui : ×${v(fa.f)} pour la lecture actuelle `
-    + `(${fa.n} matchs)${fl ? `, ×${v(fl.f)} pour la lecture « ${lect === "dc" ? "Dixon-Coles complet" : "tous matchs"} »` : ""}. `
+    + `(${fa.n} matchs)${fl ? `, ×${v(fl.f)} pour la lecture « ${lect === "dc" ? "Dixon-Coles complet" : "Prix juste"} »` : ""}. `
     + `Moins de petits scores et de nuls annoncés ; « Les 2 équipes marquent » ne bouge pas. Combinable avec les autres réglages.`;
 }
 
@@ -1400,7 +1400,7 @@ function majDefenseNote(prefixe) {
   const v = x => x.toFixed(2).replace(".", ",");
   const lect = forcesTmActif(prefixe);
   const cle = lect === "dc" ? "dc" : lect ? "tm" : "act";
-  const nom = lect === "dc" ? "« Dixon-Coles complet »" : lect ? "« tous matchs »" : "actuelle";
+  const nom = lect === "dc" ? "« Dixon-Coles complet »" : lect ? "« Prix juste »" : "actuelle";
   const f = DEFENSE.facteur(cle, iso);
   // Exemple : deux équipes à 1,3 but attendu chacune, défenses notées 0,70 ou 1,30.
   const ex = d => facteurDefense(f, 1.3, 1.3, d, d);
@@ -1690,10 +1690,21 @@ function majForcesNote(prefixe, nbLignes, nbTotal) {
     return;
   }
   note.style.display = "";
-  note.innerHTML = `<strong>Forces « tous matchs » actives</strong> (test, k = ${FORCES_TM_K ?? "?"}) — une `
-    + `attaque et une défense par équipe, sur l'ensemble de ses matchs. Cette lecture remplace la lecture `
-    + `actuelle ; xG et binomiale négative sont sans effet. Comparaison des deux : panneau « Lectures du `
-    + `modèle » sur DC rétrospectif.`;
+  // Part des lignes de la page dont les forces « marché » sont dans le mélange
+  // (8e champ de r.tm, depuis le 13/11/2026).
+  let avecTm = [];
+  try { avecTm = (prefixe === "u" ? UPCOMING : BT_ROWS).filter(r => r.tm && r.tm.length > 7); } catch (e) { /* lignes pas encore prêtes */ }
+  const partMarche = avecTm.length ? avecTm.filter(r => r.tm[7] === 1).length / avecTm.length : null;
+  note.style.display = "";
+  note.innerHTML = `<strong>Prix juste actif</strong> (test, retrait ${String(FORCES_TM_K ?? "?").replace(/ \+ cotes$/, "")}) — forces réglées sur `
+    + `10 ans de championnats (une attaque et une défense par équipe, notes rapprochées de la moyenne), `
+    + `mélangées à 85 % avec les forces tirées des cotes Score exact des matchs déjà joués quand chaque équipe `
+    + `en a au moins 3 dans la compétition`
+    + (partMarche != null ? ` (${Math.round(partMarche * 100)} % des matchs de cette page)` : "")
+    + `. Bien plus proche des cotes que la lecture actuelle, mais toujours moins bon qu'elles : parier ses `
+    + `écarts perdait sur 10 ans d'historique. Il sert à juger une cote (espérance honnête), pas à choisir des `
+    + `paris ; vos filtres restent sur « Actuelles ». xG et binomiale négative sont sans effet. Comparaison : `
+    + `panneau « Lectures du modèle » sur DC rétrospectif.`;
 }
 
 // Découpe "min-max" en bornes numériques. Les plages sont exclusives à
@@ -9824,9 +9835,9 @@ function exporterBacktestCsv() {
     "Cote ouverture", "Variation proba", "A raccourci", "Nb captures",
     "Edge affiché (site)", "Mise (€)", "Gain/perte (€)",
     // Ajoutées en fin de ligne (les colonnes précédentes ne bougent pas) :
-    // lecture « forces sur tous les matchs », donnée quelle que soit la lecture active.
-    "Proba modèle (tous matchs)", "Edge brut (tous matchs)", "Edge dévigué (tous matchs)",
-    "Espérance (tous matchs)", "Lecture active",
+    // lecture « Prix juste » (ex « tous matchs »), donnée quelle que soit la lecture active.
+    "Proba modèle (Prix juste)", "Edge brut (Prix juste)", "Edge dévigué (Prix juste)",
+    "Espérance (Prix juste)", "Lecture active",
     // Correction saisonnière (réglage du site) : facteur appliqué et proba
     // « buts » sans correction, pour comparer.
     "Facteur saison", "Proba modèle (sans saison)",
@@ -9897,7 +9908,7 @@ function exporterBacktestCsv() {
       r.raccourcit == null ? "" : (r.raccourcit ? "Oui" : "Non"), r.n_captures ?? "",
       pct(edgeAffiche), num(mise), num(gain),
       pct(pTm), pct(edgeTm), pct(edgeDevigTm), pct(evTm),
-      (r.source_dc ? "Dixon-Coles complet" : r.source_tm ? "Tous matchs" : "Actuelle") + (r.source_saison ? " + saison" : "")
+      (r.source_dc ? "Dixon-Coles complet" : r.source_tm ? "Prix juste" : "Actuelle") + (r.source_saison ? " + saison" : "")
         + (r.source_rho ? " + ρ corrigé" : "")
         + (r.source_niveau ? " + niveau de buts ×" + String(r.niveau_f.toFixed(3)).replace(".", ",") : "")
         + (r.source_abs ? " + absences" : "")
@@ -9980,10 +9991,10 @@ function attachDcTooltips() {
         <div class="dc-tip-row"><span>Buts attendus (mélange xG)</span>
           <strong class="pos">${d.lhx} – ${d.lax}</strong></div>` : ""}
         ${d.lht != null ? `
-        <div class="dc-tip-row"><span>Buts attendus (${d.ldc ? "Dixon-Coles complet" : "tous matchs"})</span>
+        <div class="dc-tip-row"><span>Buts attendus (${d.ldc ? "Dixon-Coles complet" : "Prix juste"})</span>
           <strong class="pos">${d.lht} – ${d.lat}</strong></div>` : ""}
         <div class="dc-tip-sep"></div>
-        ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">${d.ldc ? "Dixon-Coles complet" : "tous matchs"}</strong></div>` : ""}
+        ${d.ft ? `<div class="dc-tip-row"><span>Forces affichées</span><strong class="pos">${d.ldc ? "Dixon-Coles complet" : "Prix juste"}</strong></div>` : ""}
         ${d.rho ? `<div class="dc-tip-row"><span>Petits scores</span><strong class="pos">ρ corrigé</strong></div>` : ""}
         ${d.fs ? `<div class="dc-tip-row"><span>Correction saisonnière</span><strong class="pos">buts attendus ×${String(d.fs).replace(".", ",")}</strong></div>` : ""}
         ${d.fa ? `<div class="dc-tip-row"><span>Absences</span><strong class="pos">domicile ×${d.fa.toLocaleString("fr-FR", {maximumFractionDigits: 3})} · extérieur ×${(1 / d.fa).toLocaleString("fr-FR", {maximumFractionDigits: 3})}</strong></div>` : ""}
@@ -10178,7 +10189,7 @@ function renderLecturesForces() {
   const vide = x => !x || !x.familles || !x.familles.length;
   if (vide(s) && vide(sdc) && vide(srho)) {
     box.innerHTML = '<p class="muted">En attente de données : ce tableau se remplit au prochain ' +
-      'lancement de wina_wizard.py avec la lecture « tous matchs » ou « Dixon-Coles complet ».</p>';
+      'lancement de wina_wizard.py avec la lecture « Prix juste » ou « Dixon-Coles complet ».</p>';
     return;
   }
   const f3 = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3).replace(".", ",");
@@ -10226,7 +10237,7 @@ function renderLecturesForces() {
   };
   const titre = t => `<h3 style="margin:1.4rem 0 .4rem; font-size:1rem">${t}</h3>`;
   const tauTxt = sdc && sdc.tau != null ? String(sdc.tau).replace(".", ",") : "?";
-  box.innerHTML = (vide(s) ? "" : titre("Tous matchs") + tableau(s, "Tous matchs", `k = ${s.k}`, "tous matchs"))
+  box.innerHTML = (vide(s) ? "" : titre("Prix juste (10 ans + cotes)") + tableau(s, "Prix juste", `retrait ${s.k}`, "Prix juste"))
     + (vide(sdc) ? "" : titre("Dixon-Coles complet") + tableau(sdc, "Dixon-Coles complet", `τ = ${tauTxt}`, "Dixon-Coles complet"))
     + (vide(srho) ? "" : titre("Petits scores corrigés (lecture actuelle)")
        + tableau(srho, "ρ corrigé", `ρ = ${String(srho.rho).replace("-", "−").replace(".", ",")}`, "petits scores corrigés"))
@@ -10306,7 +10317,7 @@ function renderLecturesSaison() {
       d'Europe, sélections, compétitions féminines, juin-juillet.</p>
     ${tableau(s.familles, "Lecture actuelle des forces")}
     ${parMois ? `<p class="muted" style="margin:.6rem 0 0; font-size:.85rem">Par mois, lecture actuelle, Plus/Moins 2,5 (avec − sans, matchs) : ${parMois}.</p>` : ""}
-    ${tableau(s.familles_tm, "Lecture « tous matchs »")}
+    ${tableau(s.familles_tm, "Lecture « Prix juste »")}
     <p class="muted" style="margin:.8rem 0 0; font-size:.82rem">
       Écarts au marché dévigué en log-loss par match (0 = aussi bon que le marché). Un « avec − sans »
       négatif signifie que la correction rapproche le modèle du marché. L'effet attendu est petit
