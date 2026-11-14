@@ -7343,6 +7343,9 @@ function renderBacktest() {
   renderMvtMatrix(mvtBornesActives("bt").actif || dedupBt
                     ? btFiltered({sansMvt: true, sansDedup: true}) : rowsFiltrees,
                   rowsFiltrees);
+  // Matrice du mouvement de cote par site (14/11/2026) : paris de la page,
+  // ou sans le filtre de mouvement selon le mode choisi.
+  renderMvtBkMatrix(rowsFiltrees);
   // Matrice des gains par espérance (09/11/2026) : même principe, sans le
   // filtre d'espérance.
   renderEvMatrix(evMatFiltreActif() || dedupBt
@@ -9027,6 +9030,217 @@ initMatrixCellInspector({
       + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
     r => mvtMatMetaPari(r)
   )
+});
+/* ---- Mouvement de cote par site — matrice des gains (14/11/2026) ----
+   Demande de l'utilisateur : « ajoute une matrice du mouvement de la cote par bookmaker ».
+   Lignes = mêmes tranches que la matrice « Mouvement de cote » (points de probabilité implicite, 1/cote),
+   colonnes = sites. Winamax : variation_proba du backtest. Autres sites : premier (o) et dernier (f) relevé
+   de la même issue chez ce site avant le coup d'envoi (champ « cbr », apply_cotes_bookmakers_retro) ; non
+   mesurable s'il n'a qu'un relevé, « pas coté » s'il n'a pas cette issue. Le pari et son gain restent ceux de
+   Winamax : un pari compte une fois par colonne, d'où l'absence de colonne Total. */
+const MVTBK_SITES = ["winamax", "unibet", "betclic", "bwin"];
+const MVTBK_NON_COTE = {k: "nc", label: "Pas coté", sens: "site absent"};
+const MVTBK_NON_MESURE = {k: "nm", label: "Non mesuré", sens: "1 seul relevé"};
+const MVTBK_LS = "ww_bt_mvtbk_mode";
+let BT_MVTBK_MODE = (() => {
+  try { return localStorage.getItem(MVTBK_LS) === "sans" ? "sans" : "page"; } catch (e) { return "page"; }
+})();
+let MVTBK_DATA = {};
+let MVTBK_DERNIER = null;
+let MVTBK_SITE_DETAIL = "winamax";
+function mvtBkTranchePts(v) {
+  if (v === 0) return "z";
+  for (const t of MVT_MAT_TRANCHES) {
+    if (t.k === "z") continue;
+    if (v < 0 ? (v >= t.lo && v < t.hi) : (v > t.lo && v <= t.hi)) return t.k;
+  }
+  return null;
+}
+// Mouvement d'un pari chez un site : {k: tranche | "nm" | "nc", pts, o, f, n}.
+function mvtBkMesure(r, site) {
+  if (site === "winamax") {
+    if (r.raccourcit == null) return {k: "nm", n: r.n_captures};
+    const pts = mvtMatPoints(r);
+    return {k: mvtBkTranchePts(pts), pts, n: r.n_captures};
+  }
+  const q = (r.cbr || []).find(x => x.b === site);
+  if (!q) return {k: "nc"};
+  if (q.o == null || q.f == null || !(q.n >= 2) || !(q.o > 1) || !(q.f > 1)) return {k: "nm", c: q.c, n: q.n};
+  // Même arrondi que variation_proba (4 décimales), puis en points.
+  const pts = Math.round(Math.round((1 / q.f - 1 / q.o) * 10000) / 10000 * 10000) / 100;
+  return {k: mvtBkTranchePts(pts), pts, o: q.o, f: q.f, n: q.n, c: q.c};
+}
+function mvtBkMetaPari(r, site) {
+  const m = mvtBkMesure(r, site);
+  const nom = CBK_NOMS[site] || site;
+  let mvt;
+  if (m.k === "nc") mvt = `pas coté chez ${nom}`;
+  else if (m.k === "nm") mvt = `${nom} : 1 seul relevé${m.c != null ? ` (cote ${m.c})` : ""}`;
+  else if (site === "winamax") mvt = `Winamax ${mvtMatPtsTxt(m.pts)} · ${m.n} relevés`;
+  else mvt = `${nom} ${m.o} → ${m.f} (${mvtMatPtsTxt(m.pts)}, ${m.n} relevés)`;
+  return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.colonne} · cote Winamax ${r.cote} · ${mvt}`;
+}
+function marquerModesMvtBk() {
+  document.querySelectorAll("#btMvtBkMatModes .jour-mode[data-mode]").forEach(b => {
+    const actif = b.dataset.mode === BT_MVTBK_MODE;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+function renderMvtBkMatrix(rowsPage) {
+  const wrap = $("btMvtBkMatWrap");
+  if (!wrap) return;
+  const empty = $("btMvtBkMatEmpty"), legend = $("btMvtBkMatLegend"), note = $("btMvtBkMatNote"), bestEl = $("btMvtBkMatBest");
+  MVTBK_DERNIER = {rowsPage};
+  marquerModesMvtBk();
+  const filtreMvt = mvtBornesActives("bt").actif;
+  // Sans le filtre de mouvement : comme la matrice « Mouvement de cote », « un seul pari par match » est refait
+  // par tranche de mouvement Winamax, pour que la ligne « inchangée » de Winamax retrouve exactement vos paris.
+  const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
+  let rows = rowsPage;
+  if (BT_MVTBK_MODE === "sans" && filtreMvt) {
+    const bruts = btFiltered({sansMvt: true, sansDedup: true});
+    rows = dedupActif ? mvtMatDedup(bruts, r => `${r.match}|${r.date}|${r.categorie}|${mvtMatTranche(r)}`) : bruts;
+  }
+  if (!rows.length) {
+    wrap.innerHTML = "";
+    [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
+    if (empty) empty.style.display = "";
+    MVTBK_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  const sites = MVTBK_SITES.filter(s => s === "winamax" || rows.some(r => (r.cbr || []).some(q => q.b === s)));
+  const seuil = MVT_TRANCHE_SEUIL_FIABLE;
+  const attMarche = rs => rs.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0);
+  const parCase = {}, cotes = {};
+  sites.forEach(s => { cotes[s] = []; });
+  rows.forEach(r => sites.forEach(s => {
+    const m = mvtBkMesure(r, s);
+    if (!m.k) return;
+    (parCase[m.k + "|" + s] = parCase[m.k + "|" + s] || []).push(r);
+    if (m.k !== "nc") cotes[s].push(r);
+  }));
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const [t, s] = k.split("|");
+    agg[k] = Object.assign(matAgreger(parCase[k], {t, s}, seuil), {total: false, attMarche: attMarche(parCase[k])});
+  });
+  const totaux = {};
+  sites.forEach(s => {
+    if (cotes[s].length) totaux[s] = Object.assign(matAgreger(cotes[s], {t: "*", s}, seuil), {attMarche: attMarche(cotes[s])});
+  });
+  MVTBK_DATA = Object.assign({}, agg);
+  Object.keys(totaux).forEach(s => { MVTBK_DATA["*|" + s] = totaux[s]; });
+
+  const teintees = Object.values(agg).filter(c => c.t !== "nc" && c.roi != null);
+  const roiVals = teintees.map(c => c.roi);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+  const presentes = new Set(Object.values(agg).map(c => c.t));
+  const tranches = MVT_MAT_TRANCHES.concat(presentes.has("nm") ? [MVTBK_NON_MESURE] : [], presentes.has("nc") ? [MVTBK_NON_COTE] : []);
+  const nomTranche = t => t.k === "nc" ? "pas coté" : t.k === "nm" ? "un seul relevé" : mvtMatNomTranche(t);
+
+  const cellule = (key, c, desc) => {
+    if (!c) return `<td class="score-cell score-cell-empty"><span class="muted">—</span></td>`;
+    const roi = c.roi ?? 0;
+    const cls = roi >= 0 ? "pos" : "neg";
+    const neutre = c.t === "nc";
+    let style = "";
+    if (!neutre) {
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    return `<td class="score-cell ${cls}${!c.fiable ? " score-cell-lowdata" : ""}${neutre ? " score-cell-total" : ""}"${style} data-mvtbk="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+        <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
+        <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+        <div class="score-roi">${fmtPct(roi)}</div>
+      </td>`;
+  };
+  let thead = `<tr><th class="score-corner">Mouvement (pts) ↓<br>Site →</th>`;
+  sites.forEach(s => { thead += `<th class="num">${CBK_NOMS[s] || s}</th>`; });
+  thead += "</tr>";
+  let tbody = "";
+  tranches.forEach(t => {
+    const cls = [t.k === "z" ? "mvt-row-zero" : "", (t.k === "nm" || t.k === "nc") ? "mvt-row-nm" : ""].filter(Boolean).join(" ");
+    tbody += `<tr${cls ? ` class="${cls}"` : ""}><th class="num" scope="row" title="${nomTranche(t)}">${t.label}<span class="mvt-sens">${t.sens}</span></th>`;
+    sites.forEach(s => { tbody += cellule(`${t.k}|${s}`, agg[`${t.k}|${s}`], `${nomTranche(t)} chez ${CBK_NOMS[s] || s}`); });
+    tbody += "</tr>";
+  });
+  tbody += `<tr class="score-total-row"><th class="num" scope="row" title="Tous les paris cotés par ce site">Total<span class="mvt-sens">paris cotés</span></th>`;
+  sites.forEach(s => { tbody += matCaseTotal(totaux[s], `data-mvtbk="*|${s}"`, `tous les paris cotés chez ${CBK_NOMS[s] || s}`); });
+  tbody += "</tr>";
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+
+  if (legend) {
+    const pire = roiVals.length ? arrMin(roiVals) : 0, meilleur = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pire, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${seuil} paris</span>
+      <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise · ✓ = paris gagnés ·
+      ligne Total = les paris que ce site cotait · cliquez une case pour voir ses paris</span>`;
+  }
+  const fr = x => x.toLocaleString("fr-FR");
+  if (note) {
+    const parts = sites.filter(s => s !== "winamax").map(s => {
+      const mes = cotes[s].filter(r => !["nm", "nc"].includes(mvtBkMesure(r, s).k)).length;
+      return `${CBK_NOMS[s]} : ${fr(cotes[s].length)} cotés, ${fr(mes)} mesurables`;
+    });
+    let txt = `${fr(rows.length)} pari${rows.length > 1 ? "s" : ""} ${BT_MVTBK_MODE === "sans" && filtreMvt ? "avec tous vos filtres sauf le mouvement de cote" + (dedupActif ? " (un pari par match et par tranche de mouvement Winamax)" : "") : "de la page"}`;
+    if (parts.length) txt += ` · ${parts.join(" · ")}`;
+    else txt += " · aucun autre site ne cotait encore ces paris";
+    txt += ". Betclic ne relève le score exact qu'une fois par match : ses cotes de score exact sont rarement mesurables.";
+    if (BT_MVTBK_MODE === "sans" && !filtreMvt) txt += " Le filtre « Mouvement de la cote » est inactif : les deux vues sont identiques.";
+    note.textContent = txt;
+  }
+  if (bestEl) {
+    const sensDe = k => { const t = MVT_MAT_PAR_CLE[k]; return t ? t.sens : null; };
+    const phrases = [];
+    sites.forEach(s => {
+      const G = {"allongée": [], "inchangée": [], "raccourcie": []};
+      cotes[s].forEach(r => { const sens = sensDe(mvtBkMesure(r, s).k); if (G[sens]) G[sens].push(r); });
+      const morceaux = Object.keys(G).filter(k => G[k].length).map(k => {
+        const a = matAgreger(G[k], {}, seuil);
+        return `${k} ${fmtEur(a.net)} (${fr(a.n)} paris, ROI ${fmtPct(a.roi)})`;
+      });
+      if (morceaux.length) phrases.push(`<strong>${CBK_NOMS[s] || s}</strong> : ${morceaux.join(" · ")}`);
+    });
+    const petit = sites.some(s => s !== "winamax" && cotes[s].length && cotes[s].length < MIN_BETS);
+    bestEl.innerHTML = phrases.join("<br>")
+      + (petit ? `<br><span class="muted">Petit échantillon chez les autres sites : leurs relevés sont récents, les écarts de gain ne veulent encore rien dire.</span>` : "");
+  }
+}
+(function initMvtBkModes() {
+  const groupe = $("btMvtBkMatModes");
+  if (!groupe) return;
+  marquerModesMvtBk();
+  groupe.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-mode]");
+    if (!bouton || !groupe.contains(bouton) || bouton.dataset.mode === BT_MVTBK_MODE) return;
+    BT_MVTBK_MODE = bouton.dataset.mode === "sans" ? "sans" : "page";
+    try { localStorage.setItem(MVTBK_LS, BT_MVTBK_MODE); } catch (e) { /* confort seulement */ }
+    if (MVTBK_DERNIER) renderMvtBkMatrix(MVTBK_DERNIER.rowsPage);
+    else marquerModesMvtBk();
+  });
+})();
+initMatrixCellInspector({
+  holderId: "btMvtBkMatHolder", panelId: "btMvtBkMatPanel",
+  inspectorId: "btMvtBkMatInspector", tooltipId: "btMvtBkMatTooltip",
+  dataKey: "mvtbk", getData: () => MVTBK_DATA,
+  rowMeta: r => mvtBkMetaPari(r, MVTBK_SITE_DETAIL),
+  buildDetails: c => {
+    MVTBK_SITE_DETAIL = c.s;
+    const nom = CBK_NOMS[c.s] || c.s;
+    const t = c.t === "*" ? null : (c.t === "nc" ? MVTBK_NON_COTE : c.t === "nm" ? MVTBK_NON_MESURE : MVT_MAT_PAR_CLE[c.t]);
+    const titre = c.t === "*" ? `Tous les paris cotés chez ${nom}`
+      : c.t === "nc" ? `Pas coté chez ${nom}` : c.t === "nm" ? `Un seul relevé chez ${nom}` : `${mvtMatNomTranche(t)} chez ${nom}`;
+    return matrixDetailMarkup(c, titre,
+      `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+        + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+      r => mvtBkMetaPari(r, c.s));
+  }
 });
 /* ---- Espérance — matrice des gains (09/11/2026) ----
    Demande de l'utilisateur : « ajoute une autre matrice de résultat par rapport à l'espérance calculée ».
