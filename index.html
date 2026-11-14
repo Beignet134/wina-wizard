@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261114102244">
+<link rel="stylesheet" href="style.css?v=20261114103517">
 </head>
 <body>
 <div class="topbar">
@@ -1171,11 +1171,17 @@
         s'est allongée</strong>, positif = elle a raccourci, 0 = inchangée. Le pari, sa cote et son gain restent ceux de
         Winamax : chaque colonne ne change que le site dont on regarde le mouvement, et un même pari compte donc une
         fois par colonne. « Pas coté » = ce site ne proposait pas cette issue, ou ses relevés ne commencent qu'après le
-        match (Unibet depuis le 25/10, Betclic le 27/10, Bwin le 07/11). Un clic sur une case affiche ses paris.
+        match. Avec « Depuis l'arrivée des autres sites », la matrice ne garde que les paris joués après le début des
+        relevés des autres sites, et chaque colonne ne compte que les paris d'après le début de son propre site.
+        Un clic sur une case affiche ses paris.
       </p>
       <div class="jour-modes" id="btMvtBkMatModes" role="group" aria-label="Paris de la matrice">
         <button type="button" class="jour-mode is-active" data-mode="page" aria-pressed="true" title="Les paris de la page, avec tous vos filtres">Vos paris</button>
         <button type="button" class="jour-mode" data-mode="sans" aria-pressed="false" title="Tous vos filtres sauf « Mouvement de la cote » (Winamax)">Sans le filtre de mouvement</button>
+      </div>
+      <div class="jour-modes" id="btMvtBkMatPeriode" role="group" aria-label="Période de la matrice" style="margin-top:.5rem">
+        <button type="button" class="jour-mode is-active" data-per="dispo" aria-pressed="true" title="Seulement les paris joués une fois les cotes des autres sites relevées">Depuis l'arrivée des autres sites</button>
+        <button type="button" class="jour-mode" data-per="tout" aria-pressed="false" title="Tous les paris, y compris ceux d'avant les relevés des autres sites">Toute la période</button>
       </div>
       <div class="tablewrap">
         <div class="chart-holder" id="btMvtBkMatHolder">
@@ -2662,7 +2668,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261114102328", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261114102328", APP = "app.js?v=20261114102244";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261114103612", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261114103612", APP = "app.js?v=20261114103517";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
