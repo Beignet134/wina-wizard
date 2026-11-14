@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261114140853">
+<link rel="stylesheet" href="style.css?v=20261114143840">
 </head>
 <body>
 <div class="topbar">
@@ -1287,7 +1287,9 @@
         (le résultat par variable des lignes seule). <strong>Vos paris</strong> : exactement les paris de la page.
         <strong>Sans les filtres de ces variables</strong> : si vous choisissez la cote, l'espérance, le mouvement
         Winamax ou l'historique, le filtre correspondant de la page est retiré, pour voir aussi ce qu'il écarte (un
-        pari par match et par case). Un clic sur une case affiche ses paris.
+        pari par match et par case). <strong>Sans aucun filtre</strong> : tous les paris candidats du backtest (toutes
+        catégories, ligues, cotes…), avec seulement la lecture du modèle et ses réglages. Un clic sur une case affiche
+        ses paris.
       </p>
       <div class="libre-commandes">
         <div class="field">
@@ -1302,6 +1304,7 @@
         <div class="jour-modes" id="btLibreParis" role="group" aria-label="Paris de la matrice">
           <button type="button" class="jour-mode is-active" data-paris="page" aria-pressed="true">Vos paris</button>
           <button type="button" class="jour-mode" data-paris="sans" aria-pressed="false">Sans les filtres de ces variables</button>
+          <button type="button" class="jour-mode" data-paris="aucun" aria-pressed="false" title="Tous les paris candidats du backtest, sans aucun filtre de la page">Sans aucun filtre</button>
         </div>
       </div>
       <div class="tablewrap">
@@ -2747,7 +2750,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261114140944", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261114140944", APP = "app.js?v=20261114140853";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261114143921", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261114143921", APP = "app.js?v=20261114143840";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
