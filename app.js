@@ -6242,7 +6242,8 @@ function btFiltered(opts) {
     const e = alpha < 1 ? blended(r, alpha).edge
                         : (devig ? (r.edge_devig ?? r.edge) : r.edge);
     if (e < seuil) return false;
-    if (!passeCote(bornesCote, r.cote)) return false;
+    // opts.sansCote (14/11/2026) : tout sauf la plage de cotes — matrice « Plage de cote ».
+    if (!opts.sansCote && !passeCote(bornesCote, r.cote)) return false;
     // "Seulement les paris sauvés" : ne garde que ceux que la garantie
     // transforme en gagnants — utile pour voir exactement ce qu'elle
     // change, mais ce n'est PAS une stratégie jouable (on ne sait pas à
@@ -7351,6 +7352,9 @@ function renderBacktest() {
   renderEvMatrix(evMatFiltreActif() || dedupBt
                    ? btFiltered({sansEv: true, sansDedup: true}) : rowsFiltrees,
                  rowsFiltrees);
+  // Matrice par plage de cote (14/11/2026) : sans la plage de cotes (et sans
+  // l'espérance en vue « Espérance »).
+  renderCoteMatrix(rowsFiltrees);
   // Matrice par forces d'attaque et de défense (10/11/2026) : les paris de la page.
   renderForceMatrix(rowsFiltrees);
   renderBtActiveFilters(rowsFiltrees);
@@ -9698,6 +9702,241 @@ initMatrixCellInspector({
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} pour ${evMatPct(c.evMoy)} d'espérance moyenne · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
       + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
     r => evMatMetaPari(r)
+  )
+});
+/* ---- Plage de cote — matrice des gains (14/11/2026) ----
+   Demande de l'utilisateur : « ajoute une matrice par plage de cote et espérance, et par plage de cote seule ».
+   Lignes = tranches de cote Winamax (borne basse incluse, haute exclue). Colonnes : type de pari (colonne Total =
+   plage de cote seule) ou tranche d'espérance (EV_MAT_TRANCHES). Calculée sur btFiltered({sansCote}) — et aussi
+   sansEv en vue « Espérance » : tous les filtres de la page sauf la plage de cotes. Liseré = tranche retenue par la
+   plage de cotes de la page (en partie si une borne tombe dans la tranche). Un pari par match : refait par case. */
+const COTE_MAT_TRANCHES = [
+  {k: "q1",  lo: 1,   hi: 1.5,      label: "< 1,5"},
+  {k: "q2",  lo: 1.5, hi: 2,        label: "1,5 à 2"},
+  {k: "q3",  lo: 2,   hi: 2.5,      label: "2 à 2,5"},
+  {k: "q4",  lo: 2.5, hi: 3,        label: "2,5 à 3"},
+  {k: "q5",  lo: 3,   hi: 4,        label: "3 à 4"},
+  {k: "q6",  lo: 4,   hi: 5,        label: "4 à 5"},
+  {k: "q7",  lo: 5,   hi: 7,        label: "5 à 7"},
+  {k: "q8",  lo: 7,   hi: 10,       label: "7 à 10"},
+  {k: "q9",  lo: 10,  hi: 15,       label: "10 à 15"},
+  {k: "q10", lo: 15,  hi: 20,       label: "15 à 20"},
+  {k: "q11", lo: 20,  hi: 30,       label: "20 à 30"},
+  {k: "q12", lo: 30,  hi: Infinity, label: "30 et +"},
+];
+const COTE_MAT_PAR_CLE = Object.fromEntries(COTE_MAT_TRANCHES.map(t => [t.k, t]));
+const COTE_MAT_COLONNES = {
+  cat: MVT_MAT_COLONNES.cat,
+  ev: {
+    coin: "Espérance →",
+    groupes: EV_MAT_TRANCHES.map(t => ({k: t.k, label: t.label})).concat([{k: "nc", label: "Non calculée"}]),
+    cle: r => evMatTranche(r),
+  },
+};
+const COTE_MAT_LS = "ww_bt_cotemat_col";
+let BT_COTE_MAT_COL = (() => {
+  try { const v = localStorage.getItem(COTE_MAT_LS); return COTE_MAT_COLONNES[v] ? v : "cat"; }
+  catch (e) { return "cat"; }
+})();
+let COTE_MAT_DATA = {};
+let COTE_MAT_DERNIER = null;
+function coteMatTranche(r) {
+  const c = r.cote;
+  if (c == null || isNaN(c)) return null;
+  const t = COTE_MAT_TRANCHES.find(x => c >= x.lo && c < x.hi) || (c < 1.5 ? COTE_MAT_TRANCHES[0] : null);
+  return t ? t.k : null;
+}
+// Tranche face à la plage de cotes de la page : "tout", "partiel" ou "".
+function coteMatCouverture(t, b) {
+  if (!b.actif) return "";
+  const L = b.lo > COTE_SLIDER_MIN ? b.lo : -Infinity, H = b.hi < COTE_SLIDER_MAX ? b.hi : Infinity;
+  if (t.hi <= L || t.lo > H) return "";
+  return (t.lo >= L && t.hi <= H) || (t.lo >= L && H === Infinity) ? "tout" : "partiel";
+}
+function marquerModesCoteMat() {
+  document.querySelectorAll("#btCoteMatModes .jour-mode[data-col]").forEach(b => {
+    const actif = b.dataset.col === BT_COTE_MAT_COL;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+function coteMatMetaPari(r) {
+  const ev = evMatValeur(r);
+  return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.categorie} · ${r.colonne} · cote ${r.cote}`
+    + ` · espérance ${ev == null ? "non calculée" : evMatPct(ev)}`;
+}
+function renderCoteMatrix(rowsPage) {
+  const wrap = $("btCoteMatWrap");
+  if (!wrap) return;
+  const empty = $("btCoteMatEmpty"), legend = $("btCoteMatLegend"), note = $("btCoteMatNote"), bestEl = $("btCoteMatBest");
+  COTE_MAT_DERNIER = {rowsPage};
+  marquerModesCoteMat();
+  const modeEv = BT_COTE_MAT_COL === "ev";
+  const dim = COTE_MAT_COLONNES[BT_COTE_MAT_COL] || COTE_MAT_COLONNES.cat;
+  const bornes = coteBornesActives("bt");
+  const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
+  const evActif = evMatFiltreActif();
+  const sansFiltre = bornes.actif || dedupActif || (modeEv && evActif);
+  const rowsBruts = sansFiltre ? btFiltered({sansCote: true, sansEv: modeEv, sansDedup: true}) : rowsPage;
+  const cleMatch = r => `${r.match}|${r.date}|${r.categorie}`;
+  const dedup = (rows, cle) => dedupActif ? mvtMatDedup(rows, cle) : rows;
+  if (!rowsBruts.length) {
+    wrap.innerHTML = "";
+    [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
+    if (empty) empty.style.display = "";
+    COTE_MAT_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  const gLabel = {};
+  dim.groupes.forEach(g => { gLabel[g.k] = g.label; });
+  // Cases : un pari par match et par case ; colonne Total : par tranche de cote ; ligne Total : par colonne.
+  const parCase = {};
+  const ajouter = (t, g, r) => { const k = t + "|" + g; (parCase[k] = parCase[k] || {t, g, rows: []}).rows.push(r); };
+  dedup(rowsBruts, r => `${cleMatch(r)}|${coteMatTranche(r)}|${dim.cle(r)}`).forEach(r => {
+    const t = coteMatTranche(r), g = dim.cle(r);
+    if (t && g != null && gLabel[g] != null) ajouter(t, g, r);
+  });
+  dedup(rowsBruts, r => `${cleMatch(r)}|${coteMatTranche(r)}`).forEach(r => {
+    const t = coteMatTranche(r);
+    if (t) ajouter(t, "*", r);
+  });
+  dedup(rowsBruts, r => `${cleMatch(r)}|${dim.cle(r)}`).forEach(r => {
+    const g = dim.cle(r);
+    if (g != null && gLabel[g] != null) ajouter("*", g, r);
+  });
+  const rowsTotal = dedup(rowsBruts, cleMatch);
+  rowsTotal.forEach(r => ajouter("*", "*", r));
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const c = parCase[k];
+    const evs = c.rows.map(evMatValeur).filter(v => v != null);
+    agg[k] = Object.assign(matAgreger(c.rows, {t: c.t, g: c.g, gLabel: c.g === "*" ? "toutes colonnes" : (gLabel[c.g] || c.g)}, MVT_TRANCHE_SEUIL_FIABLE), {
+      attMarche: c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0),
+      evMoy: evs.length ? evs.reduce((a, b) => a + b, 0) / evs.length : null,
+      coteMoy: c.rows.reduce((a, r) => a + r.cote, 0) / c.rows.length,
+    });
+  });
+  COTE_MAT_DATA = agg;
+  const presentsG = new Set(Object.values(agg).filter(c => c.t !== "*").map(c => c.g));
+  const groupes = dim.groupes.filter(g => presentsG.has(g.k));
+  const presentsT = new Set(Object.values(agg).filter(c => c.t !== "*").map(c => c.t));
+  const tranches = COTE_MAT_TRANCHES.filter(t => presentsT.has(t.k));
+  const avecTotal = groupes.length > 1;
+  // Échelle des teintes sur les cases d'au moins MVT_TRANCHE_SEUIL_FIABLE paris quand il y en a assez : un pari
+  // isolé à +3 300 % (grosse cote gagnée) écraserait sinon toutes les autres couleurs. Au-delà, la teinte sature.
+  const teinteesToutes = Object.values(agg).filter(c => c.t !== "*" && (avecTotal ? c.g !== "*" : true) && c.roi != null);
+  const teinteesFiables = teinteesToutes.filter(c => c.fiable);
+  const teintees = teinteesFiables.length >= 3 ? teinteesFiables : teinteesToutes;
+  const roiVals = teintees.map(c => c.roi);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+  const cellule = (key, c, desc, neutre, coin = false) => {
+    if (!c) return `<td class="score-cell score-cell-empty${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"><span class="muted">—</span></td>`;
+    const roi = c.roi ?? 0;
+    const cls = roi >= 0 ? "pos" : "neg";
+    let style = "";
+    if (!neutre) {
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    return `<td class="score-cell ${cls}${!c.fiable ? " score-cell-lowdata" : ""}${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-cotemat="${key}" tabindex="0" aria-label="Afficher le détail : ${desc} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)} ; ${c.fiable ? "échantillon suffisant" : "échantillon faible"}">
+        <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
+        <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+        <div class="score-roi">${fmtPct(roi)}</div>
+      </td>`;
+  };
+  let thead = `<tr><th class="score-corner">Cote ↓<br>${dim.coin}</th>`;
+  groupes.forEach(g => { thead += `<th class="num">${g.label}</th>`; });
+  if (avecTotal) thead += `<th class="num score-total-head">Total</th>`;
+  thead += "</tr>";
+  let tbody = "", pleins = false, partiels = false;
+  tranches.forEach(t => {
+    const couv = coteMatCouverture(t, bornes);
+    if (couv === "tout") pleins = true;
+    if (couv === "partiel") partiels = true;
+    const cls = couv === "tout" ? "mvt-row-filtre" : couv === "partiel" ? "mvt-row-filtre-partiel" : "";
+    const tot = agg[`${t.k}|*`];
+    const sous = modeEv ? (tot ? `${tot.n} paris` : "") : (tot && tot.evMoy != null ? `esp. ${evMatPct(tot.evMoy)}` : "");
+    const couvTxt = couv === "tout" ? " (retenue par votre plage de cotes)" : couv === "partiel" ? " (en partie retenue par votre plage de cotes)" : "";
+    tbody += `<tr${cls ? ` class="${cls}"` : ""}><th class="num" scope="row" title="Cote ${t.label}${couvTxt}">${t.label}<span class="mvt-sens">${sous}</span></th>`;
+    groupes.forEach(g => { tbody += cellule(`${t.k}|${g.k}`, agg[`${t.k}|${g.k}`], `cote ${t.label}, ${g.label}`, false); });
+    if (avecTotal) tbody += cellule(`${t.k}|*`, agg[`${t.k}|*`], `cote ${t.label}, toutes colonnes`, true);
+    tbody += "</tr>";
+  });
+  tbody += `<tr class="score-total-row"><th class="num" scope="row" title="Toutes les cotes (sans votre plage de cotes)">Total<span class="mvt-sens">toutes cotes</span></th>`;
+  groupes.forEach(g => { tbody += cellule(`*|${g.k}`, agg[`*|${g.k}`], `toutes cotes, ${g.label}`, true); });
+  if (avecTotal) tbody += cellule("*|*", agg["*|*"], "toutes cotes, toutes colonnes", true, true);
+  tbody += "</tr>";
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix ev-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  if (legend) {
+    const pire = roiVals.length ? arrMin(roiVals) : 0, meilleur = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pire, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${MVT_TRANCHE_SEUIL_FIABLE} paris</span>
+      ${pleins ? `<span class="mvt-filtre-key"><span aria-hidden="true"></span> retenue par votre plage de cotes</span>` : ""}
+      ${partiels ? `<span class="mvt-filtre-key partiel"><span aria-hidden="true"></span> en partie (une borne tombe dans la tranche)</span>` : ""}
+      <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise · ✓ = paris gagnés ·
+      cliquez une case pour voir ses paris · ${MAT_TOTAUX_LEGENDE}${teintees !== teinteesToutes ? " · échelle des couleurs calée sur les cases d'au moins " + MVT_TRANCHE_SEUIL_FIABLE + " paris" : ""}</span>`;
+  }
+  const fmtC = v => v.toLocaleString("fr-FR", {maximumFractionDigits: 2});
+  if (note) {
+    let txt = `${rowsTotal.length} pari${rowsTotal.length > 1 ? "s" : ""} sur vos filtres hors plage de cotes${modeEv ? " et hors espérance" : ""} (case Total)`;
+    txt += bornes.actif
+      ? ` · votre plage de cotes : ${bornes.lo > COTE_SLIDER_MIN ? `de ${fmtC(bornes.lo)}` : "jusqu'à"} ${bornes.hi < COTE_SLIDER_MAX ? (bornes.lo > COTE_SLIDER_MIN ? `à ${fmtC(bornes.hi)}` : fmtC(bornes.hi)) : "et plus"}`
+      : " · plage de cotes inactive";
+    if (modeEv && evActif) txt += " · votre filtre d'espérance est retiré dans cette vue : comparez avec la vue « Type de pari » ou la matrice « Espérance »";
+    if (dedupActif) txt += " · un pari par match et par case (la case Total en garde un seul par match et par catégorie)";
+    txt += `. Tranches de cote : borne basse incluse, borne haute exclue (« 2 à 2,5 » = de 2,00 à 2,49).`;
+    note.textContent = txt;
+  }
+  if (bestEl) {
+    const phrases = [];
+    if (rowsPage && (bornes.actif || (modeEv && evActif))) {
+      const s = btAgg(rowsPage), net = rowsPage.reduce((a, r) => a + r.profit * btStakeFor(r), 0);
+      const t = agg["*|*"];
+      phrases.push(`Avec vos filtres : <strong>${fmtEur(net)}</strong> (ROI ${fmtPct(s.roi)}, ${s.n} paris) · sans votre plage de cotes${modeEv && evActif ? " ni votre espérance" : ""} : <strong>${fmtEur(t.net)}</strong> (ROI ${fmtPct(t.roi)}, ${t.n} paris).`);
+    }
+    const fiables = tranches.map(t => agg[`${t.k}|*`]).filter(c => c && c.fiable);
+    if (fiables.length >= 2) {
+      const tri = fiables.slice().sort((a, b) => b.net - a.net);
+      const d = c => `<strong>cote ${COTE_MAT_PAR_CLE[c.t].label}</strong> (${fmtEur(c.net)}, ROI ${fmtPct(c.roi)}, ${c.n} paris, ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} gagnés attendus selon le marché pour ${c.wins} réels)`;
+      phrases.push(`Plage de cote seule : ${d(tri[0])} rapporte le plus · ${d(tri[tri.length - 1])} le moins. Choisie après coup, une tranche profite aussi de la chance de la période.`);
+    } else {
+      phrases.push(`Pas encore assez de tranches d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris pour comparer.`);
+    }
+    bestEl.innerHTML = phrases.join("<br>");
+  }
+}
+(function initCoteMatModes() {
+  const groupe = $("btCoteMatModes");
+  if (!groupe) return;
+  marquerModesCoteMat();
+  groupe.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-col]");
+    if (!bouton || !groupe.contains(bouton) || bouton.dataset.col === BT_COTE_MAT_COL) return;
+    if (!COTE_MAT_COLONNES[bouton.dataset.col]) return;
+    BT_COTE_MAT_COL = bouton.dataset.col;
+    try { localStorage.setItem(COTE_MAT_LS, BT_COTE_MAT_COL); } catch (e) { /* confort seulement */ }
+    const inspecteur = $("btCoteMatInspector");
+    if (inspecteur) inspecteur.hidden = true;
+    if (COTE_MAT_DERNIER) renderCoteMatrix(COTE_MAT_DERNIER.rowsPage);
+    else marquerModesCoteMat();
+  });
+})();
+initMatrixCellInspector({
+  holderId: "btCoteMatHolder", panelId: "btCoteMatPanel",
+  inspectorId: "btCoteMatInspector", tooltipId: "btCoteMatTooltip",
+  dataKey: "cotemat", getData: () => COTE_MAT_DATA,
+  rowMeta: r => coteMatMetaPari(r),
+  buildDetails: c => matrixDetailMarkup(
+    c, `${c.t === "*" ? "Toutes cotes" : `Cote ${COTE_MAT_PAR_CLE[c.t].label}`} · ${c.gLabel}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · cote moyenne ${c.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}`
+      + `${c.evMoy != null ? ` · espérance moyenne ${evMatPct(c.evMoy)}` : ""} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+      + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+    r => coteMatMetaPari(r)
   )
 });
 /* ---- Forces d'attaque et de défense — matrice des gains (10/11/2026) ----
