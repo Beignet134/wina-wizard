@@ -508,6 +508,10 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .matrices-groupe > .matrices-choix { margin: 0; padding-bottom: 1rem; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .matrices-choix h2 { margin-bottom: .75rem; }
 .matrices-onglets { margin: 0; }
+/* Matrice libre (14/11/2026) : deux listes déroulantes, inverser, choix des paris. */
+.libre-commandes { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: flex-end; margin: 0 0 .9rem; }
+.libre-commandes .field { display: flex; flex-direction: column; gap: .25rem; min-width: 13rem; }
+.libre-commandes select { max-width: 100%; }
 .matrices-groupe > details.panel { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 /* Raccourcis de période de la page Bankroll (mêmes boutons que le sélecteur
    d'histogramme) et phrase qui rappelle la période retenue. */
@@ -3134,6 +3138,8 @@ a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
   /* Choix de la matrice : six boutons, sur plusieurs lignes plutôt qu'un
      défilement où les derniers seraient cachés. */
   .matrices-onglets { flex-wrap: wrap; overflow-x: visible; }
+  .libre-commandes { flex-direction: column; align-items: stretch; }
+  .libre-commandes .field { min-width: 0; }
 
   /* ---------- Graphiques en SVG : textes à taille réelle ---------- */
   .chart-tip { font-size: 11px; }
