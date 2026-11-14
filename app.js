@@ -10311,8 +10311,12 @@ function renderLibreMatrix(rowsPage) {
   const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
   const opts = {};
   [VL, VC].forEach(v => { if (v && v.filtre) opts[v.filtre] = true; });
-  const relache = BT_LIBRE.paris === "sans" && Object.keys(opts).length > 0;
-  const rowsBruts = relache ? btFiltered(Object.assign({sansDedup: true}, opts)) : rowsPage;
+  // « Sans aucun filtre » : tous les paris candidats (btFiltered referenceComplete), lecture et réglages du modèle
+  // compris ; « un pari par match » reste refait par case si la page l'applique.
+  const aucun = BT_LIBRE.paris === "aucun";
+  const relache = aucun || (BT_LIBRE.paris === "sans" && Object.keys(opts).length > 0);
+  const rowsBruts = aucun ? btFiltered({referenceComplete: true, sansDedup: true})
+    : relache ? btFiltered(Object.assign({sansDedup: true}, opts)) : rowsPage;
   if (!rowsBruts.length) {
     wrap.innerHTML = "";
     [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
@@ -10404,7 +10408,14 @@ function renderLibreMatrix(rowsPage) {
   if (note) {
     const fr = x => x.toLocaleString("fr-FR");
     let txt = `${fr(rowsTotal.length)} pari${rowsTotal.length > 1 ? "s" : ""}`;
-    if (relache) {
+    if (aucun) {
+      txt += " candidats du backtest, sans aucun filtre de la page (lecture du modèle et ses réglages conservés)";
+      if (dedupActif) txt += " · un pari par match et par case";
+      if (rowsPage) {
+        const s2 = btAgg(rowsPage), net2 = rowsPage.reduce((a, r) => a + r.profit * btStakeFor(r), 0);
+        txt += ` · avec vos filtres : ${fr(s2.n)} paris, ${fmtEur(net2)}`;
+      }
+    } else if (relache) {
       const noms = {sansCote: "plage de cotes", sansEv: "espérance", sansMvt: "mouvement de la cote", sansHist: "historique minimum"};
       txt += ` avec tous vos filtres sauf : ${Object.keys(opts).map(k => noms[k]).join(", ")}`;
       if (dedupActif) txt += " (un pari par match et par case)";
@@ -10448,7 +10459,7 @@ function renderLibreMatrix(rowsPage) {
   if (P) P.addEventListener("click", ev => {
     const b = ev.target.closest(".jour-mode[data-paris]");
     if (!b || b.dataset.paris === BT_LIBRE.paris) return;
-    BT_LIBRE.paris = b.dataset.paris === "sans" ? "sans" : "page";
+    BT_LIBRE.paris = ["sans", "aucun"].includes(b.dataset.paris) ? b.dataset.paris : "page";
     marquerLibre(); relancer();
   });
 })();
