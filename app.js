@@ -9045,6 +9045,24 @@ const MVTBK_LS = "ww_bt_mvtbk_mode";
 let BT_MVTBK_MODE = (() => {
   try { return localStorage.getItem(MVTBK_LS) === "sans" ? "sans" : "page"; } catch (e) { return "page"; }
 })();
+const MVTBK_PER_LS = "ww_bt_mvtbk_per";
+let BT_MVTBK_PER = (() => {
+  try { return localStorage.getItem(MVTBK_PER_LS) === "tout" ? "tout" : "dispo"; } catch (e) { return "dispo"; }
+})();
+// Premier jour de match où chaque autre site a une cote dans le backtest (tous les paris, pas seulement la page) :
+// c'est le début réel de ses relevés pour les paris joués. Calculé une fois.
+let MVTBK_DEBUTS = null;
+function mvtBkDebuts() {
+  if (MVTBK_DEBUTS) return MVTBK_DEBUTS;
+  const d = {};
+  (typeof BT_ROWS !== "undefined" ? BT_ROWS : []).forEach(r => {
+    (r.cbr || []).concat(r.cbm || []).forEach(q => {
+      if (q && q.b && (!d[q.b] || r.date < d[q.b])) d[q.b] = r.date;
+    });
+  });
+  MVTBK_DEBUTS = d;
+  return d;
+}
 let MVTBK_DATA = {};
 let MVTBK_DERNIER = null;
 let MVTBK_SITE_DETAIL = "winamax";
@@ -9063,7 +9081,9 @@ function mvtBkMesure(r, site) {
     const pts = mvtMatPoints(r);
     return {k: mvtBkTranchePts(pts), pts, n: r.n_captures};
   }
-  const q = (r.cbr || []).find(x => x.b === site);
+  // cbr : relevé comparable à celui de Winamax ; cbm : relevé trop éloigné pour comparer les prix, mais
+  // l'historique de la cote chez ce site suffit à mesurer son mouvement.
+  const q = (r.cbr || []).find(x => x.b === site) || (r.cbm || []).find(x => x.b === site);
   if (!q) return {k: "nc"};
   if (q.o == null || q.f == null || !(q.n >= 2) || !(q.o > 1) || !(q.f > 1)) return {k: "nm", c: q.c, n: q.n};
   // Même arrondi que variation_proba (4 décimales), puis en points.
@@ -9086,6 +9106,11 @@ function marquerModesMvtBk() {
     b.classList.toggle("is-active", actif);
     b.setAttribute("aria-pressed", actif ? "true" : "false");
   });
+  document.querySelectorAll("#btMvtBkMatPeriode .jour-mode[data-per]").forEach(b => {
+    const actif = b.dataset.per === BT_MVTBK_PER;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
 }
 function renderMvtBkMatrix(rowsPage) {
   const wrap = $("btMvtBkMatWrap");
@@ -9102,6 +9127,14 @@ function renderMvtBkMatrix(rowsPage) {
     const bruts = btFiltered({sansMvt: true, sansDedup: true});
     rows = dedupActif ? mvtMatDedup(bruts, r => `${r.match}|${r.date}|${r.categorie}|${mvtMatTranche(r)}`) : bruts;
   }
+  // Période : depuis l'arrivée des autres sites (défaut) = paris à partir du premier jour où l'un d'eux a une cote ;
+  // chaque colonne ne compte ensuite que les paris d'après le début de son propre site.
+  const debuts = mvtBkDebuts();
+  const debutsConnus = Object.values(debuts).sort();
+  const parPeriode = BT_MVTBK_PER === "dispo" && debutsConnus.length > 0;
+  const nAvantPeriode = rows.length;
+  if (parPeriode) rows = rows.filter(r => r.date >= debutsConnus[0]);
+  const dansPeriode = (r, s) => !parPeriode || s === "winamax" || (debuts[s] && r.date >= debuts[s]);
   if (!rows.length) {
     wrap.innerHTML = "";
     [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
@@ -9110,12 +9143,14 @@ function renderMvtBkMatrix(rowsPage) {
     return;
   }
   if (empty) empty.style.display = "none";
-  const sites = MVTBK_SITES.filter(s => s === "winamax" || rows.some(r => (r.cbr || []).some(q => q.b === s)));
+  const sites = MVTBK_SITES.filter(s => s === "winamax" || rows.some(r => (r.cbr || []).concat(r.cbm || []).some(q => q.b === s)));
+  const datesTxt = MVTBK_SITES.filter(s => s !== "winamax" && debuts[s]).map(s => `${CBK_NOMS[s]} ${fmtChartDate(debuts[s])}`).join(", ");
   const seuil = MVT_TRANCHE_SEUIL_FIABLE;
   const attMarche = rs => rs.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0);
   const parCase = {}, cotes = {};
   sites.forEach(s => { cotes[s] = []; });
   rows.forEach(r => sites.forEach(s => {
+    if (!dansPeriode(r, s)) return;
     const m = mvtBkMesure(r, s);
     if (!m.k) return;
     (parCase[m.k + "|" + s] = parCase[m.k + "|" + s] || []).push(r);
@@ -9193,6 +9228,8 @@ function renderMvtBkMatrix(rowsPage) {
     else txt += " · aucun autre site ne cotait encore ces paris";
     txt += ". Betclic ne relève le score exact qu'une fois par match : ses cotes de score exact sont rarement mesurables.";
     if (BT_MVTBK_MODE === "sans" && !filtreMvt) txt += " Le filtre « Mouvement de la cote » est inactif : les deux vues sont identiques.";
+    if (parPeriode) txt += ` Période : paris depuis le ${fmtChartDate(debutsConnus[0])} (${fr(nAvantPeriode - rows.length)} paris plus anciens écartés) ; chaque site compte à partir de son premier relevé (${datesTxt}).`;
+    else if (BT_MVTBK_PER === "dispo") txt += " Aucun autre site n'a encore de cote sur ces paris : toute la période est affichée.";
     note.textContent = txt;
   }
   if (bestEl) {
@@ -9221,6 +9258,15 @@ function renderMvtBkMatrix(rowsPage) {
     if (!bouton || !groupe.contains(bouton) || bouton.dataset.mode === BT_MVTBK_MODE) return;
     BT_MVTBK_MODE = bouton.dataset.mode === "sans" ? "sans" : "page";
     try { localStorage.setItem(MVTBK_LS, BT_MVTBK_MODE); } catch (e) { /* confort seulement */ }
+    if (MVTBK_DERNIER) renderMvtBkMatrix(MVTBK_DERNIER.rowsPage);
+    else marquerModesMvtBk();
+  });
+  const periode = $("btMvtBkMatPeriode");
+  if (periode) periode.addEventListener("click", ev => {
+    const bouton = ev.target.closest(".jour-mode[data-per]");
+    if (!bouton || !periode.contains(bouton) || bouton.dataset.per === BT_MVTBK_PER) return;
+    BT_MVTBK_PER = bouton.dataset.per === "tout" ? "tout" : "dispo";
+    try { localStorage.setItem(MVTBK_PER_LS, BT_MVTBK_PER); } catch (e) { /* confort seulement */ }
     if (MVTBK_DERNIER) renderMvtBkMatrix(MVTBK_DERNIER.rowsPage);
     else marquerModesMvtBk();
   });
