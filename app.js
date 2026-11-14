@@ -7355,6 +7355,8 @@ function renderBacktest() {
   // Matrice par plage de cote (14/11/2026) : sans la plage de cotes (et sans
   // l'espérance en vue « Espérance »).
   renderCoteMatrix(rowsFiltrees);
+  // Matrice libre (14/11/2026) : variables choisies par l'utilisateur.
+  renderLibreMatrix(rowsFiltrees);
   // Matrice par forces d'attaque et de défense (10/11/2026) : les paris de la page.
   renderForceMatrix(rowsFiltrees);
   renderBtActiveFilters(rowsFiltrees);
@@ -9776,10 +9778,11 @@ function renderCoteMatrix(rowsPage) {
   const bornes = coteBornesActives("bt");
   const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
   const evActif = evMatFiltreActif();
-  const sansFiltre = bornes.actif || dedupActif || (modeEv && evActif);
+  // Sans plage de cotes (ni espérance en vue « Espérance ») à retirer : exactement les paris de la page.
+  const sansFiltre = bornes.actif || (modeEv && evActif);
   const rowsBruts = sansFiltre ? btFiltered({sansCote: true, sansEv: modeEv, sansDedup: true}) : rowsPage;
   const cleMatch = r => `${r.match}|${r.date}|${r.categorie}`;
-  const dedup = (rows, cle) => dedupActif ? mvtMatDedup(rows, cle) : rows;
+  const dedup = (rows, cle) => (dedupActif && sansFiltre) ? mvtMatDedup(rows, cle) : rows;
   if (!rowsBruts.length) {
     wrap.innerHTML = "";
     [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
@@ -9883,12 +9886,14 @@ function renderCoteMatrix(rowsPage) {
   }
   const fmtC = v => v.toLocaleString("fr-FR", {maximumFractionDigits: 2});
   if (note) {
-    let txt = `${rowsTotal.length} pari${rowsTotal.length > 1 ? "s" : ""} sur vos filtres hors plage de cotes${modeEv ? " et hors espérance" : ""} (case Total)`;
+    let txt = sansFiltre
+      ? `${rowsTotal.length} pari${rowsTotal.length > 1 ? "s" : ""} sur vos filtres hors plage de cotes${modeEv && evActif ? " et hors espérance" : ""} (case Total)`
+      : `${rowsTotal.length} pari${rowsTotal.length > 1 ? "s" : ""} : exactement ceux de la page`;
     txt += bornes.actif
       ? ` · votre plage de cotes : ${bornes.lo > COTE_SLIDER_MIN ? `de ${fmtC(bornes.lo)}` : "jusqu'à"} ${bornes.hi < COTE_SLIDER_MAX ? (bornes.lo > COTE_SLIDER_MIN ? `à ${fmtC(bornes.hi)}` : fmtC(bornes.hi)) : "et plus"}`
       : " · plage de cotes inactive";
     if (modeEv && evActif) txt += " · votre filtre d'espérance est retiré dans cette vue : comparez avec la vue « Type de pari » ou la matrice « Espérance »";
-    if (dedupActif) txt += " · un pari par match et par case (la case Total en garde un seul par match et par catégorie)";
+    if (dedupActif && sansFiltre) txt += " · un pari par match et par case (la case Total en garde un seul par match et par catégorie)";
     txt += `. Tranches de cote : borne basse incluse, borne haute exclue (« 2 à 2,5 » = de 2,00 à 2,49).`;
     note.textContent = txt;
   }
@@ -10169,6 +10174,295 @@ initMatrixCellInspector({
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
       + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
     r => forceMatMetaPari(r)
+  )
+});
+
+/* ---- Matrice libre (14/11/2026) ----
+   Demande de l'utilisateur : « une matrice dynamique où je peux moi-même choisir quelles variables afficher dans
+   les 2 sens à l'aide de 2 listes déroulantes ». Chaque variable = {nom, groupe, groupes(rows) → [{k, label}],
+   cle(r) → k ou null, filtre : option de btFiltered à retirer en mode « Sans les filtres de ces variables »}. Les
+   groupes des variables « catégorielles » (pays, ligue, score…) sont tirés des paris présents ; au-delà des 25 plus
+   fréquents, ils sont regroupés en « Autres ». */
+const LIBRE_LS = "ww_bt_libre_v1";
+const LIBRE_MAX_GROUPES = 25;
+const libreTranches = (liste, val) => ({
+  groupes: () => liste.map(t => ({k: t.k, label: t.label})),
+  cle: r => { const v = val(r); if (v == null || isNaN(v)) return null; const t = liste.find(x => v >= x.lo && v < x.hi); return t ? t.k : null; },
+});
+const libreFrequents = cleFn => ({
+  groupes: rows => {
+    const n = {};
+    rows.forEach(r => { const k = cleFn(r); if (k != null) n[k] = (n[k] || 0) + 1; });
+    const tri = Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
+    const g = tri.slice(0, LIBRE_MAX_GROUPES).map(k => ({k, label: k}));
+    if (tri.length > LIBRE_MAX_GROUPES) g.push({k: "__autres", label: `Autres (${tri.length - LIBRE_MAX_GROUPES})`});
+    return g;
+  },
+  cleBrute: cleFn,
+});
+const LIBRE_FORCE = (nom, fn, labels) => ({
+  nom, groupe: "Modèle",
+  groupes: () => labels.map((l, i) => ({k: String(i), label: l})),
+  cle: r => { const t = forceMatTranche(fn(r)); return t == null ? null : String(t); },
+});
+const LIBRE_MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const LIBRE_SITE_MVT = site => ({
+  nom: `Mouvement chez ${CBK_NOMS[site] || site}`, groupe: "Autres sites",
+  groupes: () => MVT_MAT_TRANCHES.map(t => ({k: t.k, label: `${t.label} pt`})).concat([{k: "nm", label: "Un seul relevé"}, {k: "nc", label: "Pas coté"}]),
+  cle: r => mvtBkMesure(r, site).k,
+});
+const LIBRE_VARIABLES = {
+  cat: {nom: "Type de pari", groupe: "Pari", groupes: () => MVT_MAT_COLONNES.cat.groupes, cle: r => r.categorie},
+  issue: {nom: "Issue (Vainqueur)", groupe: "Pari",
+    groupes: () => [{k: "homeWin", label: "Domicile"}, {k: "draw", label: "Nul"}, {k: "awayWin", label: "Extérieur"}, {k: "__autres", label: "Autres paris"}],
+    cle: r => r.categorie === "Vainqueur du match" ? r.colonne : "__autres"},
+  score: Object.assign({nom: "Score (Score exact)", groupe: "Pari"}, libreFrequents(r => r.categorie === CATEGORY_SCORE ? r.colonne : null)),
+  colonne: Object.assign({nom: "Pari joué (toutes catégories)", groupe: "Pari"},
+    libreFrequents(r => `${MVT_MAT_CAT_COURT[r.categorie] || r.categorie} · ${r.colonne}`)),
+  cote: Object.assign({nom: "Plage de cote", groupe: "Prix", filtre: "sansCote"}, libreTranches(COTE_MAT_TRANCHES, r => r.cote)),
+  mvt: {nom: "Mouvement de la cote Winamax", groupe: "Prix", filtre: "sansMvt",
+    groupes: () => MVT_MAT_TRANCHES.map(t => ({k: t.k, label: `${t.label} pt`})).concat([{k: "nm", label: "Non mesuré"}]),
+    cle: r => mvtMatTranche(r)},
+  releves: {nom: "Nombre de relevés Winamax", groupe: "Prix", groupes: () => MVT_MAT_COLONNES.releves.groupes, cle: MVT_MAT_COLONNES.releves.cle},
+  ev: {nom: "Espérance", groupe: "Modèle", filtre: "sansEv",
+    groupes: () => EV_MAT_TRANCHES.map(t => ({k: t.k, label: t.label})).concat([{k: "nc", label: "Non calculée"}]),
+    cle: r => evMatTranche(r)},
+  edge: Object.assign({nom: "Edge dévigué", groupe: "Modèle"}, libreTranches([
+    {k: "e0", lo: -Infinity, hi: 0, label: "< 0 pt"}, {k: "e1", lo: 0, hi: 0.02, label: "0 à 2 pts"},
+    {k: "e2", lo: 0.02, hi: 0.04, label: "2 à 4 pts"}, {k: "e3", lo: 0.04, hi: 0.06, label: "4 à 6 pts"},
+    {k: "e4", lo: 0.06, hi: 0.10, label: "6 à 10 pts"}, {k: "e5", lo: 0.10, hi: 0.15, label: "10 à 15 pts"},
+    {k: "e6", lo: 0.15, hi: Infinity, label: "15 pts et +"}], r => r.edge_devig)),
+  proba: Object.assign({nom: "Proba du modèle", groupe: "Modèle"}, libreTranches([
+    {k: "p0", lo: 0, hi: 0.05, label: "< 5 %"}, {k: "p1", lo: 0.05, hi: 0.10, label: "5 à 10 %"},
+    {k: "p2", lo: 0.10, hi: 0.20, label: "10 à 20 %"}, {k: "p3", lo: 0.20, hi: 0.35, label: "20 à 35 %"},
+    {k: "p4", lo: 0.35, hi: 0.50, label: "35 à 50 %"}, {k: "p5", lo: 0.50, hi: 0.65, label: "50 à 65 %"},
+    {k: "p6", lo: 0.65, hi: 1.01, label: "65 % et +"}], r => r.p_model)),
+  att: LIBRE_FORCE("Force d'attaque (moyenne des 2 équipes)", FORCE_MAT_EQ.moy.att, FORCE_MAT_ATT),
+  def: LIBRE_FORCE("Force de défense (moyenne des 2 équipes)", FORCE_MAT_EQ.moy.def, FORCE_MAT_DEF),
+  attDom: LIBRE_FORCE("Attaque de l'équipe à domicile", FORCE_MAT_EQ.dom.att, FORCE_MAT_ATT),
+  attExt: LIBRE_FORCE("Attaque de l'équipe à l'extérieur", FORCE_MAT_EQ.ext.att, FORCE_MAT_ATT),
+  hist: Object.assign({nom: "Historique (plus petit des 2 équipes)", groupe: "Modèle", filtre: "sansHist"}, libreTranches([
+    {k: "h0", lo: -Infinity, hi: 10, label: "< 10 matchs"}, {k: "h1", lo: 10, hi: 20, label: "10 à 19"},
+    {k: "h2", lo: 20, hi: 30, label: "20 à 29"}, {k: "h3", lo: 30, hi: 50, label: "30 à 49"},
+    {k: "h4", lo: 50, hi: 100, label: "50 à 99"}, {k: "h5", lo: 100, hi: Infinity, label: "100 et +"}],
+    r => (r.n_hist_dom == null || r.n_hist_ext == null) ? null : Math.min(r.n_hist_dom, r.n_hist_ext))),
+  meilleur: {nom: "Winamax face aux autres sites", groupe: "Autres sites",
+    groupes: () => [{k: "w", label: "Winamax paie le mieux (ou autant)"}, {k: "a", label: "Mieux payé ailleurs"}, {k: "nc", label: "Pas comparé"}],
+    cle: r => { const c = (r.cbr || []).map(q => q.c).filter(v => v > 1); return !c.length ? "nc" : (arrMax(c) > r.cote + 1e-9 ? "a" : "w"); }},
+  mvtUnibet: LIBRE_SITE_MVT("unibet"),
+  mvtBetclic: LIBRE_SITE_MVT("betclic"),
+  mvtBwin: LIBRE_SITE_MVT("bwin"),
+  pays: Object.assign({nom: "Pays", groupe: "Compétition"}, libreFrequents(r => r.pays || null)),
+  ligue: Object.assign({nom: "Ligue", groupe: "Compétition"}, libreFrequents(r => (r.pays || r.ligue) ? ligueLabel(r.pays, r.ligue) : null)),
+  mois: {nom: "Mois du match", groupe: "Date",
+    groupes: rows => [...new Set(rows.map(r => String(r.date || "").slice(0, 7)).filter(Boolean))].sort()
+      .map(k => ({k, label: `${LIBRE_MOIS[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}`})),
+    cle: r => String(r.date || "").slice(0, 7) || null},
+  jour: {nom: "Jour de la semaine", groupe: "Date",
+    groupes: () => [1, 2, 3, 4, 5, 6, 0].map(j => ({k: String(j), label: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"][j]})),
+    cle: r => { const m = String(r.date || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? String(new Date(+m[1], +m[2] - 1, +m[3]).getDay()) : null; }},
+};
+// Variables à groupes « fréquents » : clé ramenée à « Autres » hors des groupes retenus.
+Object.values(LIBRE_VARIABLES).forEach(v => {
+  if (!v.cleBrute) return;
+  v.cle = (r, connus) => { const k = v.cleBrute(r); if (k == null) return null; return connus && !connus.has(k) ? "__autres" : k; };
+});
+let BT_LIBRE = (() => {
+  const def = {lignes: "cote", colonnes: "cat", paris: "page"};
+  try {
+    const v = JSON.parse(localStorage.getItem(LIBRE_LS) || "null");
+    return v && LIBRE_VARIABLES[v.lignes] && (v.colonnes === "aucune" || LIBRE_VARIABLES[v.colonnes]) ? Object.assign(def, v) : def;
+  } catch (e) { return def; }
+})();
+let LIBRE_DATA = {};
+let LIBRE_DERNIER = null;
+function libreSauver() { try { localStorage.setItem(LIBRE_LS, JSON.stringify(BT_LIBRE)); } catch (e) { /* confort seulement */ } }
+function libreRemplirListes() {
+  const L = $("btLibreLignes"), C = $("btLibreColonnes");
+  if (!L || !C || L.options.length) return;
+  const groupes = {};
+  Object.entries(LIBRE_VARIABLES).forEach(([k, v]) => { (groupes[v.groupe] = groupes[v.groupe] || []).push([k, v.nom]); });
+  const html = Object.entries(groupes).map(([g, vs]) => `<optgroup label="${g}">${vs.map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</optgroup>`).join("");
+  L.innerHTML = html;
+  C.innerHTML = `<option value="aucune">Aucune (une seule colonne)</option>` + html;
+  L.value = BT_LIBRE.lignes; C.value = BT_LIBRE.colonnes;
+}
+function marquerLibre() {
+  document.querySelectorAll("#btLibreParis .jour-mode[data-paris]").forEach(b => {
+    const actif = b.dataset.paris === BT_LIBRE.paris;
+    b.classList.toggle("is-active", actif);
+    b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+function libreMetaPari(r) {
+  const ev = evMatValeur(r);
+  return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.categorie} · ${r.colonne} · cote ${r.cote}`
+    + ` · espérance ${ev == null ? "non calculée" : evMatPct(ev)}`;
+}
+function renderLibreMatrix(rowsPage) {
+  const wrap = $("btLibreMatWrap");
+  if (!wrap) return;
+  libreRemplirListes();
+  marquerLibre();
+  const empty = $("btLibreMatEmpty"), legend = $("btLibreMatLegend"), note = $("btLibreMatNote"), bestEl = $("btLibreMatBest");
+  LIBRE_DERNIER = {rowsPage};
+  const VL = LIBRE_VARIABLES[BT_LIBRE.lignes] || LIBRE_VARIABLES.cote;
+  const VC = BT_LIBRE.colonnes === "aucune" ? null : (LIBRE_VARIABLES[BT_LIBRE.colonnes] || null);
+  const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
+  const opts = {};
+  [VL, VC].forEach(v => { if (v && v.filtre) opts[v.filtre] = true; });
+  const relache = BT_LIBRE.paris === "sans" && Object.keys(opts).length > 0;
+  const rowsBruts = relache ? btFiltered(Object.assign({sansDedup: true}, opts)) : rowsPage;
+  if (!rowsBruts.length) {
+    wrap.innerHTML = "";
+    [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
+    if (empty) empty.style.display = "";
+    LIBRE_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  const gL = VL.groupes(rowsBruts), gC = VC ? VC.groupes(rowsBruts) : [];
+  const connusL = VL.cleBrute ? new Set(gL.map(g => g.k)) : null, connusC = VC && VC.cleBrute ? new Set(gC.map(g => g.k)) : null;
+  const cleL = r => VL.cle(r, connusL), cleC = r => VC ? VC.cle(r, connusC) : "*";
+  const labL = Object.fromEntries(gL.map(g => [g.k, g.label])), labC = Object.fromEntries(gC.map(g => [g.k, g.label]));
+  const cleMatch = r => `${r.match}|${r.date}|${r.categorie}`;
+  const dd = (rows, cle) => (relache && dedupActif) ? mvtMatDedup(rows, cle) : rows;
+  const parCase = {};
+  const ajouter = (l, c, r) => { const k = l + "|" + c; (parCase[k] = parCase[k] || {t: l, g: c, rows: []}).rows.push(r); };
+  let horsL = 0, horsC = 0;
+  dd(rowsBruts, r => `${cleMatch(r)}|${cleL(r)}|${cleC(r)}`).forEach(r => {
+    const l = cleL(r), c = cleC(r);
+    if (l == null || labL[l] == null) { horsL++; return; }
+    if (VC && (c == null || labC[c] == null)) { horsC++; return; }
+    if (VC) ajouter(l, c, r);
+  });
+  dd(rowsBruts, r => `${cleMatch(r)}|${cleL(r)}`).forEach(r => { const l = cleL(r); if (l != null && labL[l] != null) ajouter(l, "*", r); });
+  if (VC) dd(rowsBruts, r => `${cleMatch(r)}|${cleC(r)}`).forEach(r => { const c = cleC(r); if (c != null && labC[c] != null) ajouter("*", c, r); });
+  const rowsTotal = dd(rowsBruts, cleMatch);
+  rowsTotal.forEach(r => ajouter("*", "*", r));
+  const agg = {};
+  Object.keys(parCase).forEach(k => {
+    const c = parCase[k];
+    const evs = c.rows.map(evMatValeur).filter(v => v != null);
+    agg[k] = Object.assign(matAgreger(c.rows, {t: c.t, g: c.g,
+      tLabel: c.t === "*" ? "Toutes lignes" : labL[c.t], gLabel: c.g === "*" ? "toutes colonnes" : labC[c.g]}, MVT_TRANCHE_SEUIL_FIABLE), {
+      attMarche: c.rows.reduce((sum, r) => { const p = pMarche(r); return sum + (p != null ? p : 0); }, 0),
+      evMoy: evs.length ? evs.reduce((a, b) => a + b, 0) / evs.length : null,
+      coteMoy: c.rows.reduce((a, r) => a + r.cote, 0) / c.rows.length,
+    });
+  });
+  LIBRE_DATA = agg;
+  const lignes = gL.filter(g => agg[`${g.k}|*`]);
+  const colonnes = VC ? gC.filter(g => agg[`*|${g.k}`]) : [];
+  const teinteesToutes = Object.values(agg).filter(c => c.t !== "*" && (VC ? c.g !== "*" : true) && c.roi != null);
+  const teinteesFiables = teinteesToutes.filter(c => c.fiable);
+  const teintees = teinteesFiables.length >= 3 ? teinteesFiables : teinteesToutes;
+  const roiVals = teintees.map(c => c.roi);
+  const maxAbsRoi = roiVals.length ? Math.max(arrMax(roiVals.map(Math.abs)), 0.01) : 0.01;
+  const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const cellule = (key, c, desc, neutre, coin = false) => {
+    if (!c) return `<td class="score-cell score-cell-empty${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"><span class="muted">—</span></td>`;
+    const roi = c.roi ?? 0;
+    const cls = roi >= 0 ? "pos" : "neg";
+    let style = "";
+    if (!neutre) {
+      const intensite = Math.min(1, Math.abs(roi) / maxAbsRoi);
+      const alpha = (0.12 + intensite * 0.58).toFixed(2);
+      style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    return `<td class="score-cell ${cls}${!c.fiable ? " score-cell-lowdata" : ""}${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-libre="${esc(key)}" tabindex="0" aria-label="Afficher le détail : ${esc(desc)} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)}">
+        <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
+        <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
+        <div class="score-roi">${fmtPct(roi)}</div>
+      </td>`;
+  };
+  let thead = `<tr><th class="score-corner">${esc(VL.nom)} ↓${VC ? `<br>${esc(VC.nom)} →` : ""}</th>`;
+  colonnes.forEach(g => { thead += `<th class="num">${esc(g.label)}</th>`; });
+  thead += `<th class="num score-total-head">${VC ? "Total" : "Résultat"}</th></tr>`;
+  let tbody = "";
+  lignes.forEach(g => {
+    const tot = agg[`${g.k}|*`];
+    tbody += `<tr><th class="num" scope="row" title="${esc(g.label)}">${esc(g.label)}<span class="mvt-sens">${tot && tot.evMoy != null ? `esp. ${evMatPct(tot.evMoy)}` : ""}</span></th>`;
+    colonnes.forEach(c => { tbody += cellule(`${g.k}|${c.k}`, agg[`${g.k}|${c.k}`], `${g.label}, ${c.label}`, false); });
+    tbody += cellule(`${g.k}|*`, tot, `${g.label}, toutes colonnes`, !!VC);
+    tbody += "</tr>";
+  });
+  tbody += `<tr class="score-total-row"><th class="num" scope="row">Total</th>`;
+  colonnes.forEach(c => { tbody += cellule(`*|${c.k}`, agg[`*|${c.k}`], `${c.label}, toutes lignes`, true); });
+  tbody += cellule("*|*", agg["*|*"], "tous les paris", true, true) + "</tr>";
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix ev-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  if (legend) {
+    const pire = roiVals.length ? arrMin(roiVals) : 0, meilleur = roiVals.length ? arrMax(roiVals) : 0;
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">${fmtPct(Math.min(pire, 0))}</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">${fmtPct(Math.max(meilleur, 0))}</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de ${MVT_TRANCHE_SEUIL_FIABLE} paris</span>
+      <span class="muted score-legend-note">Teinte = ROI de la case · montant = gain net à votre mise · ✓ = paris gagnés ·
+      cliquez une case pour voir ses paris · ${VC ? MAT_TOTAUX_LEGENDE : "ligne Total = tous les paris"}${teintees !== teinteesToutes ? ` · échelle des couleurs calée sur les cases d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris` : ""}</span>`;
+  }
+  if (note) {
+    const fr = x => x.toLocaleString("fr-FR");
+    let txt = `${fr(rowsTotal.length)} pari${rowsTotal.length > 1 ? "s" : ""}`;
+    if (relache) {
+      const noms = {sansCote: "plage de cotes", sansEv: "espérance", sansMvt: "mouvement de la cote", sansHist: "historique minimum"};
+      txt += ` avec tous vos filtres sauf : ${Object.keys(opts).map(k => noms[k]).join(", ")}`;
+      if (dedupActif) txt += " (un pari par match et par case)";
+    } else {
+      txt += " de la page";
+      if (BT_LIBRE.paris === "sans") txt += " (aucune des variables choisies n'a de filtre à retirer)";
+    }
+    if (horsL) txt += ` · ${fr(horsL)} sans valeur pour « ${VL.nom} »`;
+    if (horsC) txt += ` · ${fr(horsC)} sans valeur pour « ${VC.nom} »`;
+    note.textContent = txt + ".";
+  }
+  if (bestEl) {
+    const fiables = lignes.map(g => agg[`${g.k}|*`]).filter(c => c && c.fiable);
+    if (fiables.length >= 2) {
+      const tri = fiables.slice().sort((a, b) => b.net - a.net);
+      const d = c => `<strong>${esc(c.tLabel)}</strong> (${fmtEur(c.net)}, ROI ${fmtPct(c.roi)}, ${c.n} paris, ${c.wins} gagnés pour ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendus selon le marché)`;
+      bestEl.innerHTML = `${esc(VL.nom)} : ${d(tri[0])} rapporte le plus · ${d(tri[tri.length - 1])} le moins. Une case choisie après coup profite aussi de la chance de la période : vérifiez-la sur une autre période avant d'en faire un filtre.`;
+    } else {
+      bestEl.innerHTML = `Pas encore assez de lignes d'au moins ${MVT_TRANCHE_SEUIL_FIABLE} paris pour comparer.`;
+    }
+  }
+}
+(function initLibre() {
+  const L = $("btLibreLignes"), C = $("btLibreColonnes"), P = $("btLibreParis"), I = $("btLibreInverser");
+  if (!L || !C) return;
+  libreRemplirListes();
+  marquerLibre();
+  const relancer = () => {
+    libreSauver();
+    const inspecteur = $("btLibreMatInspector");
+    if (inspecteur) inspecteur.hidden = true;
+    if (LIBRE_DERNIER) renderLibreMatrix(LIBRE_DERNIER.rowsPage);
+  };
+  L.addEventListener("change", () => { BT_LIBRE.lignes = L.value; relancer(); });
+  C.addEventListener("change", () => { BT_LIBRE.colonnes = C.value; relancer(); });
+  if (I) I.addEventListener("click", () => {
+    if (BT_LIBRE.colonnes === "aucune") return;
+    [BT_LIBRE.lignes, BT_LIBRE.colonnes] = [BT_LIBRE.colonnes, BT_LIBRE.lignes];
+    L.value = BT_LIBRE.lignes; C.value = BT_LIBRE.colonnes; relancer();
+  });
+  if (P) P.addEventListener("click", ev => {
+    const b = ev.target.closest(".jour-mode[data-paris]");
+    if (!b || b.dataset.paris === BT_LIBRE.paris) return;
+    BT_LIBRE.paris = b.dataset.paris === "sans" ? "sans" : "page";
+    marquerLibre(); relancer();
+  });
+})();
+initMatrixCellInspector({
+  holderId: "btLibreMatHolder", panelId: "btLibreMatPanel",
+  inspectorId: "btLibreMatInspector", tooltipId: "btLibreMatTooltip",
+  dataKey: "libre", getData: () => LIBRE_DATA,
+  rowMeta: r => libreMetaPari(r),
+  buildDetails: c => matrixDetailMarkup(
+    c, `${c.tLabel} · ${c.gLabel}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · cote moyenne ${c.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}`
+      + `${c.evMoy != null ? ` · espérance moyenne ${evMatPct(c.evMoy)}` : ""} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+      + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+    r => libreMetaPari(r)
   )
 });
 
