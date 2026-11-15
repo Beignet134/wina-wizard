@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261115132920">
+<link rel="stylesheet" href="style.css?v=20261115151945">
 </head>
 <body>
 <div class="topbar">
@@ -2678,7 +2678,8 @@
             relève sur la plupart des matchs de son calendrier ; ses noms d'équipes, écrits en entier (« Stade Rennais »,
             « Leeds United »), sont ramenés à ceux de Winamax avant comparaison. <strong>DAZN Bet</strong> (ajouté le
             15/11/2026) donne le 1X2, les buts et « les deux équipes marquent » de tous les matchs de son calendrier, mais
-            le score exact seulement pour les matchs dont la page est ouverte (15 par passage, les plus proches d'abord).</li>
+            le score exact seulement pour les matchs dont la page est ouverte (15 par passage, les plus proches d'abord) ; ses
+            grandes cotes de score exact sont arrondies et bornées : au-delà de 100, elles ne sont pas comparées (comme chez Unibet).</li>
           <li><strong>Ce que la page ne dit pas.</strong> La sélection des paris reste faite sur la cote Winamax (voir « Paris à
             venir ») ; ce tableau aide seulement à choisir <em>où</em> placer un pari. Il ne tient pas compte des limites de
             mise, des bonus, de la rapidité de paiement ni du risque de voir un compte limité.</li>
@@ -2779,7 +2780,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261115133018", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261115133018", APP = "app.js?v=20261115132920";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261115152045", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261115152045", APP = "app.js?v=20261115151945";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
