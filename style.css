@@ -2882,7 +2882,7 @@ details.panel-foldable[open] > summary::before {
 .cbk-tag .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--bk); flex: none; }
 a.cbk-tag:hover { background: color-mix(in srgb, var(--bk) 30%, transparent); }
 .cbk-tag .go { font-size: .68rem; opacity: .7; }
-.cbk-winamax { --bk: #ff9f5a; } .cbk-unibet { --bk: #54d9ce; } .cbk-betclic { --bk: #d581d5; } .cbk-bwin { --bk: #e8d24a; }
+.cbk-winamax { --bk: #ff9f5a; } .cbk-unibet { --bk: #54d9ce; } .cbk-betclic { --bk: #d581d5; } .cbk-bwin { --bk: #e8d24a; } .cbk-daznbet { --bk: #cfd3dc; }
 
 .rec-ref { margin-top: .45rem; font-size: .74rem; color: var(--ink-faint); line-height: 1.4; }
 .rec-ref strong { color: var(--ink-dim); font-family: var(--font-mono); font-weight: 600; }
