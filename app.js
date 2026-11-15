@@ -3101,7 +3101,7 @@ function fmtKickoff(iso) {
    MEILLEURE COTE ENTRE BOOKMAKERS (page « Paris à venir »)
    ------------------------------------------------------------
    Le fichier de données joint à chaque pari (v.cb) les cotes du même pari chez
-   les autres bookmakers (Unibet, Betclic, Bwin, relevées par les collecteurs dédiés) ; la carte
+   les autres bookmakers (Unibet, Betclic, Bwin, DAZN Bet, relevées par les collecteurs dédiés) ; la carte
    affiche alors la MEILLEURE cote retenue, un petit tag coloré du site, un lien
    vers le match chez ce site, et — au survol (ou au toucher sur mobile) — les
    cotes de tous les sites.
@@ -3119,7 +3119,9 @@ function fmtKickoff(iso) {
    égalité (moins de 0,5 % d'écart) on garde Winamax.
    ============================================================ */
 const CBK_LS_KEY = "wina_cotes_bookmakers_v1";
-const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic", bwin: "Bwin"};
+const CBK_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic", bwin: "Bwin", daznbet: "DAZN Bet"};
+// Sites qu'on peut choisir comme cote affichée / cote jouée (boutons de « Paris à venir », réglage « Cote jouée »).
+const CBK_SITES_FIXES = ["betclic", "unibet", "daznbet"];
 const CBK_EGALITE = 0.005;
 const CBK_SEUIL_INHABITUEL = 0.10;
 const CBK_SEUIL_INHABITUEL_SE = 0.30;
@@ -3131,7 +3133,7 @@ const CBK_CTX = new Map();   // clé du pari -> {v, v0, a} de la dernière carte
   try {
     const o = JSON.parse(localStorage.getItem(CBK_LS_KEY) || "null");
     if (!o) return;
-    if (o.mode === "best" || o.mode === "ref") CBK_ETAT.mode = o.mode;
+    if (["best", "ref"].concat(CBK_SITES_FIXES).includes(o.mode)) CBK_ETAT.mode = o.mode;
     if (CBK_AGES.includes(o.ageMax)) CBK_ETAT.ageMax = o.ageMax;
   } catch (e) { /* storage indisponible : réglages par défaut */ }
 })();
@@ -3328,6 +3330,7 @@ function cbkFiltresEchecs(a, f, evRef) {
    celui de Winamax, et le réglage « Écart maximal entre relevés » sert de seuil pour toutes les comparaisons. */
 const CBK_RETRO_CACHE = new WeakMap();   // tableau cbr -> {ecartMax, a} : l'analyse ne dépend ni de l'espérance ni du mode du modèle
 function cbkAnalyserRetro(r) {
+  if (r && r.orig) r = r.orig;
   if (!r || !r.cbr || !r.cbr.length) return null;
   const ecartMax = cbkEcartMaxH();
   const en = CBK_RETRO_CACHE.get(r.cbr);
@@ -3376,9 +3379,21 @@ function cbkTagHtml(q, lien) {
 // Morceaux de carte : zone de cote, ligne de référence, gain, avertissements,
 // liste des sites pour « pari joué ». coteNumHtml/coteBtnsHtml : cote Winamax
 // (ou saisie) et boutons crayon/↺ d'origine, conservés tels quels.
+// Mode d'un site fixe (« betclic », « unibet », 15/11/2026) : la carte affiche la cote de ce site quand il la cote
+// (relevé retenu), sinon celle de Winamax. Avec la portée « Score exact seulement » (réglage « Cote jouée » de DC
+// rétrospectif, partagé), les autres catégories restent à la cote Winamax.
+function cbkModeCarte(v) {
+  const m = CBK_ETAT.mode;
+  if (CBK_SITES_FIXES.includes(m) && typeof COTE_JOUEE !== "undefined" && COTE_JOUEE.portee === "se"
+      && v && v.categorie !== "Score exact") return "ref";
+  return m;
+}
 function cbkRendu(a, v, coteNumHtml, coteBtnsHtml) {
-  const best = CBK_ETAT.mode === "best";
-  const q = best ? a.best : a.ref;
+  const mode = cbkModeCarte(v);
+  const siteFixe = CBK_SITES_FIXES.includes(mode);
+  const best = mode !== "ref";
+  const qSite = siteFixe ? a.tous.find(x => x.bk === mode && x.retenue && x !== a.ref) : null;
+  const q = mode === "best" ? a.best : (qSite || a.ref);
   const nAutres = a.tous.length - 1;
   const plus = `<button type="button" class="plus-n" aria-haspopup="dialog" aria-expanded="false" `
     + `aria-label="Cote ${cbkCote(q.cote)} chez ${cbkEsc(q.nom)} : afficher les cotes de tous les bookmakers">`
@@ -3396,7 +3411,17 @@ function cbkRendu(a, v, coteNumHtml, coteBtnsHtml) {
     : `<div class="rec-ref">Mode « référence seule » : les cotes des autres sites sont masquées (survolez pour les voir).</div>`;
 
   let gain = "";
-  if (best && a.best !== a.ref && a.gain < 0) {
+  if (siteFixe) {
+    const nomSite = CBK_NOMS[mode] || mode;
+    if (qSite) {
+      const g = qSite.cote / a.ref.cote - 1, ev = (1 + a.evRef) * (qSite.cote / a.ref.cote) - 1;
+      gain = `<div class="rec-gain${g < 0 ? " none" : ""}">Chez <strong class="cbk-nom">${cbkEsc(nomSite)}</strong> : cote <strong>${cbkPct(g)}</strong>, `
+        + `espérance <strong>${cbkPct(ev)}</strong> <span class="muted">(contre ${cbkPct(a.evRef)} à la cote de référence)</span>`
+        + `${a.best !== a.ref && a.best !== qSite ? ` · <span class="muted">meilleure cote : ${cbkEsc(a.best.nom)} ${cbkCote(a.best.cote)}</span>` : ""}</div>`;
+    } else {
+      gain = `<div class="rec-gain none">${cbkEsc(nomSite)} ne cote pas ce pari (ou relevé trop ancien) : cote Winamax affichée.</div>`;
+    }
+  } else if (best && a.best !== a.ref && a.gain < 0) {
     gain = `<div class="rec-gain none">Cote de référence trop ancienne : on affiche la cote la plus récente (${cbkEsc(a.best.nom)}, ${cbkCote(a.best.cote)}).</div>`;
   } else if (best && a.best !== a.ref) {
     gain = `<div class="rec-gain">Chez <strong class="cbk-nom">${cbkEsc(a.best.nom)}</strong> : cote <strong>${cbkPct(a.gain)}</strong>, `
@@ -3549,8 +3574,15 @@ function cbkMajControles() {
     tri.appendChild(o);
   }
   if (!avec.length) return;
-  document.getElementById("cbkModeBest").setAttribute("aria-pressed", CBK_ETAT.mode === "best" ? "true" : "false");
-  document.getElementById("cbkModeRef").setAttribute("aria-pressed", CBK_ETAT.mode === "ref" ? "true" : "false");
+  // Bouton d'un site fixe caché quand ce site ne cote aucune carte (ex. collecteur pas encore installé), sauf s'il est
+  // le mode en cours (15/11/2026, ajout de DAZN Bet).
+  const sitesCotes = new Set(avec.flatMap(v => v.cb.map(q => q.b)));
+  [["cbkModeBest", "best"], ["cbkModeBetclic", "betclic"], ["cbkModeUnibet", "unibet"], ["cbkModeDaznbet", "daznbet"], ["cbkModeRef", "ref"]].forEach(([id, m]) => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.setAttribute("aria-pressed", CBK_ETAT.mode === m ? "true" : "false");
+    b.hidden = CBK_SITES_FIXES.includes(m) && !sitesCotes.has(m) && CBK_ETAT.mode !== m;
+  });
   document.getElementById("cbkAge").value = String(CBK_ETAT.ageMax);
   const derniers = {};
   avec.forEach(v => v.cb.forEach(q => { if (!derniers[q.b] || q.t > derniers[q.b]) derniers[q.b] = q.t; }));
@@ -4516,10 +4548,20 @@ function renderUpcoming() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") cbkFermerTip(); });
   window.addEventListener("scroll", () => { if (CBK_TIP.zone && !CBK_TIP.epinglee) cbkFermerTip(); }, {passive: true});
 
-  const choisirMode = mode => { CBK_ETAT.mode = mode; sauverReglagesCbk(); cbkFermerTip(); cbkMajControles(); renderUpcoming(); };
-  const btnBest = document.getElementById("cbkModeBest"), btnRef = document.getElementById("cbkModeRef");
-  if (btnBest) btnBest.addEventListener("click", () => choisirMode("best"));
-  if (btnRef) btnRef.addEventListener("click", () => choisirMode("ref"));
+  const choisirMode = mode => {
+    CBK_ETAT.mode = mode; sauverReglagesCbk(); cbkFermerTip(); cbkMajControles(); renderUpcoming();
+    // Même choix pour DC rétrospectif (réglage « Cote jouée », 15/11/2026).
+    if (typeof COTE_JOUEE !== "undefined") {
+      COTE_JOUEE.site = {best: "meilleur", ref: "winamax"}[mode] || mode;
+      try { localStorage.setItem(COTE_JOUEE_LS, JSON.stringify(COTE_JOUEE)); } catch (e) { /* confort seulement */ }
+      coteJoueeMajControles();
+      if (typeof renderBacktest === "function") renderBacktest();
+    }
+  };
+  [["cbkModeBest", "best"], ["cbkModeBetclic", "betclic"], ["cbkModeUnibet", "unibet"], ["cbkModeDaznbet", "daznbet"], ["cbkModeRef", "ref"]].forEach(([id, m]) => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener("click", () => choisirMode(m));
+  });
   const selAge = document.getElementById("cbkAge");
   if (selAge) selAge.addEventListener("change", e => {
     CBK_ETAT.ageMax = +e.target.value; sauverReglagesCbk(); cbkFermerTip(); renderUpcoming();
@@ -6083,7 +6125,76 @@ function mettreAJourBadgesCategorie(prefixe, verdicts, contexte) {
 // complète et cliquable même quand une case est déjà sélectionnée — sinon
 // choisir une case ferait retomber toutes les autres à zéro et il
 // deviendrait impossible d'en choisir une différente pour comparer.
+/* ---- Cote jouée (15/11/2026) ----
+   Demande de l'utilisateur : changer de bookmaker de référence (Betclic paie le Score exact ≈ 19 % de plus que
+   Winamax). La SÉLECTION reste faite sur Winamax (btFiltered inchangé jusqu'au bout) ; seuls la cote, le gain et
+   l'espérance de chaque pari retenu sont recalculés à la cote du site choisi (champ « cbr » : relevé au plus près de
+   celui de Winamax, 24 h au plus). Le pari d'origine reste accessible par « orig » (comparaisons entre sites).
+   Gain chez un autre site : sans la garantie « 2 buts d'écart » propre à Winamax (gagne_sans_garantie). */
+const COTE_JOUEE_LS = "ww_cote_jouee_v1";
+const COTE_JOUEE = (() => {
+  const def = {site: "winamax", portee: "se", manque: "garder"};
+  try { const o = JSON.parse(localStorage.getItem(COTE_JOUEE_LS) || "null"); return o ? Object.assign(def, o) : def; }
+  catch (e) { return def; }
+})();
+function coteJoueeLireControles(sauver) {
+  const s = $("btCoteJouee"), p = $("btCoteJoueePortee"), m = $("btCoteJoueeManque");
+  if (s) COTE_JOUEE.site = s.value;
+  if (p) COTE_JOUEE.portee = p.value;
+  if (m) COTE_JOUEE.manque = m.value;
+  if (sauver) try { localStorage.setItem(COTE_JOUEE_LS, JSON.stringify(COTE_JOUEE)); } catch (e) { /* confort seulement */ }
+}
+function coteJoueeVersAVenir() {
+  if (typeof CBK_ETAT === "undefined") return;
+  CBK_ETAT.mode = {meilleur: "best", winamax: "ref"}[COTE_JOUEE.site] || COTE_JOUEE.site;
+  try { sauverReglagesCbk(); cbkMajControles(); renderUpcoming(); } catch (e) { /* page À venir absente */ }
+}
+function coteJoueeMajControles() {
+  const s = $("btCoteJouee"), p = $("btCoteJoueePortee"), m = $("btCoteJoueeManque");
+  if (s) s.value = COTE_JOUEE.site;
+  if (p) p.value = COTE_JOUEE.portee;
+  if (m) m.value = COTE_JOUEE.manque;
+  const actif = COTE_JOUEE.site !== "winamax";
+  ["btCoteJoueePorteeField", "btCoteJoueeManqueField"].forEach(id => { const el = $(id); if (el) el.style.opacity = actif ? "" : ".55"; });
+}
+// Cote du pari chez le site choisi, ou null si ce site ne la cotait pas.
+function coteJoueeSite(r, site) {
+  const c = (r.cbr || []).filter(q => q && q.c > 1);
+  if (site === "meilleur") return c.reduce((best, q) => q.c > best ? q.c : best, r.cote);
+  const q = c.find(x => x.b === site);
+  return q ? q.c : null;
+}
+function appliquerCoteJouee(rows) {
+  coteJoueeLireControles(false);
+  const site = COTE_JOUEE.site;
+  if (!site || site === "winamax") return rows;
+  const out = [];
+  rows.forEach(r => {
+    if (COTE_JOUEE.portee === "se" && r.categorie !== "Score exact") { out.push(r); return; }
+    const c = coteJoueeSite(r, site);
+    if (c == null) { if (COTE_JOUEE.manque !== "ecarter") out.push(r); return; }
+    if (Math.abs(c - r.cote) < 1e-9) { out.push(Object.assign({}, r, {orig: r.orig || r, site_joue: site === "meilleur" ? "winamax" : site})); return; }
+    const gagne = r.gagne_sans_garantie !== undefined ? r.gagne_sans_garantie : r.gagne;
+    const profit = r.profit === 0 && !r.gagne ? 0 : (gagne ? c - 1 : -1);
+    let siteJoue = site;
+    if (site === "meilleur") { const q = (r.cbr || []).find(x => x.c === c); siteJoue = q ? q.b : "winamax"; }
+    out.push(Object.assign({}, r, {orig: r.orig || r, site_joue: siteJoue, cote_winamax: r.cote, cote: c, profit,
+      gagne: profit > 0 ? true : (profit < 0 ? false : r.gagne), ev: (1 + r.ev) * (c / r.cote) - 1}));
+  });
+  return out;
+}
 function btFiltered(opts) {
+  opts = opts || {};
+  return appliquerCoteJouee(btFiltrerWinamax(opts));
+}
+(function initCoteJouee() {
+  coteJoueeMajControles();
+  ["btCoteJouee", "btCoteJoueePortee", "btCoteJoueeManque"].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener("change", () => { coteJoueeLireControles(true); coteJoueeMajControles(); coteJoueeVersAVenir(); });
+  });
+})();
+function btFiltrerWinamax(opts) {
   opts = opts || {};
   const f = !opts.prospectif && $("btFilter") ? $("btFilter").value : "";
   const cats = opts.sansCategories ? null : categoriesCochees("bt");
@@ -6930,7 +7041,8 @@ function bkProfitAilleurs(r, cote) {
   const gagne = r.gagne_sans_garantie !== undefined ? r.gagne_sans_garantie : r.gagne;
   return gagne ? cote - 1 : -1;
 }
-function bkLigne(r) {
+function bkLigne(r0) {
+  const r = r0.orig || r0;
   const m = btStakeFor(r);
   const a = cbkAnalyserRetro(r);
   const autres = a ? a.tous.filter(q => q !== a.ref && q.retenue) : [];
@@ -7086,7 +7198,7 @@ function autreMouvement(q) {
 function majBlocAutresBouge(rows) {
   const corpsSite = $("btMbkBougeSite"), corps = $("btMbkBouge"), note = $("btMbkBougeNote");
   if (!corpsSite || !corps) return;
-  const ordre = ((WIZARD_DATA.comparaison_bk || {}).autres || ["unibet", "betclic", "bwin"]);
+  const ordre = ((WIZARD_DATA.comparaison_bk || {}).autres || ["unibet", "betclic", "bwin", "daznbet"]);
   const fr = x => x.toLocaleString("fr-FR");
   const pc = (a, b) => b ? `${Math.round(a / b * 100)} %` : "—";
   const parSite = {};
@@ -9044,7 +9156,7 @@ initMatrixCellInspector({
    de la même issue chez ce site avant le coup d'envoi (champ « cbr », apply_cotes_bookmakers_retro) ; non
    mesurable s'il n'a qu'un relevé, « pas coté » s'il n'a pas cette issue. Le pari et son gain restent ceux de
    Winamax : un pari compte une fois par colonne, d'où l'absence de colonne Total. */
-const MVTBK_SITES = ["winamax", "unibet", "betclic", "bwin"];
+const MVTBK_SITES = ["winamax", "unibet", "betclic", "bwin", "daznbet"];
 const MVTBK_NON_COTE = {k: "nc", label: "Pas coté", sens: "site absent"};
 const MVTBK_NON_MESURE = {k: "nm", label: "Non mesuré", sens: "1 seul relevé"};
 const MVTBK_LS = "ww_bt_mvtbk_mode";
@@ -10248,10 +10360,11 @@ const LIBRE_VARIABLES = {
     r => (r.n_hist_dom == null || r.n_hist_ext == null) ? null : Math.min(r.n_hist_dom, r.n_hist_ext))),
   meilleur: {nom: "Winamax face aux autres sites", groupe: "Autres sites",
     groupes: () => [{k: "w", label: "Winamax paie le mieux (ou autant)"}, {k: "a", label: "Mieux payé ailleurs"}, {k: "nc", label: "Pas comparé"}],
-    cle: r => { const c = (r.cbr || []).map(q => q.c).filter(v => v > 1); return !c.length ? "nc" : (arrMax(c) > r.cote + 1e-9 ? "a" : "w"); }},
+    cle: r0 => { const r = r0.orig || r0; const c = (r.cbr || []).map(q => q.c).filter(v => v > 1); return !c.length ? "nc" : (arrMax(c) > r.cote + 1e-9 ? "a" : "w"); }},
   mvtUnibet: LIBRE_SITE_MVT("unibet"),
   mvtBetclic: LIBRE_SITE_MVT("betclic"),
   mvtBwin: LIBRE_SITE_MVT("bwin"),
+  mvtDaznbet: LIBRE_SITE_MVT("daznbet"),
   pays: Object.assign({nom: "Pays", groupe: "Compétition"}, libreFrequents(r => r.pays || null)),
   ligue: Object.assign({nom: "Ligue", groupe: "Compétition"}, libreFrequents(r => (r.pays || r.ligue) ? ligueLabel(r.pays, r.ligue) : null)),
   mois: {nom: "Mois du match", groupe: "Date",
@@ -12270,7 +12383,7 @@ function observerLargeurHisto(C) {
 // Tous les filtres de la page rejouent le rendu complet : la déduplication
 // change les agrégats, donc KPI et graphiques doivent suivre, pas seulement
 // le tableau.
-["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btDefense","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel","btHistMin"].forEach(id => {
+["btFilter","btDedup","btDevig","btEnrichi","btLoi","btAlpha","btForces","btSaison","btAbs","btRho","btNiveau","btDefense","btAccord","btMoment","btPred","btCalib","btMise","btDateDebut","btDateFin","btExclSel","btHistMin","btCoteJouee","btCoteJoueePortee","btCoteJoueeManque"].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener("change", () => renderBacktest());
 });
@@ -12420,11 +12533,11 @@ function renderMargeLigues() {
      match sont liées, les compter comme indépendantes surestimerait la certitude) ;
    - marge : somme des 1/cote d'un marché complet, moins 1. */
 const CMPB = WIZARD_DATA.comparaison_bk || {};
-const CMPB_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic", bwin: "Bwin"};
+const CMPB_NOMS = {winamax: "Winamax", unibet: "Unibet", betclic: "Betclic", bwin: "Bwin", daznbet: "DAZN Bet"};
 // Autres sites, dans l'ordre des cellules (données version 2, 07/11/2026) ; version 1 : Unibet puis Betclic.
 const CMPB_AUTRES = Array.isArray(CMPB.autres) && CMPB.autres.length ? CMPB.autres : ["unibet", "betclic"];
 const CMPB_K = CMPB_AUTRES.length;
-const CMPB_LETTRE = {unibet: "u", betclic: "b", bwin: "x"};
+const CMPB_LETTRE = {unibet: "u", betclic: "b", bwin: "x", daznbet: "d"};
 // Choix de sites : Winamax + chaque combinaison non vide des autres sites (clés « wu », « wb », « wub », « wx »…).
 const CMPB_MODES = {}, CMPB_MODES_LIB = {};
 (function () {
