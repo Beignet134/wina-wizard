@@ -5798,8 +5798,8 @@ const BT_ROWS = BT_ROWS_COMPLET.some(ligneOptionnelle)
       el.value = "0";
       el.disabled = true;
       el.title = "Indisponible : la chronologie des buts n'a pas encore été "
-               + "collectée. Lancez api_football_collect.py, qui récupère les "
-               + "minutes de but des matchs du backtest.";
+               + "collectée. Elle vient de histo_score_matches.py (v2, ordre des "
+               + "buts) ou d'api_football_collect.py.";
     } else {
       const sauves = BT_ROWS.filter(r => r.garantie_sauve).length;
       el.title = `${n} pari(s) Résultat en ligue éligible, dont ${sauves} que `
