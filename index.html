@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261115102809">
+<link rel="stylesheet" href="style.css?v=20261115130006">
 </head>
 <body>
 <div class="topbar">
@@ -602,6 +602,30 @@
             <option value="dc">Dixon-Coles complet (test)</option>
           </select>
         </div>
+        <div class="field" id="btCoteJoueeField">
+          <label for="btCoteJouee">Cote jouée</label>
+          <select id="btCoteJouee" title="Site où le pari est joué. La sélection des paris (edge, espérance, cote inchangée…) reste faite sur la cote Winamax ; seuls le gain et l'espérance affichés sont recalculés à la cote du site choisi, relevée au plus près du relevé Winamax (24 h au plus). Données des autres sites : Unibet depuis le 25/10/2026, Betclic depuis le 27/10, Bwin depuis le 07/11, DAZN Bet depuis le 15/11.">
+            <option value="winamax" selected>Winamax</option>
+            <option value="betclic">Betclic</option>
+            <option value="unibet">Unibet</option>
+            <option value="daznbet">DAZN Bet</option>
+            <option value="meilleur">Meilleure cote de tous les sites</option>
+          </select>
+        </div>
+        <div class="field" id="btCoteJoueePorteeField">
+          <label for="btCoteJoueePortee">… appliquée à</label>
+          <select id="btCoteJoueePortee" title="Score exact seulement : les autres catégories restent jouées chez Winamax.">
+            <option value="se" selected>Score exact seulement</option>
+            <option value="tout">Tous les paris</option>
+          </select>
+        </div>
+        <div class="field" id="btCoteJoueeManqueField">
+          <label for="btCoteJoueeManque">Paris sans cette cote</label>
+          <select id="btCoteJoueeManque" title="Paris que le site choisi ne cotait pas (ou pas encore : paris anciens). Les garder à la cote Winamax, ou les écarter pour ne juger que les paris réellement jouables chez ce site.">
+            <option value="garder" selected>Gardés à la cote Winamax</option>
+            <option value="ecarter">Écartés</option>
+          </select>
+        </div>
         <div class="field" id="btSaisonField">
           <label for="btSaison">Correction saisonnière</label>
           <select id="btSaison" title="Non : buts attendus du modèle tels quels. Oui (test) : buts attendus multipliés par le facteur du mois (moins de buts en février-mars, plus en mai) pour les championnats d'août à mai. Combinable avec « Forces d'équipe ».">
@@ -915,7 +939,7 @@
       <div class="panel-fold-body">
       <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
         Mêmes paris que les KPI ci-dessus (mêmes filtres), <strong>à mise égale</strong> : chaque pari est rejoué à la
-        cote du site qui paie le plus parmi Winamax, Unibet, Betclic et Bwin. Le résultat du pari (gagné ou perdu) ne change
+        cote du site qui paie le plus parmi Winamax, Unibet, Betclic, Bwin et DAZN Bet. Le résultat du pari (gagné ou perdu) ne change
         pas, seul le prix change. Les paris qui n'ont que la cote Winamax (relevés des autres sites pas encore collectés)
         restent à leur cote Winamax.
       </p>
@@ -2214,6 +2238,9 @@
       <span class="cbk-ctl-lbl">Cote affichée</span>
       <div class="cbk-seg" role="group" aria-label="Cote affichée sur les cartes">
         <button type="button" id="cbkModeBest" aria-pressed="true">Meilleure cote</button>
+        <button type="button" id="cbkModeBetclic" aria-pressed="false" title="Cote Betclic affichée et proposée comme cote jouée (portée réglée dans DC rétrospectif : Score exact seulement ou tous les paris)">Betclic</button>
+        <button type="button" id="cbkModeUnibet" aria-pressed="false" title="Cote Unibet affichée et proposée comme cote jouée">Unibet</button>
+        <button type="button" id="cbkModeDaznbet" aria-pressed="false" title="Cote DAZN Bet affichée et proposée comme cote jouée">DAZN Bet</button>
         <button type="button" id="cbkModeRef" aria-pressed="false">Winamax seule</button>
       </div>
       <label>Relevé retenu s'il a moins de
@@ -2227,7 +2254,7 @@
       <span class="muted" id="cbkInfo"></span>
       <p class="cbk-ctl-note">La <strong>sélection</strong> des paris reste faite sur la cote Winamax : edge, espérance, filtres et mise
         conseillée ne changent pas. La meilleure cote ne sert qu'à choisir <strong>où placer</strong> le pari. Survolez (ou touchez) la cote d'une
-        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés des autres sites (Unibet, Betclic, Bwin)
+        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés des autres sites (Unibet, Betclic, Bwin, DAZN Bet)
         viennent de leurs collecteurs (chaîne toutes les 3 h) : plus ils sont anciens, moins la comparaison est fiable.</p>
     </div>
 
@@ -2508,7 +2535,7 @@
   <section class="page" id="page-bookmakers" role="tabpanel" aria-labelledby="heading-bookmakers" tabindex="0">
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">MARCHÉS · 10</p><h2 class="page-title" id="heading-bookmakers">Bookmakers</h2></div>
-      <p class="lead">Winamax, Unibet, Betclic et Bwin face à face : dans quel cas chaque site offre-t-il la meilleure cote, et combien prélève-t-il sur chaque marché ? De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
+      <p class="lead">Winamax, Unibet, Betclic, Bwin et DAZN Bet face à face : dans quel cas chaque site offre-t-il la meilleure cote, et combien prélève-t-il sur chaque marché ? De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
     </div>
 
     <div id="cmpbVide" class="warn" style="display:none"></div>
@@ -2634,7 +2661,7 @@
         <summary>Méthode et limites</summary>
         <ul>
           <li><strong>Relevés rapprochés dans le temps.</strong> Winamax est relevé plusieurs fois par jour. Pour chaque cote
-            Unibet, Betclic ou Bwin, on prend le relevé Winamax <em>le plus proche dans le temps</em> (toujours avant le coup d'envoi) ;
+            Unibet, Betclic, Bwin ou DAZN Bet, on prend le relevé Winamax <em>le plus proche dans le temps</em> (toujours avant le coup d'envoi) ;
             l'écart d'heure est conservé et le réglage « écart maximal » écarte les comparaisons trop espacées. Sans cela,
             on mesurerait surtout le mouvement des cotes, pas la différence entre sites.</li>
           <li><strong>Plusieurs sites.</strong> Quand plus de deux sites sont choisis, seules comptent les cotes disponibles
@@ -2649,7 +2676,9 @@
             marché « score exact » n'est donc pas calculable. <strong>Betclic</strong> ne relève ses scores exacts que pour
             quelques matchs par passage : l'échantillon y est plus petit. <strong>Bwin</strong> (ajouté le 07/11/2026) les
             relève sur la plupart des matchs de son calendrier ; ses noms d'équipes, écrits en entier (« Stade Rennais »,
-            « Leeds United »), sont ramenés à ceux de Winamax avant comparaison.</li>
+            « Leeds United »), sont ramenés à ceux de Winamax avant comparaison. <strong>DAZN Bet</strong> (ajouté le
+            15/11/2026) donne le 1X2, les buts et « les deux équipes marquent » de tous les matchs de son calendrier, mais
+            le score exact seulement pour les matchs dont la page est ouverte (15 par passage, les plus proches d'abord).</li>
           <li><strong>Ce que la page ne dit pas.</strong> La sélection des paris reste faite sur la cote Winamax (voir « Paris à
             venir ») ; ce tableau aide seulement à choisir <em>où</em> placer un pari. Il ne tient pas compte des limites de
             mise, des bonus, de la rapidité de paiement ni du risque de voir un compte limité.</li>
@@ -2750,7 +2779,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261115102904", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261115102904", APP = "app.js?v=20261115102809";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261115130102", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261115130102", APP = "app.js?v=20261115130006";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
