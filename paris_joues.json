@@ -590,5 +590,16 @@
  "2026-11-08|Union Saint-Gilloise - Genk|homeWin": {
   "supprime": true,
   "maj": 1794416824902
+ },
+ "2026-11-19|Vitoria - Bragantino SP|1 - 0": {
+  "cote": 8,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 8,
+  "ts": "2026-11-19T20:17:46",
+  "kickoff": "2026-11-19T23:30:00",
+  "capture_iso": "2026-11-19T19:38:36.561237",
+  "mise": 10,
+  "maj": 1795115866111
  }
 }
