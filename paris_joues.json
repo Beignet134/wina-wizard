@@ -601,5 +601,16 @@
   "capture_iso": "2026-11-19T19:38:36.561237",
   "mise": 5,
   "maj": 1795115871014
+ },
+ "2026-11-20|Cercle Bruges - Westerlo|0 - 3": {
+  "cote": 34,
+  "cote_confirmee": false,
+  "site": "unibet",
+  "cote_capturee": 34,
+  "ts": "2026-11-20T20:37:14",
+  "kickoff": "2026-11-20T20:45:00",
+  "capture_iso": "2026-11-20T19:37:53.929487",
+  "mise": 10,
+  "maj": 1795203434361
  }
 }
