@@ -610,7 +610,18 @@
   "ts": "2026-11-20T20:37:14",
   "kickoff": "2026-11-20T20:45:00",
   "capture_iso": "2026-11-20T19:37:53.929487",
+  "mise": 5,
+  "maj": 1795203438940
+ },
+ "2026-11-21|Velez Sarsfield - Belgrano|draw": {
+  "cote": 3,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 3,
+  "ts": "2026-11-20T20:37:19",
+  "kickoff": "2026-11-21T00:00:00",
+  "capture_iso": "2026-11-20T19:37:53.929487",
   "mise": 10,
-  "maj": 1795203434361
+  "maj": 1795203439099
  }
 }
