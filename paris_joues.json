@@ -613,6 +613,17 @@
   "mise": 5,
   "maj": 1795203438940
  },
+ "2026-11-21|Deportivo Cali - Millonarios |homeWin": {
+  "cote": 2.38,
+  "cote_confirmee": false,
+  "site": "betclic",
+  "cote_capturee": 2.38,
+  "ts": "2026-11-20T20:37:27",
+  "kickoff": "2026-11-21T02:40:00",
+  "capture_iso": "2026-11-20T19:37:53.929487",
+  "mise": 10,
+  "maj": 1795203447694
+ },
  "2026-11-21|Velez Sarsfield - Belgrano|draw": {
   "cote": 3,
   "cote_confirmee": false,
@@ -621,7 +632,7 @@
   "ts": "2026-11-20T20:37:19",
   "kickoff": "2026-11-21T00:00:00",
   "capture_iso": "2026-11-20T19:37:53.929487",
-  "mise": 10,
-  "maj": 1795203439099
+  "mise": 5,
+  "maj": 1795203446444
  }
 }
