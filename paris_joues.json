@@ -624,6 +624,17 @@
   "mise": 5,
   "maj": 1795203451297
  },
+ "2026-11-21|O'Higgins - Universidad De Chile|0 - 1": {
+  "cote": 7.5,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 7.5,
+  "ts": "2026-11-21T20:29:38",
+  "kickoff": "2026-11-21T22:00:00",
+  "capture_iso": "2026-11-21T19:37:39.578462",
+  "mise": 10,
+  "maj": 1795289378197
+ },
  "2026-11-21|Slavia Sofia - FC Arda Kardzhali|homeWin": {
   "cote": 3.28,
   "cote_confirmee": false,
