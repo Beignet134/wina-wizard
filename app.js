@@ -13334,7 +13334,113 @@ function calculerBankroll(depart) {
   return toutes;
 }
 
+// ===== Paris joués à rattraper (21/11/2026) =====
+// Un pari joué depuis une alerte téléphone n'a parfois pas pu être coché sur « Paris à venir » avant le match : la
+// carte disparaît à la mise à jour suivante. Ce panneau de la page Bankroll reprend les paris des matchs TERMINÉS des
+// derniers jours qui passent les filtres du DC rétrospectif (lignes Winamax, btFiltrerWinamax) et permet de les cocher
+// avec la même clé (date|match|pari) que les cartes : togglePlaced, synchro GitHub et bankroll fonctionnent pareil.
+const RATT_LS = "ww_bk_ratt_v1";
+const RATT_ETAT = (() => {
+  try { return Object.assign({mode: "acocher", jours: 3}, JSON.parse(localStorage.getItem(RATT_LS) || "{}")); }
+  catch (e) { return {mode: "acocher", jours: 3}; }
+})();
+const RATT_COCHES_SESSION = new Set();   // cochés pendant cette visite : restent affichés en mode « À cocher »
+function rattLibellePari(r) {
+  const [dom, ext] = String(r.match || "").split(" - ");
+  if (r.colonne === "homeWin") return `Victoire ${dom || "domicile"}`;
+  if (r.colonne === "awayWin") return `Victoire ${ext || "extérieur"}`;
+  if (r.colonne === "draw") return "Match nul";
+  const m = /^(\d+) - (\d+)$/.exec(String(r.colonne));
+  return m ? `Score exact ${m[1]}-${m[2]}` : String(r.colonne);
+}
+function renderRattrapage() {
+  const liste = $("bkRattListe");
+  if (!liste || typeof btFiltrerWinamax !== "function") return;
+  [["bkRattModes", "rattMode", "mode"], ["bkRattJours", "rattJours", "jours"]].forEach(([id, attr, cle]) => {
+    const g = $(id);
+    if (g) g.querySelectorAll("button").forEach(b => {
+      const actif = String(b.dataset[attr]) === String(RATT_ETAT[cle]);
+      b.classList.toggle("is-active", actif);
+      b.setAttribute("aria-pressed", actif ? "true" : "false");
+    });
+  });
+  const d0 = new Date(); d0.setDate(d0.getDate() - (parseInt(RATT_ETAT.jours, 10) || 3));
+  const depuis = isoAujourdhui(d0);
+  let lignes = [];
+  try { lignes = btFiltrerWinamax({}); } catch (e) { lignes = []; }
+  lignes = lignes.filter(r => r.date >= depuis)
+    .filter(r => RATT_ETAT.mode === "tous" || !PLACED.has(betKey(r)) || RATT_COCHES_SESSION.has(betKey(r)))
+    .sort((a, b) => (b.date + b.match).localeCompare(a.date + a.match));
+  if (!lignes.length) {
+    liste.innerHTML = `<p class="muted">${RATT_ETAT.mode === "tous"
+      ? "Aucun pari de match terminé ne passe les filtres du DC rétrospectif sur cette période."
+      : "Rien à rattraper : tous les paris de cette période sont déjà cochés, ou aucun ne passe les filtres."}</p>`;
+    return;
+  }
+  const miseDefaut = parseFloat(($("uStake") || {}).value) || 5;
+  liste.innerHTML = lignes.slice(0, 80).map(r => {
+    const key = betKey(r), info = PLACED.get(key);
+    const joue = !!info;
+    const cote = info && info.cote != null ? info.cote : r.cote;
+    const res = r.gagne === true ? `<span class="ratt-res gagne">Gagné</span>`
+      : (r.gagne === false ? `<span class="ratt-res perdu">Perdu</span>` : "");
+    const [a, m, j] = String(r.date).split("-");
+    return `<div class="ratt-ligne${joue ? " is-joue" : ""}" data-key="${cbkEsc(key)}" data-cote="${r.cote}">
+      <div class="ratt-info">
+        <span class="ratt-titre">${cbkEsc(r.match)}${res}</span>
+        <span class="muted">${j}/${m} · ${cbkEsc(rattLibellePari(r))} · ${cbkEsc(r.categorie)} · cote Winamax ${fmtCoteFr(r.cote)}</span>
+      </div>
+      <div class="ratt-saisie">
+        <label><input type="checkbox" class="chk ratt-chk"${joue ? " checked" : ""}> Joué</label>
+        <label>Mise <input type="number" class="ratt-mise" min="0" step="0.5" value="${info && info.mise != null ? info.mise : miseDefaut}"> €</label>
+        <label>Cote obtenue <input type="text" class="ratt-cote" inputmode="decimal" autocomplete="off" value="${fmtCoteFr(cote)}"
+          data-touche="${info && info.cote_confirmee ? 1 : 0}" title="Cote réellement obtenue (corrige-la si elle avait bougé)"></label>
+      </div>
+    </div>`;
+  }).join("") + (lignes.length > 80 ? `<p class="muted">… et ${lignes.length - 80} de plus : réduis la période.</p>` : "");
+}
+function rattEnregistrer(ligne, cocher) {
+  const key = ligne.dataset.key;
+  const chk = ligne.querySelector(".ratt-chk"), mise = ligne.querySelector(".ratt-mise"), champ = ligne.querySelector(".ratt-cote");
+  const c = lireCoteSaisie(champ.value);
+  if (Number.isNaN(c)) { champ.setAttribute("aria-invalid", "true"); if (cocher) chk.checked = false; return; }
+  champ.removeAttribute("aria-invalid");
+  if (!cocher && !chk.checked) { if (PLACED.has(key)) togglePlaced(key, false); return; }
+  const capturee = parseFloat(ligne.dataset.cote) || null;
+  RATT_COCHES_SESSION.add(key);
+  const extra = {cote: c, cote_capturee: capturee, site: "winamax",
+                 cote_confirmee: champ.dataset.touche === "1" && c != null, apres_coup: true};
+  if (!PLACED.has(key)) extra.ts = isoLocalNaif(new Date());
+  togglePlaced(key, true, parseFloat(mise.value) || 0, extra);
+}
+(function initRattrapage() {
+  const liste = $("bkRattListe");
+  if (!liste) return;
+  const sauver = () => { try { localStorage.setItem(RATT_LS, JSON.stringify(RATT_ETAT)); } catch (e) { /* sans stockage */ } };
+  [["bkRattModes", "rattMode", "mode"], ["bkRattJours", "rattJours", "jours"]].forEach(([id, attr, cle]) => {
+    const g = $(id);
+    if (g) g.addEventListener("click", e => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      RATT_ETAT[cle] = cle === "jours" ? parseInt(b.dataset[attr], 10) : b.dataset[attr];
+      sauver();
+      renderRattrapage();
+    });
+  });
+  liste.addEventListener("input", e => {
+    if (e.target.classList.contains("ratt-cote")) { e.target.dataset.touche = "1"; e.target.removeAttribute("aria-invalid"); }
+  });
+  liste.addEventListener("change", e => {
+    const ligne = e.target.closest(".ratt-ligne");
+    if (!ligne) return;
+    const chk = ligne.querySelector(".ratt-chk");
+    if (e.target.classList.contains("ratt-chk")) rattEnregistrer(ligne, chk.checked);
+    else if (chk.checked) rattEnregistrer(ligne, true);     // mise ou cote corrigée d'un pari déjà coché
+  });
+})();
+
 function renderBankroll() {
+  if (typeof renderRattrapage === "function") renderRattrapage();
   const departEl = $("bkDepart");
   const evoWrap = $("bkEvoWrap"), body = $("bkBody");
   if (!departEl || !evoWrap || !body) return;
