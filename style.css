@@ -2085,6 +2085,21 @@ header { padding-top: 1rem; padding-bottom: .6rem; }
 /* Bankroll : télécharger / remettre à zéro (11/11/2026). La confirmation
    s'ouvre sous les boutons ; la note de remise à zéro garde « Restaurer ». */
 .bk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .2rem 0 .9rem; }
+/* Paris joués à rattraper (21/11/2026) */
+.ratt-intro { margin: .2rem 0 .7rem; max-width: 72ch; }
+.ratt-commandes { display: flex; flex-wrap: wrap; gap: .6rem 1rem; margin-bottom: .6rem; }
+.ratt-liste { display: flex; flex-direction: column; gap: .4rem; }
+.ratt-ligne { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .9rem;
+  padding: .55rem .7rem; border: 1px solid var(--border, rgba(255,255,255,.08)); border-radius: 8px; }
+.ratt-ligne.is-joue { border-color: var(--green, #3fb950); }
+.ratt-info { display: flex; flex-direction: column; gap: .1rem; min-width: 0; flex: 1 1 260px; }
+.ratt-titre { font-weight: 600; overflow-wrap: anywhere; }
+.ratt-res { font-size: .8rem; font-weight: 600; padding: 0 .4rem; border-radius: 4px; margin-left: .3rem; }
+.ratt-res.gagne { color: var(--green, #3fb950); } .ratt-res.perdu { color: var(--red, #f85149); }
+.ratt-saisie { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; }
+.ratt-saisie label { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
+.ratt-saisie input.ratt-mise { width: 4.5rem; } .ratt-saisie input.ratt-cote { width: 4.2rem; }
+.ratt-saisie input[aria-invalid="true"] { outline: 2px solid var(--red, #f85149); }
 .bk-actions-fb { font-size: .82rem; }
 .bk-raz-confirm {
   margin: 0 0 1rem; padding: .85rem 1rem; font-size: .87rem; line-height: 1.55;
