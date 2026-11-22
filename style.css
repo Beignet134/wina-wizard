@@ -2786,6 +2786,48 @@ details.panel-foldable[open] > summary::before {
    habituel du formulaire ; .mc-strat-list est le cadre qui regroupe les
    lignes, comme un mini-groupe de filtres plutôt qu'un simple empilement. */
 .mc-strat-field { margin-top: .9rem; }
+/* ---- Page Bankroll, refonte du 22/11/2026 ---- */
+.bk-tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; margin-top: 1rem; }
+.bk-tuile { border: 1px solid var(--line-soft); border-radius: 14px; padding: .85rem 1rem; background: rgba(10,16,26,.45); display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.bk-tuile .k { font-size: .74rem; color: var(--ink-faint); }
+.bk-tuile .v { font: 700 1.4rem/1.15 var(--font-mono); color: var(--ink); }
+.bk-tuile .v.pos { color: var(--up); } .bk-tuile .v.neg { color: var(--down); }
+.bk-tuile .kpi-sub { font-size: .72rem; color: var(--ink-faint); line-height: 1.35; }
+.bk-tuile-main { border-color: rgba(155,140,255,.35); background: linear-gradient(150deg, rgba(155,140,255,.12), rgba(10,16,26,.45)); }
+.bk-tuile-main .v { font-size: 1.65rem; }
+.bk-bilan { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; margin-top: 1rem; }
+.bk-bilan:empty { display: none; }
+.bk-stat { border: 1px solid var(--line-soft); border-radius: 12px; padding: .7rem .85rem; display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.bk-stat-lbl { font-size: .72rem; color: var(--ink-faint); }
+.bk-stat-val { font: 700 1.05rem var(--font-mono); color: var(--ink); }
+.bk-stat-val.pos { color: var(--up); } .bk-stat-val.neg { color: var(--down); }
+.bk-stat-sub { font-size: .7rem; color: var(--ink-dim); line-height: 1.35; overflow-wrap: anywhere; }
+.bk-repart { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.3rem; }
+.bk-rep-titre { margin: 0 0 .5rem; font: 700 .88rem var(--font-display); color: var(--ink); }
+.bk-rep-ligne { display: grid; grid-template-columns: minmax(0, 8.5rem) 1fr 5.2rem; align-items: center; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid var(--line-soft); }
+.bk-rep-ligne:last-child { border-bottom: 0; }
+.bk-rep-nom { display: flex; flex-direction: column; font-size: .82rem; color: var(--ink); min-width: 0; }
+.bk-rep-nom small { font-size: .68rem; color: var(--ink-faint); }
+.bk-rep-val { display: flex; flex-direction: column; text-align: right; line-height: 1.2; }
+.bk-rep-val strong { font: 700 .82rem var(--font-mono); }
+.bk-rep-val small { font: .68rem var(--font-mono); color: var(--ink-faint); }
+.bk-att-tete { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .4rem 1rem; padding: .6rem .8rem; margin-bottom: .5rem; border-radius: 10px; background: rgba(119,134,154,.08); font-size: .85rem; color: var(--ink-dim); }
+.bk-att-tete strong { font-family: var(--font-mono); color: var(--ink); }
+.bk-att-tete strong.pos { color: var(--up); }
+.bk-att { display: flex; justify-content: space-between; align-items: center; gap: .8rem; padding: .55rem .2rem; border-bottom: 1px solid var(--line-soft); }
+.bk-att:last-child { border-bottom: 0; }
+.bk-att-info { display: flex; flex-direction: column; min-width: 0; }
+.bk-att-info strong { font-size: .88rem; color: var(--ink); }
+.bk-att-info span { font-size: .72rem; color: var(--ink-faint); }
+.bk-att-chiffres { display: flex; flex-direction: column; align-items: flex-end; flex: none; font-size: .74rem; color: var(--ink-dim); }
+.bk-att-chiffres strong { font: 700 .85rem var(--font-mono); }
+@media (max-width: 640px) {
+  .bk-tuiles { grid-template-columns: 1fr 1fr; gap: .55rem; }
+  .bk-tuile { padding: .7rem .75rem; }
+  .bk-tuile .v { font-size: 1.15rem; } .bk-tuile-main .v { font-size: 1.3rem; }
+  .bk-bilan { grid-template-columns: 1fr 1fr; }
+  .bk-rep-ligne { grid-template-columns: minmax(0, 6.6rem) 1fr 4.6rem; gap: .45rem; }
+}
 /* ---- Page Dixon-Coles, refonte du 22/11/2026 ---- */
 .dc-cal { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 1.4rem; }
 .dc-cal-titre { margin: 0; font: 700 .95rem var(--font-display); color: var(--ink); }
