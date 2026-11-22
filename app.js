@@ -10398,7 +10398,7 @@ initMatrixCellInspector({
    Les probabilités du modèle sont recalculées sur la grille Dixon-Coles (niveauProba) avec le ρ de la page. */
 const API_MAT_LS = "ww_bt_apimat_v1";
 let API_MAT = (() => {
-  const def = {vue: "pred", colonnes: "issue", paris: "page"};
+  const def = {vue: "pred", colonnes: "resultat", paris: "aucun"};
   try { return Object.assign(def, JSON.parse(localStorage.getItem(API_MAT_LS) || "{}")); } catch (e) { return def; }
 })();
 let API_MAT_MATCHS = null, API_MAT_DERNIER = null;
@@ -10475,8 +10475,164 @@ function renderApiMatrix(rowsPage) {
       b.classList.toggle("is-active", a); b.setAttribute("aria-pressed", a ? "true" : "false");
     });
   });
-  renderMatriceVariables(rowsPage, API_MAT_CTX);
+  // « Résultat réel » (22/11/2026, 17h08 : « pour vainqueur du match refait la matrice prévision API-Football vs
+  // résultat réel ») : un gain de pari par résultat du match ne veut rien dire (une case « victoire domicile »
+  // contient aussi des paris sur l'extérieur, forcément perdus). Cette vue compte donc des MATCHS : ce qu'annonçait
+  // l'API (ou le coefficient d'absences) face au résultat, et ce qu'attendait le modèle — avec le rendu des matrices.
+  if (API_MAT.colonnes === "resultat") renderApiMatchMatrix(rowsPage);
+  else renderMatriceVariables(rowsPage, API_MAT_CTX);
   renderApiMatBilan();
+}
+function renderApiMatchMatrix(rowsPage) {
+  const wrap = $("btApiMatWrap");
+  const empty = $("btApiMatEmpty"), legend = $("btApiMatLegend"), note = $("btApiMatNote"), bestEl = $("btApiMatBest");
+  API_MAT_CTX.dernier = {rowsPage};
+  const pred = API_MAT.vue !== "abs";
+  const fr = x => x.toLocaleString("fr-FR");
+  const pc = x => (x * 100).toFixed(0) + " %";
+  const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  // Paris « Vainqueur du match » de la page, par match.
+  const parisVm = new Map();
+  (rowsPage || []).forEach(r => {
+    if (r.categorie !== "Vainqueur du match") return;
+    const k = r.date + "|" + r.match;
+    (parisVm.get(k) || parisVm.set(k, []).get(k)).push(r);
+  });
+  // Vos paris : les matchs où la page retient un pari Vainqueur du match. Sans aucun filtre : tous les matchs
+  // terminés du périmètre de la page (dates, ligues, sélections).
+  const dd = $("btDateDebut") ? $("btDateDebut").value : "", df = $("btDateFin") ? $("btDateFin").value : "";
+  const ligues = liguesCochees("bt"), exclSel = selectionsExclues("bt");
+  const matchs = apiMatMatchs().filter(m => API_MAT.paris === "page" ? parisVm.has(m.cle)
+    : (!dd || m.date >= dd) && (!df || m.date <= df) && (!ligues || ligues.has(ligueKey(m.pays, m.ligue)))
+      && !(exclSel && estSelectionNationale(m.pays, m.ligue)));
+  const rho = rhoActif("bt") && MODELE_RHO ? MODELE_RHO.corrige : (MODELE_RHO ? MODELE_RHO.actuel : -0.13);
+  const lignesDef = (pred ? API_PRED_LIGNES : API_ABS_LIGNES.map(t => Object.assign({}, t, {label: `${t.label} (${t.detail})`})))
+    .concat([{k: "sans", label: pred ? "Pas de prédiction" : "Pas de relevé d'absences"}]);
+  const COLS = [{k: "H", label: "Victoire domicile"}, {k: "D", label: "Match nul"}, {k: "A", label: "Victoire extérieur"}];
+  const agg = {};
+  const nouv = (t, g) => ({t, g, n: 0, matchs: [], att: 0, ok: 0, attOk: 0, nJ: 0, paris: 0, net: 0, mise: 0, gagnes: 0, rows: []});
+  matchs.forEach(m => {
+    const l = pred ? (m.predCl || "sans") : apiMatClasseAbs(m.g ? [m.g] : null);
+    const def = lignesDef.find(t => t.k === l);
+    if (!def) return;
+    const p = m.g && !pred ? apiMatProbas(m.lh * m.g, m.la / m.g, rho) : apiMatProbas(m.lh, m.la, rho);
+    const bets = parisVm.get(m.cle) || [];
+    [[l, m.res], [l, "*"], ["*", m.res], ["*", "*"]].forEach(([a, b]) => {
+      const k = a + "|" + b, c = agg[k] || (agg[k] = nouv(a, b));
+      c.n++; c.matchs.push(Object.assign({p}, m));
+      if (b !== "*") c.att += 0;                     // la part attendue se calcule sur toute la ligne, plus bas
+      if (def.juste && a !== "*") { c.nJ++; c.ok += def.juste.includes(m.res) ? 1 : 0; c.attOk += def.juste.reduce((t, x) => t + p[x], 0); }
+      bets.forEach(r => { const mise = btStakeFor(r); c.paris++; c.net += r.profit * mise; c.mise += mise; if (r.gagne) c.gagnes++; });
+    });
+    // Probabilité attendue de CHAQUE résultat, sommée sur la ligne (et sur le total).
+    [l, "*"].forEach(a => { const tot = agg[a + "|*"]; tot.pH = (tot.pH || 0) + p.H; tot.pD = (tot.pD || 0) + p.D; tot.pA = (tot.pA || 0) + p.A; });
+  });
+  const lignes = lignesDef.filter(t => agg[t.k + "|*"]);
+  if (!lignes.length) {
+    wrap.innerHTML = "";
+    [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
+    if (empty) empty.style.display = "";
+    API_MAT_DATA = {};
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  API_MAT_DATA = agg;
+  // Teinte : écart entre la part réelle d'un résultat et la part que le modèle attendait (vert = plus souvent).
+  const ecarts = [];
+  lignes.forEach(t => COLS.forEach(c => {
+    const tot = agg[t.k + "|*"], cel = agg[t.k + "|" + c.k];
+    if (tot.n >= 20) ecarts.push(Math.abs((cel ? cel.n : 0) / tot.n - tot["p" + c.k] / tot.n));
+  }));
+  const maxEcart = Math.max(0.03, ...ecarts);
+  const cellule = (t, c, neutre) => {
+    const tot = agg[t + "|*"], cel = agg[t + "|" + c];
+    const n = cel ? cel.n : 0, reel = n / tot.n, att = tot["p" + c] / tot.n, ecart = reel - att;
+    let style = "";
+    if (!neutre && tot.n >= 20 && Math.abs(ecart) >= 0.02) {
+      const alpha = (0.12 + Math.min(1, Math.abs(ecart) / maxEcart) * 0.58).toFixed(2);
+      style = ` style="background:${ecart >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
+    }
+    const cls = ecart >= 0 ? "pos" : "neg";
+    return `<td class="score-cell ${cls}${tot.n < 20 ? " score-cell-lowdata" : ""}${neutre ? " score-cell-total" : ""}"${style}${n ? ` data-apimat="${esc(t + "|" + c)}" tabindex="0"` : ""}>
+        <div class="score-net">${pc(reel)}</div>
+        <div class="score-sub">${fr(n)} match${n > 1 ? "s" : ""}</div>
+        <div class="score-roi">modèle ${pc(att)}</div>
+      </td>`;
+  };
+  const totalCol = t => {
+    const a = agg[t + "|*"];
+    const juste = a.nJ ? `<div class="score-roi">annonce juste ${pc(a.ok / a.nJ)} · modèle ${pc(a.attOk / a.nJ)}</div>` : "";
+    const paris = a.paris ? `<div class="score-sub">vos paris : <span class="${a.net >= 0 ? "pos" : "neg"}">${fmtEur(a.net)}</span> (${a.paris})</div>` : "";
+    return `<td class="score-cell score-cell-total" data-apimat="${esc(t + "|*")}" tabindex="0"><div class="score-net">${fr(a.n)} match${a.n > 1 ? "s" : ""}</div>${juste}${paris}</td>`;
+  };
+  let thead = `<tr><th class="score-corner">${pred ? "Prédiction API-Football" : "Absences : coefficient"} ↓<br>Résultat réel du match →</th>`;
+  COLS.forEach(c => { thead += `<th class="num">${c.label}</th>`; });
+  thead += `<th class="num score-total-head">Total</th></tr>`;
+  let tbody = "";
+  lignes.forEach(t => {
+    tbody += `<tr><th class="num" scope="row" title="${esc(t.label)}">${esc(t.label)}</th>`;
+    COLS.forEach(c => { tbody += cellule(t.k, c.k, false); });
+    tbody += totalCol(t.k) + "</tr>";
+  });
+  // Ligne Total : seulement les matchs AVEC prédiction (ou relevé d'absences), pour ne pas noyer la lecture.
+  const avec = lignes.filter(t => t.k !== "sans");
+  if (avec.length) {
+    const tt = nouv("avec", "*");
+    tt.pH = tt.pD = tt.pA = 0;
+    const parRes = {H: 0, D: 0, A: 0};
+    avec.forEach(t => {
+      const a = agg[t.k + "|*"];
+      tt.n += a.n; tt.nJ += a.nJ; tt.ok += a.ok; tt.attOk += a.attOk; tt.paris += a.paris; tt.net += a.net; tt.mise += a.mise; tt.gagnes += a.gagnes;
+      tt.pH += a.pH; tt.pD += a.pD; tt.pA += a.pA; tt.matchs = tt.matchs.concat(a.matchs);
+      COLS.forEach(c => { parRes[c.k] += agg[t.k + "|" + c.k] ? agg[t.k + "|" + c.k].n : 0; });
+    });
+    agg["avec|*"] = tt;
+    COLS.forEach(c => { if (parRes[c.k]) agg["avec|" + c.k] = Object.assign(nouv("avec", c.k), {n: parRes[c.k], matchs: tt.matchs.filter(m => m.res === c.k)}); });
+    tbody += `<tr class="score-total-row"><th class="num" scope="row">Total ${pred ? "avec prédiction" : "avec relevé"}</th>`;
+    COLS.forEach(c => { tbody += cellule("avec", c.k, true); });
+    tbody += totalCol("avec") + "</tr>";
+  }
+  wrap.innerHTML = `<table class="score-matrix mvt-matrix ev-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  if (legend) {
+    legend.innerHTML = `
+      <span class="score-legend-lbl neg">moins souvent</span>
+      <span class="score-legend-bar" aria-hidden="true"></span>
+      <span class="score-legend-lbl pos">plus souvent</span>
+      <span class="score-lowdata-key"><span aria-hidden="true"></span> moins de 20 matchs</span>
+      <span class="muted score-legend-note">Une case = part des matchs de la ligne finis sur ce résultat · « modèle » = ce que le
+      modèle attendait${pred ? "" : " avec les absences"} · teinte = résultat arrivé plus (vert) ou moins (rouge) souvent que prévu ·
+      cliquez une case pour voir ses matchs</span>`;
+  }
+  if (note) {
+    note.textContent = `${fr(matchs.length)} match${matchs.length > 1 ? "s" : ""} terminé${matchs.length > 1 ? "s" : ""}`
+      + (API_MAT.paris === "page" ? " où la page retient un pari Vainqueur du match" : " du périmètre de la page (dates, ligues, sélections), tous paris confondus")
+      + ` · ρ ${rhoActif("bt") ? "corrigé" : "actuel"} · « vos paris » = gain net de vos paris Vainqueur du match sur ces matchs.`;
+  }
+  if (bestEl) {
+    const a = agg["avec|*"];
+    // Le bilan détaillé (tous les matchs du périmètre) suit juste en dessous ; ici, seulement le rappel pour vos paris.
+    bestEl.innerHTML = API_MAT.paris === "page" && a && a.nJ
+      ? `Sur les matchs de vos paris, l'issue annoncée par l'API est arrivée dans <strong>${pc(a.ok / a.nJ)}</strong> des cas, quand le modèle `
+        + `l'attendait dans ${pc(a.attOk / a.nJ)} (${a.nJ} matchs : trop peu pour conclure, voyez « Sans aucun filtre »).`
+      : "";
+  }
+}
+const API_RES_TXT = {H: "victoire domicile", D: "nul", A: "victoire extérieur"};
+function apiMatDetailMatchs(c) {
+  const pc = x => (x * 100).toFixed(0) + " %";
+  const ms = c.matchs.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const lignes = ms.slice(0, 80).map(m => {
+    const p = m.pred || {};
+    const annonce = m.predCl ? (API_PRED_LIGNES.find(t => t.k === m.predCl) || {}).label : (m.g ? `coefficient ${m.g.toFixed(2).replace(".", ",")}` : "—");
+    return `<div class="tt-score-row"><div class="tt-score-info"><div class="tt-score-match">${m.match}</div>
+      <div class="tt-score-meta">${ligueLabel(m.pays, m.ligue)} · ${m.date} · ${annonce}${p.conseil ? ` · « ${p.conseil} »` : ""}</div></div>
+      <div class="tt-score-result"><strong>${m.bd} - ${m.be}</strong><br>modèle ${pc(m.p.H)} / ${pc(m.p.D)} / ${pc(m.p.A)}</div></div>`;
+  }).join("");
+  const titre = `${c.t === "*" || c.t === "avec" ? "Tous" : ((API_PRED_LIGNES.concat(API_ABS_LIGNES).find(t => t.k === c.t) || {}).label || "Sans donnée")}`
+    + (c.g === "*" ? "" : ` · ${API_RES_TXT[c.g]}`);
+  return `<div class="tt-score-head"><span>${titre}</span><span>${c.n} match${c.n > 1 ? "s" : ""}</span></div>
+    <div class="tt-score-agg">Score final, et probabilités domicile / nul / extérieur du modèle.${c.paris ? ` Vos paris Vainqueur sur ces matchs : ${c.paris}, ${fmtEur(c.net)}.` : ""}</div>
+    <div class="tt-score-list">${lignes}${ms.length > 80 ? `<div class="tt-score-more">… et ${ms.length - 80} autres matchs</div>` : ""}</div>`;
 }
 function renderApiMatBilan() {
   const el = $("btApiMatLecture");
@@ -10540,7 +10696,7 @@ initMatrixCellInspector({
   inspectorId: "btApiMatInspector", tooltipId: "btApiMatTooltip",
   dataKey: "apimat", getData: () => API_MAT_DATA,
   rowMeta: r => libreMetaPari(r),
-  buildDetails: c => matrixDetailMarkup(
+  buildDetails: c => c.matchs ? apiMatDetailMatchs(c) : matrixDetailMarkup(
     c, `${c.tLabel} · ${c.gLabel}`,
     `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · cote moyenne ${c.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}`
       + `${c.evMoy != null ? ` · espérance moyenne ${evMatPct(c.evMoy)}` : ""} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
