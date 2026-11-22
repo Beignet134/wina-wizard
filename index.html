@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122104040">
+<link rel="stylesheet" href="style.css?v=20261122135139">
 </head>
 <body>
 <div class="topbar">
@@ -2289,27 +2289,31 @@
       selon un montant fixe par pari.
     </div>
 
-    <!-- Paris joués à rattraper (21/11/2026), voir renderRattrapage. -->
-    <div class="panel" id="bkRattPanel">
-      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10.5l3.5 3.5L16 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Paris joués à rattraper</h2>
-      <p class="muted ratt-intro">Tu as joué un pari (depuis une alerte sur le téléphone, par exemple) sans avoir pu le
-      cocher avant le match ? Retrouve-le ici et coche-le : il entre dans ta bankroll comme les autres. La liste reprend
-      les paris des matchs terminés qui passent les filtres du <strong>DC rétrospectif</strong> (les mêmes que les
-      alertes). Un match commencé mais pas encore terminé reste sur <strong>Paris à venir</strong> jusqu'à la mise à
-      jour suivante : tu peux aussi le cocher là-bas.</p>
-      <div class="ratt-commandes">
-        <div class="jour-modes" id="bkRattModes" role="group" aria-label="Paris affichés">
-          <button type="button" class="jour-mode is-active" data-ratt-mode="acocher" aria-pressed="true">À cocher</button>
-          <button type="button" class="jour-mode" data-ratt-mode="tous" aria-pressed="false">Tous</button>
+    <!-- Paris joués à rattraper (21/11/2026 ; repliable et nouveau rendu le 22/11), voir renderRattrapage. -->
+    <details class="panel panel-foldable ratt-panel" id="bkRattPanel">
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10.5l3.5 3.5L16 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Paris joués à rattraper</h2>
+      <span class="ratt-compteur" id="bkRattCompteur" hidden></span>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+        <p class="ratt-intro">Un pari joué depuis une alerte sans avoir pu le cocher avant le match ? Coche-le ici :
+        il entre dans ta bankroll comme les autres. On y trouve les matchs terminés qui passent les filtres du
+        <strong>DC rétrospectif</strong> (les mêmes que les alertes). Un match en cours reste sur
+        <strong>Paris à venir</strong> jusqu'à la mise à jour suivante.</p>
+        <div class="ratt-commandes">
+          <div class="jour-modes" id="bkRattModes" role="group" aria-label="Paris affichés">
+            <button type="button" class="jour-mode is-active" data-ratt-mode="acocher" aria-pressed="true">À cocher</button>
+            <button type="button" class="jour-mode" data-ratt-mode="tous" aria-pressed="false">Tous</button>
+          </div>
+          <div class="jour-modes" id="bkRattJours" role="group" aria-label="Période">
+            <button type="button" class="jour-mode is-active" data-ratt-jours="3" aria-pressed="true">3 jours</button>
+            <button type="button" class="jour-mode" data-ratt-jours="7" aria-pressed="false">7 jours</button>
+            <button type="button" class="jour-mode" data-ratt-jours="30" aria-pressed="false">30 jours</button>
+          </div>
         </div>
-        <div class="jour-modes" id="bkRattJours" role="group" aria-label="Période">
-          <button type="button" class="jour-mode is-active" data-ratt-jours="3" aria-pressed="true">3 jours</button>
-          <button type="button" class="jour-mode" data-ratt-jours="7" aria-pressed="false">7 jours</button>
-          <button type="button" class="jour-mode" data-ratt-jours="30" aria-pressed="false">30 jours</button>
-        </div>
+        <div id="bkRattListe" class="ratt-liste"></div>
       </div>
-      <div id="bkRattListe" class="ratt-liste"></div>
-    </div>
+    </details>
 
     <div class="panel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="15" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8.5h15" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="12" r="1.4" fill="currentColor"/></svg>Bankroll</h2>
@@ -2802,7 +2806,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122104143", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122104143", APP = "app.js?v=20261122104040";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122135239", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122135239", APP = "app.js?v=20261122135139";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
