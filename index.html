@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122205942">
+<link rel="stylesheet" href="style.css?v=20261122211945">
 </head>
 <body>
 <div class="topbar">
@@ -2417,19 +2417,26 @@
   <section class="page" id="page-bankroll" role="tabpanel" aria-labelledby="heading-bankroll" tabindex="0">
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">SUIVI RÉEL · 07</p><h2 class="page-title" id="heading-bankroll">Bankroll</h2></div>
-      <p class="lead">Évolution réelle de votre bankroll, à partir des paris cochés « joué » sur la page
-      <strong>Paris à venir</strong> (avec leur mise), rapprochés de leur résultat une fois le match
-      terminé. Ce n'est pas une simulation : c'est ce qui s'est vraiment passé sur ce que vous avez
-      réellement misé.</p>
+      <p class="lead">Ce qui s'est vraiment passé sur ce que tu as réellement misé : les paris cochés « joué »,
+      avec leur mise et leur cote, rapprochés du résultat une fois le match terminé.</p>
     </div>
+    <!-- Page Bankroll refaite le 22/11/2026 : l'essentiel en tête, chiffres clés et courbe, bilan (ROI, réussite
+         face aux cotes, séries, plus forte baisse), où tu gagnes (type de pari, site, cote), paris en attente,
+         qualité d'exécution, puis l'historique jour par jour. Tous les id d'origine sont conservés. -->
+    <details class="mc-aide">
+      <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span><strong>Pense en part de bankroll par jour plutôt qu'en mise fixe : 15 à 20 % au maximum, répartis entre les paris du jour<span id="bkConseil"></span>.</strong></span>
+        <span class="mc-aide-plus">En savoir plus</span></summary>
+      <div class="mc-aide-corps">
+        <p>Le nombre de paris qualifiés varie beaucoup d'un jour à l'autre (jusqu'à 23 le même jour sur
+        l'historique récent, contre 1 seul d'autres jours). Une mise fixe en euros expose donc à des montants très
+        inégaux selon les jours ; raisonner en part de bankroll par jour garde le risque constant.</p>
+        <p>Le résultat d'un pari est calculé à la cote que tu as obtenue (ou, à défaut, à la dernière cote relevée
+        avant le match), avec le score réel du match, même si le pari ne passerait plus tes filtres à la clôture.</p>
+      </div>
+    </details>
 
-    <div class="warn pred">
-      <strong>Le nombre de paris qualifiés varie fortement d'un jour à l'autre</strong> (on a vu jusqu'à
-      23 paris le même jour sur l'historique récent, contre 1 seul d'autres jours). Une mise fixe en
-      euros expose donc à des montants très inégaux selon les jours. Réfléchissez plutôt en <em>part de
-      votre bankroll par jour</em> (par exemple 15-20 % maximum, répartis entre les paris du jour) que
-      selon un montant fixe par pari.
-    </div>
+    <div id="bkVerdict" class="mg-verdict" style="display:none"></div>
 
     <!-- Paris joués à rattraper (21/11/2026 ; repliable et nouveau rendu le 22/11), voir renderRattrapage. -->
     <details class="panel panel-foldable ratt-panel" id="bkRattPanel">
@@ -2498,34 +2505,48 @@
       </div>
       <p class="muted bk-raz-note" id="bkRazNote" hidden></p>
 
-      <div class="kpis">
-        <div class="kpi"><div class="k" id="bkActuelleLabel">Bankroll actuelle</div><div class="v" id="bkActuelle">—</div><div class="kpi-sub" id="bkActuelleSub"></div></div>
-        <div class="kpi"><div class="k">Résultat net (résolu)</div><div class="v" id="bkNet">—</div><div class="kpi-sub" id="bkNetSub"></div></div>
-        <div class="kpi"><div class="k">Paris résolus</div><div class="v" id="bkResolus">0</div></div>
-        <div class="kpi"><div class="k">Paris en attente</div><div class="v" id="bkAttente">0</div></div>
+      <div class="bk-tuiles">
+        <div class="bk-tuile bk-tuile-main"><div class="k" id="bkActuelleLabel">Bankroll actuelle</div><div class="v" id="bkActuelle">—</div><div class="kpi-sub" id="bkActuelleSub"></div></div>
+        <div class="bk-tuile"><div class="k">Résultat net</div><div class="v" id="bkNet">—</div><div class="kpi-sub" id="bkNetSub"></div></div>
+        <div class="bk-tuile"><div class="k">Paris terminés</div><div class="v" id="bkResolus">0</div><div class="kpi-sub" id="bkResolusSub"></div></div>
+        <div class="bk-tuile"><div class="k">En attente</div><div class="v" id="bkAttente">0</div><div class="kpi-sub" id="bkAttenteSub"></div></div>
       </div>
-
-      <h3 class="section-divider" style="margin-top:1.2rem">Qualité d'exécution <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">— la cote que vous obtenez vraiment</span></h3>
-      <div class="kpis">
-        <div class="kpi"><div class="k">CLV réel</div><div class="v" id="bkClv">—</div><div class="kpi-sub" id="bkClvSub"></div></div>
-        <div class="kpi"><div class="k">Écart avec la cote affichée</div><div class="v" id="bkEcran">—</div><div class="kpi-sub" id="bkEcranSub"></div></div>
-        <div class="kpi"><div class="k">Coché avant le match (moy.)</div><div class="v" id="bkDelai">—</div><div class="kpi-sub" id="bkDelaiSub"></div></div>
-      </div>
-      <p class="muted" style="margin:.5rem 0 0; font-size:.8rem">
-        Sur la page <strong>Paris à venir</strong>, quand vous cochez « Marquer comme joué », le champ
-        <em>Cote obtenue</em> garde la cote réellement prise sur Winamax (corrigez-la si elle a bougé).
-        <strong>CLV réel</strong> : écart, en points de probabilité implicite, entre cette cote et la dernière
-        cote capturée avant le match (la « clôture ») ; positif = le marché a ensuite raccourci, vous avez pris
-        un meilleur prix. <strong>Écart avec la cote affichée</strong> : même mesure par rapport à la cote que la
-        carte affichait ; négatif = la cote a baissé entre le dernier relevé et votre pari. Seules les cotes
-        saisies ou validées par vous comptent ; une cote reprise telle quelle de l'écran est marquée d'un
-        astérisque. Les résultats ci-dessous viennent du score réel du match, même quand le pari ne passerait
-        plus vos filtres à la clôture.
-      </p>
 
       <div id="bkEvoWrap" style="margin-top:1rem"></div>
+      <div id="bkBilan" class="bk-bilan"></div>
+    </div>
 
-      <h3 class="section-divider" style="margin:1.4rem 0 .6rem"><span id="bkJourTitre">Gain / perte par jour</span> <span class="hint" id="bkJourHint" style="text-transform:none;letter-spacing:0;font-weight:400">— résultat net réel de chaque jour, avec vos mises</span></h3>
+    <div class="panel" id="bkRepartPanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 15.5V9M8.5 15.5V5M13 15.5v-4.5M17 15.5V7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Où tu gagnes, où tu perds <span class="hint">— paris terminés de la période</span></h2>
+      <div id="bkRepart" class="bk-repart"></div>
+    </div>
+
+    <div class="panel" id="bkAttentePanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10.5" r="6.8" stroke="currentColor" stroke-width="1.6"/><path d="M10 7v3.7l2.4 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Paris en attente <span class="hint">— matchs pas encore terminés</span></h2>
+      <div id="bkAttenteListe"></div>
+    </div>
+
+    <div class="panel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 12.5 7.5 8.5l3 3 6-6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Qualité d'exécution <span class="hint">— la cote que tu obtiens vraiment</span></h2>
+      <div class="bk-tuiles">
+        <div class="bk-tuile"><div class="k">CLV réel</div><div class="v" id="bkClv">—</div><div class="kpi-sub" id="bkClvSub"></div></div>
+        <div class="bk-tuile"><div class="k">Écart avec la cote affichée</div><div class="v" id="bkEcran">—</div><div class="kpi-sub" id="bkEcranSub"></div></div>
+        <div class="bk-tuile"><div class="k">Coché avant le match (moyenne)</div><div class="v" id="bkDelai">—</div><div class="kpi-sub" id="bkDelaiSub"></div></div>
+      </div>
+      <details class="mc-mini-aide" style="margin-top:.8rem">
+        <summary>Comment lire ces trois chiffres</summary>
+        <p><strong>CLV réel</strong> : écart, en points de probabilité, entre la cote que tu as prise et la dernière
+        cote relevée avant le match (la « clôture »). Positif : le marché a ensuite baissé la cote, tu as pris un
+        meilleur prix. <strong>Écart avec la cote affichée</strong> : même mesure face à la cote que la carte
+        affichait ; négatif = la cote a baissé entre le dernier relevé et ton pari. Seules les cotes saisies ou
+        validées par toi comptent (champ <em>Cote obtenue</em> sur Paris à venir) ; une cote reprise telle quelle
+        de l'écran est marquée d'un astérisque dans l'historique.</p>
+      </details>
+    </div>
+
+    <div class="panel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Jour par jour</h2>
+      <h3 class="section-divider" style="margin:0 0 .6rem"><span id="bkJourTitre">Gain / perte par jour</span> <span class="hint" id="bkJourHint" style="text-transform:none;letter-spacing:0;font-weight:400">— résultat net réel de chaque jour, avec vos mises</span></h3>
       <div class="jour-modes" id="bkJourModes" role="group" aria-label="Affichage de l'histogramme">
         <button type="button" class="jour-mode" data-mode="n" aria-pressed="false">Nombre de paris</button>
         <button type="button" class="jour-mode is-active" data-mode="jour" aria-pressed="true">Gain / perte par jour</button>
@@ -3042,7 +3063,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122210046", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122210046", APP = "app.js?v=20261122205942";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122212051", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122212051", APP = "app.js?v=20261122211945";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
