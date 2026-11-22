@@ -513,13 +513,8 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .libre-commandes .field { display: flex; flex-direction: column; gap: .25rem; min-width: 13rem; }
 .libre-commandes select { max-width: 100%; }
 /* Matrice « API-Football et absences » (22/11/2026). */
-.api-matrix td.score-cell { min-width: 5.6rem; }
-.api-matrix td.api-info .api-sub { min-width: 7rem; }
-.api-matrix .api-pct { font: 600 .95rem var(--font-mono); }
-.api-matrix .api-sub { font-size: .7rem; color: var(--ink-dim); line-height: 1.35; }
-.api-matrix td.api-info { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: .82rem; }
-.api-matrix td.api-info .api-sub { white-space: normal; }
-.api-matrix th[scope="row"] { white-space: normal; min-width: 9rem; }
+.api-cmd-lbl { font-size: .72rem; color: var(--ink-faint); }
+#btApiMatLecture { line-height: 1.55; }
 .matrices-groupe > details.panel { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 /* Raccourcis de période de la page Bankroll (mêmes boutons que le sélecteur
    d'histogramme) et phrase qui rappelle la période retenue. */
