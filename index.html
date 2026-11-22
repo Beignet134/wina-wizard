@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122194222">
+<link rel="stylesheet" href="style.css?v=20261122195717">
 </head>
 <body>
 <div class="topbar">
@@ -771,9 +771,9 @@
           <div class="field">
             <label for="btCbkRang">Winamax face aux autres sites</label>
             <select id="btCbkRang" title="Compare la cote de Winamax à celles des autres sites relevées récemment (cotes inhabituelles, souvent périmées, ignorées). « Winamax paie le plus » : on ne garde le pari que si aucun autre site ne paie autant que Winamax. Mesuré le 22/11/2026 sur les paris des filtres : quand un autre site payait autant ou plus, 1 pari gagné sur 27. Un pari qu'aucun autre site ne cote est gardé.">
-              <option value="">Peu importe</option>
+              <option value="" selected>Peu importe</option>
               <option value="egal">Winamax paie au moins autant</option>
-              <option value="seul" selected>Winamax paie le plus</option>
+              <option value="seul">Winamax paie le plus</option>
             </select>
           </div>
           <div class="field">
@@ -1659,30 +1659,30 @@
   <!-- PAGE 2 BIS — SIMULATION DE VARIANCE (MONTE CARLO)                  -->
   <!-- ================================================================= -->
   <section class="page" id="page-montecarlo" role="tabpanel" aria-labelledby="heading-montecarlo" tabindex="0">
+    <!-- Page Simulation refaite le 22/11/2026 (« plus propre, ergonomique, compréhensible et attrayante ») :
+         le résumé par stratégie passe en tête des résultats, les explications longues sont repliées, les
+         stratégies se choisissent sur des cartes. Tous les id d'origine sont conservés. -->
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">VARIANCE · 05</p><h2 class="page-title" id="heading-montecarlo">Simulation Monte Carlo</h2></div>
-      <p class="lead">À quoi ressemble la <strong>fourchette réaliste</strong> de résultats, bonne
-      comme mauvaise, si le modèle est exactement aussi fiable qu'il le prétend ? Rejoue des
-      milliers de fois l'historique de paris déjà testé, en tirant chaque résultat au hasard selon
-      la probabilité du modèle plutôt que de ne regarder que ce qui s'est <em>réellement</em>
-      passé une fois — cette trajectoire réelle reste affichée à côté (pointillés et tableau
-      « Sur l'historique réel »), pour voir où elle se place dans la fourchette.</p>
+      <p class="lead">Si le modèle est aussi juste qu'il le prétend, entre quoi et quoi peut finir ta bankroll ?
+      La page rejoue des milliers de fois tes paris filtrés en tirant chaque résultat au hasard, et compare
+      les façons de miser.</p>
     </div>
 
-    <div class="warn pred">
-      <strong>Ce graphique simule le hasard, pas l'avenir.</strong> Chaque trajectoire tire un
-      gagné/perdu aléatoire pour chaque pari avec la probabilité que <strong>le modèle</strong> lui
-      attribue — l'ordre chronologique des paris reste celui de l'historique, seul le résultat de
-      chacun est retiré au sort à chaque trajectoire. Cette simulation suppose donc que les
-      probabilités utilisées sont justes. Si le modèle est en réalité surconfiant, la vraie variance
-      est pire que ce qu'affiche ce graphique, pas meilleure — active le filtre
-      <strong>« Correction de calibration »</strong> sur la page DC rétrospectif pour simuler avec
-      des probabilités déjà corrigées de cette surconfiance plutôt qu'avec les probabilités brutes
-      du modèle ; cette page reprend automatiquement ce réglage, comme tous les autres filtres de
-      la page DC rétrospectif.
-    </div>
+    <details class="mc-aide">
+      <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span><strong>Ce graphique simule le hasard, pas l'avenir.</strong> Il suppose que les probabilités du modèle sont justes.</span>
+        <span class="mc-aide-plus">En savoir plus</span></summary>
+      <div class="mc-aide-corps">
+        <p>Chaque trajectoire reprend tes paris dans l'ordre réel et tire gagné ou perdu au hasard, avec la
+        probabilité que le modèle donne à chacun. Si le modèle est en réalité trop confiant, la vraie
+        fourchette est plus mauvaise que celle affichée, pas meilleure.</p>
+        <p>Pour simuler avec des probabilités déjà corrigées de cette surconfiance, active la
+        <strong>« Correction de calibration »</strong> sur la page DC rétrospectif : cette page reprend tous ses filtres.</p>
+      </div>
+    </details>
 
-    <div class="panel">
+    <div class="panel mc-params">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Paramètres de la simulation</h2>
       <div class="controls">
         <div class="field">
@@ -1690,7 +1690,7 @@
           <input type="number" id="mcBkDepart" value="100" min="0" step="10">
         </div>
         <div class="field">
-          <label for="mcN">Nombre de trajectoires simulées</label>
+          <label for="mcN">Nombre de simulations</label>
           <select id="mcN">
             <option value="500">500 (rapide)</option>
             <option value="2000" selected>2 000 (recommandé)</option>
@@ -1699,7 +1699,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="mcHorizon">Horizon de la simulation</label>
+          <label for="mcHorizon">Durée simulée</label>
           <select id="mcHorizon">
             <option value="hist" selected>Historique actuel (<span id="mcHorizonHistNb">—</span> jours)</option>
             <option value="30">30 jours</option>
@@ -1711,154 +1711,170 @@
       </div>
 
       <div class="field mc-strat-field">
-        <label id="mcStratLabel">Stratégies à comparer <span class="hint">— cochées = superposées sur le même graphique</span></label>
-        <div class="mc-strat-list" role="group" aria-labelledby="mcStratLabel">
-          <div class="mc-strat-row">
-            <label class="mc-strat-check"><input type="checkbox" id="mcCmpFixe" checked><span class="mc-strat-dot" data-c="gold"></span>Montant fixe</label>
-            <input type="number" id="mcCmpFixeMontant" value="10" min="0" step="1" class="mc-strat-param" aria-label="Montant fixe en euros"><span class="mc-strat-unit">€/pari</span>
-          </div>
-          <div class="mc-strat-row">
-            <label class="mc-strat-check"><input type="checkbox" id="mcCmpPct"><span class="mc-strat-dot" data-c="orchid"></span>% de la bankroll par jour</label>
-            <input type="number" id="mcCmpPctVal" value="15" min="1" max="100" step="1" class="mc-strat-param" aria-label="Pourcentage de la bankroll engagé chaque jour, réparti également entre les paris du jour"><span class="mc-strat-unit">% / jour</span>
-          </div>
-          <div class="mc-strat-row">
-            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK8"><span class="mc-strat-dot" data-c="dim"></span>Kelly 1/8 <span class="muted">(très prudent)</span></label>
-          </div>
-          <div class="mc-strat-row">
-            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK4" checked><span class="mc-strat-dot" data-c="violet"></span>Kelly 1/4 <span class="muted">(recommandé)</span></label>
-          </div>
-          <div class="mc-strat-row">
-            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK2" checked><span class="mc-strat-dot" data-c="cyan"></span>Kelly 1/2 <span class="muted">(agressif)</span></label>
-          </div>
-          <div class="mc-strat-row">
-            <label class="mc-strat-check"><input type="checkbox" id="mcCmpK1"><span class="mc-strat-dot" data-c="coral"></span>Kelly entier <span class="muted">(déconseillé)</span></label>
-          </div>
+        <label id="mcStratLabel">Façons de miser à comparer</label>
+        <div class="mc-strat-grid" role="group" aria-labelledby="mcStratLabel">
+          <label class="mc-strat-card" style="--c:var(--gold)">
+            <input type="checkbox" id="mcCmpFixe" checked>
+            <span class="mc-card-top"><span class="mc-strat-dot" data-c="gold"></span><span class="mc-card-nom">Montant fixe</span><svg class="mc-card-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="mc-card-desc">La même mise sur chaque pari.</span>
+            <span class="mc-card-param"><input type="number" id="mcCmpFixeMontant" value="10" min="0" step="1" class="mc-strat-param" aria-label="Montant fixe en euros"><span class="mc-strat-unit">€ par pari</span></span>
+          </label>
+          <label class="mc-strat-card" style="--c:var(--orchid)">
+            <input type="checkbox" id="mcCmpPct">
+            <span class="mc-card-top"><span class="mc-strat-dot" data-c="orchid"></span><span class="mc-card-nom">% de la bankroll par jour</span><svg class="mc-card-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="mc-card-desc">Une part de la bankroll chaque jour, partagée entre les paris du jour.</span>
+            <span class="mc-card-param"><input type="number" id="mcCmpPctVal" value="15" min="1" max="100" step="1" class="mc-strat-param" aria-label="Pourcentage de la bankroll engagé chaque jour, réparti également entre les paris du jour"><span class="mc-strat-unit">% par jour</span></span>
+          </label>
+          <label class="mc-strat-card" style="--c:var(--ink-dim)">
+            <input type="checkbox" id="mcCmpK8">
+            <span class="mc-card-top"><span class="mc-strat-dot" data-c="dim"></span><span class="mc-card-nom">Kelly 1/8</span><svg class="mc-card-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="mc-card-desc">Mise selon l'avantage et la cote. Très prudent.</span>
+          </label>
+          <label class="mc-strat-card" style="--c:var(--violet)">
+            <input type="checkbox" id="mcCmpK4" checked>
+            <span class="mc-card-top"><span class="mc-strat-dot" data-c="violet"></span><span class="mc-card-nom">Kelly 1/4</span><svg class="mc-card-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="mc-card-desc">Mise selon l'avantage et la cote. Le réglage recommandé.</span>
+          </label>
+          <label class="mc-strat-card" style="--c:var(--cyan)">
+            <input type="checkbox" id="mcCmpK2" checked>
+            <span class="mc-card-top"><span class="mc-strat-dot" data-c="cyan"></span><span class="mc-card-nom">Kelly 1/2</span><svg class="mc-card-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="mc-card-desc">Deux fois plus que Kelly 1/4. Agressif.</span>
+          </label>
+          <label class="mc-strat-card" style="--c:var(--coral)">
+            <input type="checkbox" id="mcCmpK1">
+            <span class="mc-card-top"><span class="mc-strat-dot" data-c="coral"></span><span class="mc-card-nom">Kelly entier</span><svg class="mc-card-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="mc-card-desc">La mise « optimale » en théorie. Très risqué, déconseillé.</span>
+          </label>
         </div>
-        <p class="muted" style="margin:.5rem 0 0; font-size:.82rem">
-          Les stratégies composent réellement d'un jour au suivant, sur la bankroll du moment :
-          chaque pari Kelly reçoit une fraction selon son edge et sa cote (mises du jour réduites au
-          prorata si leur somme dépasse la bankroll), tandis que « % de la bankroll par jour » engage
-          une part fixe de la bankroll, répartie également entre les paris du jour — l'exposition
-          quotidienne y est plafonnée d'avance, quel que soit le nombre de matchs qualifiés. Toutes
-          les stratégies cochées rejouent <strong>exactement le même monde simulé</strong> à chaque
-          trajectoire (mêmes journées, mêmes résultats gagné/perdu tirés au sort) : seule la mise
-          change d'une stratégie à l'autre, pour que les écarts observés viennent du réglage de
-          mise, pas d'un hasard de tirage différent.
-        </p>
-        <label class="mc-strat-check mc-reel-opt"><input type="checkbox" id="mcCmpReel" checked>Superposer la trajectoire réelle du backtest <span class="muted">(pointillés, mêmes couleurs)</span></label>
+        <details class="mc-mini-aide">
+          <summary>Comment chaque façon de miser calcule sa mise</summary>
+          <p>Toutes les stratégies composent d'un jour à l'autre, sur la bankroll du moment. Kelly donne à chaque
+          pari une fraction qui dépend de son avantage et de sa cote ; si les mises d'une journée dépassent la
+          bankroll, elles sont réduites au prorata. « % de la bankroll par jour » engage une part fixe de la
+          bankroll, partagée également entre les paris du jour, quel que soit leur nombre.</p>
+          <p>Dans chaque simulation, toutes les stratégies cochées voient exactement les mêmes journées et les
+          mêmes résultats : seule la mise change, donc les écarts viennent bien de la façon de miser.</p>
+        </details>
       </div>
 
-      <p class="muted" style="margin:.7rem 0 .9rem; font-size:.82rem">
-        Bankroll de départ : <strong id="mcDepartAff">—</strong> (champ ci-dessus, synchronisé avec
-        la page Bankroll) · Paris observés dans l'historique filtré : <strong id="mcNbParis">—</strong>
-        sur <strong id="mcNbJoursHist">—</strong> jours, ceux qui correspondent actuellement aux
-        filtres de la page « DC rétrospectif » — change-les là-bas pour restreindre la simulation à
-        une catégorie, une période ou un edge minimum précis. <span id="mcHorizonAff"></span>
+      <p class="muted mc-contexte">
+        Départ <strong id="mcDepartAff">—</strong> · <strong id="mcNbParis">—</strong> paris sur
+        <strong id="mcNbJoursHist">—</strong> jours, ceux qui passent les filtres de « DC rétrospectif »
+        (change-les là-bas pour simuler une autre sélection). <span id="mcHorizonAff"></span>
       </p>
-      <button type="button" id="mcRelancer" class="btn btn-primary">🎲 Relancer la simulation</button>
-      <span class="muted" id="mcCalcTime" style="margin-left:.7rem; font-size:.8rem"></span>
+      <div class="mc-run-row">
+        <label class="mc-toggle"><input type="checkbox" id="mcCmpReel" checked><span class="mc-toggle-track" aria-hidden="true"></span>Afficher ce qui s'est vraiment passé <span class="muted">(pointillés)</span></label>
+        <span class="mc-run-actions"><span class="muted" id="mcCalcTime"></span>
+        <button type="button" id="mcRelancer" class="btn btn-primary">Relancer la simulation</button></span>
+      </div>
     </div>
 
-    <p id="mcEmpty" class="muted" style="display:none; text-align:center; margin-top:1.2rem">
-      Aucun pari ne correspond actuellement aux filtres de la page « DC rétrospectif » — rien à
-      simuler.
+    <p id="mcEmpty" class="mc-empty" style="display:none">
+      Aucun pari ne correspond actuellement aux filtres de la page « DC rétrospectif » — rien à simuler.
     </p>
 
     <div id="mcResults">
-      <div class="panel" id="mcCmpPanel">
-        <h2><span class="eyebrow">Sur <span id="mcNTraj">—</span> trajectoires simulées</span></h2>
-        <div class="tablewrap table-scroll">
-          <table class="mc-cmp-table">
-            <thead>
-              <tr>
-                <th scope="col">Stratégie</th>
-                <th scope="col" class="num">Mise totale <span class="hint">moyenne</span></th>
-                <th scope="col" class="num" title="Plus grosse somme engagée sur une même journée : médiane des trajectoires simulées, et son P95 en dessous.">Pic d'exposition <span class="hint">sur un jour</span></th>
-                <th scope="col" class="num">Bankroll médiane</th>
-                <th scope="col" class="num">Pire cas <span class="hint">P5</span></th>
-                <th scope="col" class="num">Meilleur cas <span class="hint">P95</span></th>
-                <th scope="col" class="num">P(perte)</th>
-                <th scope="col" class="num">P(ruine)</th>
-                <th scope="col" class="num">Creux typique</th>
-              </tr>
-            </thead>
-            <tbody id="mcCmpBody"></tbody>
-          </table>
-        </div>
+      <!-- 1. L'essentiel : une carte par stratégie -->
+      <div class="panel mc-resume-panel">
+        <h2>En résumé <span class="hint">— sur <span id="mcNTraj">—</span> simulations</span></h2>
+        <p class="mc-verdict" id="mcVerdict"></p>
+        <div class="mc-resume-grid" id="mcResume"></div>
+        <p class="muted mc-resume-legende">
+          <span class="mc-leg"><span class="mc-leg-bar" aria-hidden="true"></span>fourchette où finissent 9 simulations sur 10 (P5 à P95)</span>
+          <span class="mc-leg"><span class="mc-leg-med" aria-hidden="true"></span>résultat médian</span>
+          <span class="mc-leg"><span class="mc-leg-reel" aria-hidden="true"></span>ce qui s'est vraiment passé</span>
+          <span class="mc-leg"><span class="mc-leg-dep" aria-hidden="true"></span>bankroll de départ</span>
+        </p>
       </div>
 
-      <div class="panel" id="mcReelPanel">
-        <h2>Sur l'historique réel <span class="hint">— une seule trajectoire : les résultats réellement observés, pas tirés au hasard</span></h2>
-        <div class="tablewrap table-scroll">
-          <table class="mc-cmp-table">
-            <thead>
-              <tr>
-                <th scope="col">Stratégie</th>
-                <th scope="col" class="num">Mise totale</th>
-                <th scope="col" class="num">Bankroll finale</th>
-                <th scope="col" class="num">Gain net</th>
-                <th scope="col" class="num">Pic d'exposition <span class="hint">sur un jour</span></th>
-                <th scope="col">Jour du pic</th>
-                <th scope="col" class="num" title="Part des trajectoires simulées que le réel a battues (bankroll finale plus haute).">Réel vs simulées <span class="hint">part battue</span></th>
-              </tr>
-            </thead>
-            <tbody id="mcReelBody"></tbody>
-          </table>
-        </div>
-        <p class="muted" id="mcReelNote" style="margin:.7rem 0 0; font-size:.82rem"></p>
+      <!-- 2. Évolution dans le temps -->
+      <div class="panel">
+        <h2>Évolution de la bankroll <span class="hint" id="mcFanHint">— même historique, résultats tirés au hasard</span></h2>
+        <div id="mcFanWrap"></div>
+        <details class="mc-mini-aide">
+          <summary>Comment lire ce graphique ?</summary>
+          <p>La ligne pleine de chaque stratégie est la bankroll <strong>médiane</strong> : la moitié des simulations
+          font mieux, l'autre moitié moins bien. La bande colorée autour contient la moitié centrale des simulations
+          (du 25ᵉ au 75ᵉ percentile). Les <strong>pointillés</strong> rejouent, avec la même mise, les résultats
+          réellement observés : tant qu'ils restent dans la bande, le modèle tient ce qu'il promettait ; s'ils en
+          sortent durablement par le bas, il était trop optimiste.</p>
+          <p>Si la durée dépasse l'historique, la suite est prolongée en piochant au hasard des journées déjà observées.</p>
+        </details>
       </div>
 
+      <!-- 3. Répartition des résultats finaux -->
+      <div class="panel">
+        <h2>Répartition des gains finaux <span class="hint">— une stratégie par graphique</span></h2>
+        <div id="mcHistGrid" class="mc-hist-grid"></div>
+        <details class="mc-mini-aide">
+          <summary>Pourquoi chaque graphique a sa propre échelle ?</summary>
+          <p>Une stratégie qui compose peut produire quelques simulations extrêmes, très au-dessus des autres : avec une
+          échelle commune, elles écraseraient toutes les barres. Chaque graphique est donc cadré sur les résultats de sa
+          propre stratégie (du 1ᵉʳ au 99ᵉ percentile) ; le nombre de simulations hors cadre est indiqué dessous. Pour
+          comparer les stratégies entre elles, regarde le résumé en haut.</p>
+        </details>
+      </div>
+
+      <!-- 4. Percentile au choix -->
       <div class="panel" id="mcPctPanel">
-        <h2>Explorer un percentile précis <span class="hint">— au-delà de P5 / médiane / P95 seulement</span></h2>
+        <h2>Et dans un scénario précis ? <span class="hint">— gain net au percentile choisi</span></h2>
         <div class="mc-pct-slider-row">
+          <span class="mc-pct-bout">Mauvais</span>
           <input type="range" id="mcPctSlider" class="mc-pct-slider" min="1" max="99" value="50" step="1" aria-label="Percentile à explorer">
-          <div class="mc-pct-readout">Au <strong id="mcPctVal">50</strong><sup>e</sup> percentile</div>
+          <span class="mc-pct-bout">Bon</span>
+          <div class="mc-pct-readout"><strong id="mcPctVal">50</strong><sup>e</sup> percentile</div>
         </div>
         <div id="mcPctResult" class="mc-pct-rows"></div>
-        <p class="muted" style="margin:.6rem 0 0; font-size:.8rem">
-          Lecture : au 10ᵉ percentile, 90 % des trajectoires simulées ont fait mieux que le chiffre
-          affiché pour cette stratégie — utile pour voir « le mauvais scénario mais pas le pire »
-          plutôt que seulement le P5 du tableau ci-dessus, ou pour comparer deux stratégies à un
-          même rang de la distribution plutôt qu'à un rang fixe arbitraire.
-        </p>
+        <p class="muted mc-pct-note">Au 10ᵉ percentile, 9 simulations sur 10 font mieux que le chiffre affiché : c'est
+        « le mauvais scénario, mais pas le pire ».</p>
       </div>
 
-      <div class="panel">
-        <h2>Fourchette des trajectoires possibles <span class="hint" id="mcFanHint">— même historique, résultats tirés au hasard</span></h2>
-        <details class="chart-help" style="margin:-.3rem 0 .9rem">
-          <summary class="muted" style="cursor:pointer; font-size:.85rem">Comment lire ce graphique ?</summary>
-          <p class="muted" style="margin:.5rem 0 0; font-size:.85rem">
-            Chaque trajectoire simulée tire un résultat gagné/perdu au hasard pour chaque pari selon
-            la probabilité du modèle — et, si l'horizon dépasse l'historique réel, pioche aussi des
-            journées entières au hasard parmi celles déjà observées (avec remise) pour prolonger la
-            série. Une ligne par stratégie cochée ci-dessus : c'est la trajectoire <strong>médiane</strong>
-            (50ᵉ percentile) de cette stratégie, toutes calculées sur les mêmes journées et les mêmes
-            résultats tirés au sort à chaque trajectoire — seule la mise diffère d'une ligne à
-            l'autre. Le tableau au-dessus donne la fourchette complète (P5 à P95) que la courbe seule
-            ne montre pas. Les <strong>pointillés</strong> (case « Superposer la trajectoire réelle »)
-            rejouent, avec la même mise, les résultats réellement observés : une seule trajectoire,
-            pas une médiane. Tant qu'elle reste au voisinage des courbes pleines, le modèle tient ce
-            qu'il promettait ; si elle s'en écarte durablement par le bas, il était trop optimiste.
-          </p>
-        </details>
-        <div id="mcFanWrap"></div>
-      </div>
-
-      <div class="panel">
-        <h2>Distribution des résultats finaux <span class="hint">— une stratégie par colonne</span></h2>
-        <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
-          Répartition du gain net final (bankroll finale − bankroll de départ) sur l'ensemble des
-          trajectoires simulées, en tranches égales. Chaque colonne a sa propre échelle horizontale
-          (1ᵉʳ au 99ᵉ percentile de sa propre distribution) : une stratégie qui compose peut avoir
-          une poignée de trajectoires extrêmes des ordres de grandeur au-dessus des autres — avec
-          une échelle commune, elles écraseraient toutes les barres dans la première tranche. Le
-          nombre de trajectoires hors du cadre affiché est indiqué sous chaque histogramme plutôt
-          que masqué ; pour comparer les stratégies entre elles, voir le tableau ci-dessus.
-        </p>
-        <div id="mcHistGrid" class="mc-hist-grid"></div>
-      </div>
-
-      <p class="muted" id="mcVerdict" style="margin:.2rem 0 1.5rem; font-size:.9rem"></p>
+      <!-- 5. Chiffres détaillés -->
+      <details class="panel mc-details-panel">
+        <summary><h2>Tous les chiffres <span class="hint">— tableaux détaillés, simulés et réels</span></h2>
+          <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+        <div id="mcCmpPanel">
+          <h3 class="mc-h3">Simulations</h3>
+          <div class="tablewrap table-scroll">
+            <table class="mc-cmp-table">
+              <thead>
+                <tr>
+                  <th scope="col">Stratégie</th>
+                  <th scope="col" class="num">Mise totale <span class="hint">moyenne</span></th>
+                  <th scope="col" class="num" title="Plus grosse somme engagée sur une même journée : médiane des simulations, et son P95 en dessous.">Pic d'exposition <span class="hint">sur un jour</span></th>
+                  <th scope="col" class="num">Bankroll médiane</th>
+                  <th scope="col" class="num">Pire cas <span class="hint">P5</span></th>
+                  <th scope="col" class="num">Meilleur cas <span class="hint">P95</span></th>
+                  <th scope="col" class="num">Risque de perte</th>
+                  <th scope="col" class="num">Risque de ruine</th>
+                  <th scope="col" class="num">Creux typique</th>
+                </tr>
+              </thead>
+              <tbody id="mcCmpBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="mcReelPanel">
+          <h3 class="mc-h3">Ce qui s'est vraiment passé <span class="hint">— une seule trajectoire : les résultats réels</span></h3>
+          <div class="tablewrap table-scroll">
+            <table class="mc-cmp-table">
+              <thead>
+                <tr>
+                  <th scope="col">Stratégie</th>
+                  <th scope="col" class="num">Mise totale</th>
+                  <th scope="col" class="num">Bankroll finale</th>
+                  <th scope="col" class="num">Gain net</th>
+                  <th scope="col" class="num">Pic d'exposition <span class="hint">sur un jour</span></th>
+                  <th scope="col">Jour du pic</th>
+                  <th scope="col" class="num" title="Part des simulations que le réel a battues (bankroll finale plus haute).">Réel vs simulations <span class="hint">part battue</span></th>
+                </tr>
+              </thead>
+              <tbody id="mcReelBody"></tbody>
+            </table>
+          </div>
+          <p class="muted" id="mcReelNote" style="margin:.7rem 0 0; font-size:.8rem"></p>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -2162,9 +2178,9 @@
           <div class="field">
             <label for="uCbkRang">Winamax face aux autres sites</label>
             <select id="uCbkRang" title="Compare la cote de Winamax à celles des autres sites relevées récemment (cotes inhabituelles, souvent périmées, ignorées). « Winamax paie le plus » : on ne garde le pari que si aucun autre site ne paie autant que Winamax. Mesuré le 22/11/2026 sur les paris des filtres : quand un autre site payait autant ou plus, 1 pari gagné sur 27. Un pari qu'aucun autre site ne cote est gardé.">
-              <option value="">Peu importe</option>
+              <option value="" selected>Peu importe</option>
               <option value="egal">Winamax paie au moins autant</option>
-              <option value="seul" selected>Winamax paie le plus</option>
+              <option value="seul">Winamax paie le plus</option>
             </select>
           </div>
           <div class="field">
@@ -2491,30 +2507,37 @@
   <!-- PAGE 4 — STATISTIQUES DES ÉQUIPES (forces Dixon-Coles)             -->
   <!-- ================================================================= -->
   <section class="page" id="page-teams" role="tabpanel" aria-labelledby="heading-teams" tabindex="0">
+    <!-- Page Stats équipes refaite le 22/11/2026 : repères, fiche d'équipe (forces, forme, prochain match, tes
+         paris), tableau cliquable. Les id des filtres d'origine sont conservés. -->
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">ÉQUIPES · 08</p><h2 class="page-title" id="heading-teams">Stats équipes</h2></div>
-      <p class="lead">Les forces offensives et défensives estimées par le modèle Dixon-Coles pour chaque équipe, relatives à la moyenne de sa ligue. <strong>1,00 = exactement la moyenne</strong> ; au-dessus = meilleur, en-dessous = moins bon.</p>
+      <p class="lead">Le niveau de chaque équipe selon le modèle, sa forme récente, son prochain match et ce que
+      tes paris sur elle ont donné. Clique une équipe pour ouvrir sa fiche.</p>
     </div>
 
-    <div class="panel">
-      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.2 8a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.7-.8 1.2v.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 14.2h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Comprendre les colonnes <span class="hint">— cliquer pour déplier</span></h2>
-      <details>
-        <summary class="muted" style="cursor:pointer">Que signifient Attaque / Défense, domicile / extérieur ?</summary>
-        <div style="margin-top:.7rem; color:var(--muted); font-size:.9rem; line-height:1.7">
-          <strong style="color:var(--ink)">Attaque</strong> mesure les buts marqués, <strong style="color:var(--ink)">Défense</strong> les buts encaissés, chacun rapporté à la moyenne de la ligue.<br>
-          • <strong style="color:var(--pos)">Attaque &gt; 1</strong> : l'équipe marque plus que la moyenne (c'est bien).<br>
-          • <strong style="color:var(--pos)">Défense &lt; 1</strong> : l'équipe encaisse moins que la moyenne (c'est bien — une petite valeur de défense est bonne).<br>
-          Les colonnes <em>domicile</em> et <em>extérieur</em> sont séparées car la plupart des équipes sont sensiblement meilleures chez elles. « Nb » = nombre de matchs utilisés. Les forces sont <strong>régularisées</strong> :
-          celles fondées sur peu de matchs sont tirées vers 1,00, car une poignée de rencontres
-          ne suffit pas à distinguer un vrai niveau d'une série chanceuse. Une force extrême
-          associée à un « Nb » élevé est donc bien plus significative qu'avec un « Nb » faible.
-        </div>
-      </details>
-    </div>
+    <details class="mc-aide">
+      <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span><strong>1,00 = la moyenne de la ligue.</strong> Attaque au-dessus de 1 et défense en dessous de 1, c'est bien.</span>
+        <span class="mc-aide-plus">En savoir plus</span></summary>
+      <div class="mc-aide-corps">
+        <p><strong>Attaque</strong> : buts marqués, rapportés à la moyenne de la ligue (1,30 = 30 % de plus que la moyenne).
+        <strong>Défense</strong> : buts encaissés, même échelle (0,80 = 20 % de moins que la moyenne, donc une bonne défense).
+        Domicile et extérieur sont séparés, car la plupart des équipes sont meilleures chez elles.</p>
+        <p><strong>Niveau</strong> : attaque divisée par défense, en moyenne domicile/extérieur. +30 % veut dire que l'équipe
+        marque, par rapport à ce qu'elle encaisse, 30 % de plus qu'une équipe moyenne de sa ligue. Les forces sont
+        régularisées : avec peu de matchs, elles sont tirées vers 1,00.</p>
+        <p><strong>Forme</strong> : les 5 derniers matchs joués (le plus récent à droite). <strong>Tes paris</strong> : les paris
+        retenus par les filtres de la page DC rétrospectif sur les matchs de l'équipe.</p>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3 15.5 5v4c0 3.5-2.2 5.5-5.5 6.8C6.7 14.5 4.5 12.5 4.5 9V5L10 3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Forces par équipe <span class="hint" id="teamCount"></span></h2>
+    <div class="panel eq-filtres">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5l-5-6Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Choisir les équipes <span class="hint" id="teamCount"></span></h2>
       <div class="controls">
+        <div class="field">
+          <label for="tSearch">Rechercher une équipe</label>
+          <input type="text" id="tSearch" placeholder="ex : Naples" autocomplete="off">
+        </div>
         <div class="field">
           <label for="tPays">Pays</label>
           <select id="tPays"><option value="">Tous</option></select>
@@ -2524,42 +2547,52 @@
           <select id="tLigue"><option value="">Toutes</option></select>
         </div>
         <div class="field">
-          <label for="tAnnee">Année</label>
-          <select id="tAnnee"><option value="">Toutes</option></select>
+          <label for="tActif">Équipes</label>
+          <select id="tActif">
+            <option value="paris" selected>Celles de tes paris</option>
+            <option value="actives">Actives (match ces 60 derniers jours)</option>
+            <option value="toutes">Toutes, anciennes saisons comprises</option>
+          </select>
         </div>
         <div class="field">
-          <label for="tSearch">Recherche (équipe)</label>
-          <input type="text" id="tSearch" placeholder="ex: Naples">
+          <label for="tAnnee">Année</label>
+          <select id="tAnnee"><option value="">Toutes</option></select>
         </div>
         <div class="field">
           <label for="tMinMatches">Matchs minimum</label>
           <select id="tMinMatches">
             <option value="0">Aucun filtre</option>
-            <option value="5">≥ 5 (recommandé)</option>
+            <option value="5" selected>≥ 5 (recommandé)</option>
             <option value="10">≥ 10</option>
             <option value="20">≥ 20</option>
           </select>
         </div>
       </div>
+    </div>
 
-      <div class="tablewrap table-scroll" style="margin-top:1rem">
-        <table id="teamTable">
+    <div class="eq-reperes" id="eqReperes" aria-label="Repères parmi les équipes affichées"></div>
+
+    <div class="panel eq-fiche" id="eqFiche" hidden></div>
+
+    <div class="panel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3 15.5 5v4c0 3.5-2.2 5.5-5.5 6.8C6.7 14.5 4.5 12.5 4.5 9V5L10 3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Classement <span class="hint">— clique une ligne pour ouvrir la fiche, un en-tête pour trier</span></h2>
+      <div class="tablewrap table-scroll">
+        <table id="teamTable" class="eq-table">
           <thead><tr>
-            <th class="sortable" data-tk="equipe">Équipe</th>
-            <th class="sortable" data-tk="ligue">Ligue</th>
-            <th class="sortable num" data-tk="atk_home">Attaque dom.</th>
-            <th class="sortable num" data-tk="def_home">Défense dom.</th>
-            <th class="sortable num" data-tk="atk_away">Attaque ext.</th>
-            <th class="sortable num" data-tk="def_away">Défense ext.</th>
-            <th class="sortable num" data-tk="n_home">Nb dom.</th>
-            <th class="sortable num" data-tk="n_away">Nb ext.</th>
+            <th class="sortable" data-tk="equipe" scope="col">Équipe</th>
+            <th class="sortable" data-tk="niveau" scope="col">Niveau</th>
+            <th class="sortable num" data-tk="atk" scope="col">Attaque <span class="hint">dom. · ext.</span></th>
+            <th class="sortable num" data-tk="def" scope="col">Défense <span class="hint">dom. · ext.</span></th>
+            <th class="sortable" data-tk="forme" scope="col">Forme <span class="hint">5 derniers</span></th>
+            <th class="sortable num" data-tk="n" scope="col">Matchs</th>
+            <th class="sortable num" data-tk="net" scope="col">Tes paris</th>
           </tr></thead>
           <tbody id="teamBody"></tbody>
         </table>
       </div>
       <div class="tablefoot">
         <span id="teamRowInfo"></span>
-        <span class="muted">Vert = au-dessus de la moyenne pour l'attaque / sous la moyenne pour la défense (donc favorable). Les forces sont d'autant plus fiables que « Nb » est élevé.</span>
+        <span class="muted">Niveau : par rapport à la moyenne de la ligue · forme : V victoire, N nul, D défaite.</span>
       </div>
     </div>
   </section>
@@ -2874,7 +2907,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122194326", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122194326", APP = "app.js?v=20261122194222";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122195823", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122195823", APP = "app.js?v=20261122195717";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
