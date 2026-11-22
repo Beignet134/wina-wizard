@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122151153">
+<link rel="stylesheet" href="style.css?v=20261122154728">
 </head>
 <body>
 <div class="topbar">
@@ -1065,6 +1065,7 @@
         <button type="button" class="jour-mode" data-matrice="btCoteMatPanel" aria-pressed="false" aria-controls="btCoteMatPanel">Plage de cote</button>
         <button type="button" class="jour-mode" data-matrice="btLibreMatPanel" aria-pressed="false" aria-controls="btLibreMatPanel">Matrice libre</button>
         <button type="button" class="jour-mode" data-matrice="btForceMatPanel" aria-pressed="false" aria-controls="btForceMatPanel">Forces</button>
+        <button type="button" class="jour-mode" data-matrice="btApiMatPanel" aria-pressed="false" aria-controls="btApiMatPanel">API-Football et absences</button>
     </div>
   </div>
 <details class="panel panel-foldable" id="btScorePanel" open>
@@ -1352,6 +1353,42 @@
       <p class="muted" id="btLibreMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
       <p class="muted" id="btLibreMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
 
+      </div>
+    </details>
+
+<!-- Matrice « API-Football et absences » (22/11/2026). Demande : « une matrice pour le vainqueur du match à partir des
+     données que récupère API-Football vs les résultats réels ; pareil en fonction des absents et de la baisse du
+     coefficient ». Une ligne par match (pas par pari) : ce que l'API annonçait, ou l'effet des absences sur les buts
+     attendus, face au résultat réel et à ce que le modèle attendait. -->
+<details class="panel panel-foldable" id="btApiMatPanel" open>
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="1.6" stroke="currentColor" stroke-width="1.5"/><path d="M3 8h14M8 3v14" stroke="currentColor" stroke-width="1.3"/><circle cx="12.5" cy="12.5" r="2" stroke="currentColor" stroke-width="1.3"/></svg>API-Football et absences — face aux résultats réels</h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+      <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
+        Une ligne par <strong>match</strong>, pas par pari. Chaque case donne la part des matchs finis sur ce résultat,
+        et en dessous ce que le modèle attendait (forces actuelles, réglage des petits scores de la page). Fond vert : le
+        résultat est arrivé plus souvent que le modèle ne l'attendait ; rouge : moins souvent.
+        <strong>Prédiction API-Football</strong> : le favori annoncé par l'API (« ou nul » quand elle conseille la double chance).
+        <strong>Absences</strong> : le coefficient appliqué aux buts attendus quand des joueurs importants manquent
+        (domicile × coefficient, extérieur ÷ coefficient).
+      </p>
+      <div class="libre-commandes">
+        <div class="jour-modes" id="btApiMatVue" role="group" aria-label="Matrice affichée">
+          <button type="button" class="jour-mode is-active" data-vue="pred" aria-pressed="true">Prédiction API-Football</button>
+          <button type="button" class="jour-mode" data-vue="abs" aria-pressed="false">Absences</button>
+        </div>
+        <div class="jour-modes" id="btApiMatPortee" role="group" aria-label="Matchs pris en compte">
+          <button type="button" class="jour-mode is-active" data-portee="tous" aria-pressed="true" title="Tous les matchs du backtest, dans les dates, ligues et sélections de la page">Tous les matchs</button>
+          <button type="button" class="jour-mode" data-portee="paris" aria-pressed="false" title="Seulement les matchs où la page retient au moins un pari">Matchs de vos paris</button>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <div class="chart-holder"><div id="btApiMatWrap"></div></div>
+      </div>
+      <p class="muted" id="btApiMatEmpty" style="display:none; font-size:.85rem">Aucun match ne correspond.</p>
+      <p class="muted" id="btApiMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
+      <p class="muted" id="btApiMatLecture" style="margin:.3rem 0 0; font-size:.85rem"></p>
       </div>
     </details>
 
@@ -2822,7 +2859,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122151259", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122151259", APP = "app.js?v=20261122151153";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122154833", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122154833", APP = "app.js?v=20261122154728";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
