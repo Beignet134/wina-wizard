@@ -14427,7 +14427,7 @@ function renderBankroll() {
     <tr>
       <td data-label="Date">${l.date}</td>
       <td data-label="Match">${l.match}</td>
-      <td data-label="Pari">${l.pari}</td>
+      <td data-label="Pari">${typeof rattLibellePari === "function" ? rattLibellePari({match: l.match, colonne: l.pari}) : l.pari}</td>
       <td data-label="Cote jouée" class="num">${cellCote(l)}</td>
       <td data-label="Clôture" class="num">${l.coteCloture != null ? l.coteCloture.toFixed(2) : "—"}</td>
       <td data-label="CLV" class="num">${cellClv(l)}</td>
@@ -14439,9 +14439,132 @@ function renderBankroll() {
     ? `<tr><td colspan="10" class="muted">Aucun pari joué sur cette période.</td></tr>`
     : `<tr><td colspan="10" class="muted">Aucun pari marqué comme joué pour l'instant — cochez "Marquer comme joué" sur la page Paris à venir.</td></tr>`);
 
+  try { renderBkExtras(lignes, toutes, avant, depart, filtre && !inverse); } catch (e) { console.error("Bankroll (bilan) :", e); }
+
   // Comparaison avec DC rétrospectif : même période, mêmes paris joués.
   BK_CTX = {lignes, deb, fin, inverse};
   if (typeof renderComparaison === "function") renderComparaison();
+}
+
+// ===== Page Bankroll : bilan, répartition, paris en attente (refonte du 22/11/2026) =====
+const bkV = (x, d = 0) => x == null || !isFinite(x) ? "—" : x.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const bkS = (x, d = 0) => x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + bkV(Math.abs(x), d);
+const bkE = x => x == null || !isFinite(x) ? "—" : x.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
+function bkCategorie(l) {
+  if (l.cat) return l.cat;
+  if (/^(homeWin|draw|awayWin)$/.test(l.pari)) return "Vainqueur du match";
+  if (/^\d+ - \d+$/.test(l.pari)) return "Score exact";
+  if (/^Buts /.test(l.pari)) return "Intervalle de buts";
+  if (/^(Plus|Moins) de/.test(l.pari)) return "Plus/Moins de buts";
+  if (/^BTTS/.test(l.pari)) return "Les 2 équipes marquent";
+  return "Autre";
+}
+const bkCote = l => l.coteJouee ?? l.coteCloture;
+const bkLibelle = l => (typeof rattLibellePari === "function") ? rattLibellePari({match: l.match, colonne: l.pari}) : l.pari;
+function renderBkExtras(lignes, toutes, avant, depart, periode) {
+  const fin = lignes.filter(l => l.resultatEuros != null);
+  const jouees = fin.filter(l => !l.rembourse && l.statut !== "Remboursé");
+  const mise = jouees.reduce((t, l) => t + l.mise, 0), net = fin.reduce((t, l) => t + l.resultatEuros, 0);
+  const roi = mise ? net / mise * 100 : null;
+  const gagnes = jouees.filter(l => l.gagne).length;
+  const attendus = jouees.reduce((t, l) => t + (bkCote(l) ? 1 / bkCote(l) : 0), 0);
+  const attente = toutes.filter(l => l.resultatEuros == null && l.statut === "En attente");
+  const engage = attente.reduce((t, l) => t + l.mise, 0);
+  const potentiel = attente.reduce((t, l) => t + (bkCote(l) ? l.mise * (bkCote(l) - 1) : 0), 0);
+  const bkActuel = depart + toutes.reduce((t, l) => t + (l.resultatEuros || 0), 0);
+
+  // sous-titres des tuiles
+  if ($("bkResolusSub")) $("bkResolusSub").textContent = jouees.length ? `${gagnes} gagné${gagnes > 1 ? "s" : ""} · ${jouees.length - gagnes} perdu${jouees.length - gagnes > 1 ? "s" : ""}` : "";
+  if ($("bkAttenteSub")) $("bkAttenteSub").textContent = attente.length ? `${bkE(engage)} engagés` : "";
+  if ($("bkNetSub") && roi != null) $("bkNetSub").textContent = `${bkS(roi, 1)} % de ce qui a été misé` + (periode ? " · sur la période" : "");
+  if ($("bkConseil")) $("bkConseil").textContent = bkActuel > 0 ? ` (avec ${bkE(bkActuel)} : ${bkV(bkActuel * 0.15)} à ${bkV(bkActuel * 0.20)} € par jour)` : "";
+
+  // Verdict
+  const vb = $("bkVerdict");
+  if (vb) {
+    if (!toutes.length) { vb.style.display = "none"; }
+    else {
+      let t = `<strong>L'essentiel.</strong> `;
+      if (jouees.length) {
+        t += `${jouees.length} pari${jouees.length > 1 ? "s" : ""} terminé${jouees.length > 1 ? "s" : ""}${periode ? " sur la période" : ""}, `
+          + `<strong class="${net >= 0 ? "pos" : "neg"}">${fmtEur(net)}</strong> pour ${bkE(mise)} misés (${bkS(roi, 0)} %). `
+          + `${gagnes} gagné${gagnes > 1 ? "s" : ""}, là où les cotes en annonçaient ${bkV(attendus, 1)} en moyenne`
+          + (gagnes > attendus + 0.5 ? " : tu fais mieux que le marché." : gagnes < attendus - 0.5 ? " : un peu moins que ce que le marché prévoyait." : " : conforme au marché.");
+        if (jouees.length < 30) t += ` Sur si peu de paris, la chance pèse encore beaucoup.`;
+      } else t += `Aucun pari terminé${periode ? " sur la période" : ""} pour l'instant.`;
+      if (attente.length) t += ` ${attente.length} pari${attente.length > 1 ? "s" : ""} en attente : ${bkE(engage)} engagés, jusqu'à ${bkE(potentiel)} de gain possible.`;
+      vb.innerHTML = t; vb.style.display = "";
+    }
+  }
+
+  // Bilan
+  const bilan = $("bkBilan");
+  if (bilan) {
+    if (!jouees.length) bilan.innerHTML = "";
+    else {
+      // séries (ordre chronologique) et plus forte baisse de la bankroll
+      let serieG = 0, serieP = 0, maxG = 0, maxP = 0;
+      jouees.forEach(l => { if (l.gagne) { serieG++; serieP = 0; } else { serieP++; serieG = 0; } maxG = Math.max(maxG, serieG); maxP = Math.max(maxP, serieP); });
+      const derniere = jouees[jouees.length - 1];
+      const enCours = derniere.gagne ? `${serieG} gagné${serieG > 1 ? "s" : ""} d'affilée` : `${serieP} perdu${serieP > 1 ? "s" : ""} d'affilée`;
+      let pic = avant, dd = 0, ddPct = 0;
+      fin.forEach(l => { pic = Math.max(pic, l.bankrollApres); const b = pic - l.bankrollApres; if (b > dd) { dd = b; ddPct = pic > 0 ? b / pic * 100 : 0; } });
+      const meilleur = jouees.reduce((a, b) => b.resultatEuros > a.resultatEuros ? b : a);
+      const pire = jouees.reduce((a, b) => b.resultatEuros < a.resultatEuros ? b : a);
+      const coteMoy = jouees.reduce((t, l) => t + (bkCote(l) || 0), 0) / jouees.length;
+      const stat = (lbl, val, sub, cl = "") => `<div class="bk-stat"><span class="bk-stat-lbl">${lbl}</span><span class="bk-stat-val ${cl}">${val}</span><span class="bk-stat-sub">${sub}</span></div>`;
+      bilan.innerHTML =
+        stat("Rentabilité", `${bkS(roi, 1)} %`, `${fmtEur(net)} pour ${bkE(mise)} misés`, roi >= 0 ? "pos" : "neg") +
+        stat("Réussite", `${bkV(gagnes / jouees.length * 100)} %`, `${gagnes} sur ${jouees.length} · les cotes annonçaient ${bkV(attendus / jouees.length * 100)} %`, gagnes >= attendus ? "pos" : "neg") +
+        stat("Cote moyenne", bkV(coteMoy, 2), `mise moyenne ${bkE(mise / jouees.length)}`) +
+        stat("Séries", enCours, `record : ${maxG} gagné${maxG > 1 ? "s" : ""} · ${maxP} perdu${maxP > 1 ? "s" : ""} d'affilée`) +
+        stat("Plus forte baisse", dd > 0 ? `−${bkE(dd)}` : "aucune", dd > 0 ? (ddPct <= 100 ? `${bkV(ddPct)} % sous le plus haut atteint` : "plus que la bankroll de l'époque : elle est passée sous zéro") : "la bankroll n'a jamais reculé", dd > 0 ? "neg" : "pos") +
+        stat("Meilleur pari", fmtEur(meilleur.resultatEuros), `${meilleur.match} · ${bkLibelle(meilleur)} à ${bkV(bkCote(meilleur), 2)}`, "pos") +
+        (pire.resultatEuros < 0 ? stat("Plus grosse perte", fmtEur(pire.resultatEuros), `${pire.match} · ${bkLibelle(pire)}`, "neg") : "");
+    }
+  }
+
+  // Répartition
+  const rep = $("bkRepart");
+  if (rep) {
+    if (!jouees.length) { rep.innerHTML = '<p class="muted">Pas encore de pari terminé sur la période.</p>'; }
+    else {
+      const TR = [[1, 2, "moins de 2"], [2, 4, "2 à 4"], [4, 10, "4 à 10"], [10, 25, "10 à 25"], [25, 1e9, "25 et plus"]];
+      const grouper = (cle, ordre) => {
+        const m = new Map();
+        jouees.forEach(l => { const k = cle(l); if (k == null) return; const g = m.get(k) || {k, n: 0, g: 0, mise: 0, net: 0}; g.n++; g.g += l.gagne ? 1 : 0; g.mise += l.mise; g.net += l.resultatEuros; m.set(k, g); });
+        const arr = [...m.values()];
+        return ordre ? arr.sort((a, b) => ordre.indexOf(a.k) - ordre.indexOf(b.k)) : arr.sort((a, b) => b.mise - a.mise);
+      };
+      const blocs = [
+        ["Par type de pari", grouper(bkCategorie)],
+        ["Par site", grouper(l => CBK_NOMS[l.site || "winamax"] || l.site)],
+        ["Par cote", grouper(l => { const c = bkCote(l); const t = c ? TR.find(x => c >= x[0] && c < x[1]) : null; return t ? t[2] : null; }, TR.map(x => x[2]))],
+      ];
+      const maxAbs = Math.max(1, ...blocs.flatMap(b => b[1].map(g => Math.abs(g.net))));
+      rep.innerHTML = blocs.map(([titre, gs]) => `<div class="bk-rep-bloc"><h3 class="bk-rep-titre">${titre}</h3>` + gs.map(g => {
+        const w = Math.abs(g.net) / maxAbs * 50, r = g.mise ? g.net / g.mise * 100 : 0;
+        return `<div class="bk-rep-ligne">
+          <span class="bk-rep-nom">${g.k}<small>${g.n} pari${g.n > 1 ? "s" : ""} · ${g.g} gagné${g.g > 1 ? "s" : ""}</small></span>
+          <span class="mg-roi-piste"><span class="${g.net >= 0 ? "pos" : "neg"}" style="${g.net >= 0 ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${Math.max(0.8, w).toFixed(1)}%"></span></span>
+          <span class="bk-rep-val"><strong class="${g.net >= 0 ? "pos" : "neg"}">${fmtEur(g.net)}</strong><small>${bkS(r)} %</small></span>
+        </div>`;
+      }).join("") + `</div>`).join("");
+    }
+  }
+
+  // Paris en attente (tous, quelle que soit la période)
+  const zA = $("bkAttenteListe");
+  if (zA) {
+    $("bkAttentePanel").style.display = attente.length ? "" : "none";
+    const tri = attente.slice().sort((a, b) => String(a.kickoff || a.date).localeCompare(String(b.kickoff || b.date)));
+    const heure = l => { const d = l.kickoff ? new Date(l.kickoff) : null; return d && isFinite(d) ? d.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : l.date; };
+    zA.innerHTML = `<div class="bk-att-tete"><span><strong>${bkE(engage)}</strong> engagés sur ${attente.length} pari${attente.length > 1 ? "s" : ""}</span>
+      <span>gain possible jusqu'à <strong class="pos">${bkE(potentiel)}</strong></span></div>` + tri.map(l => `<div class="bk-att">
+        <div class="bk-att-info"><strong>${l.match}</strong><span>${heure(l)} · ${bkLibelle(l)}${l.site && l.site !== "winamax" ? ` · ${CBK_NOMS[l.site] || l.site}` : ""}</span></div>
+        <div class="bk-att-chiffres"><span>${bkE(l.mise)} à ${bkCote(l) ? bkV(bkCote(l), 2) : "—"}</span><strong class="pos">${bkCote(l) ? "+" + bkE(l.mise * (bkCote(l) - 1)) : "—"}</strong></div>
+      </div>`).join("");
+  }
 }
 
 // Graphique en escalier : un point par pari RÉSOLU (pas par jour), la
