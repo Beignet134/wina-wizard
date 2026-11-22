@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122135139">
+<link rel="stylesheet" href="style.css?v=20261122151153">
 </head>
 <body>
 <div class="topbar">
@@ -766,6 +766,14 @@
               <option value="0.02">Au moins +2 %</option>
               <option value="0.03">Au moins +3 %</option>
               <option value="0.05">Au moins +5 %</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="btCbkRang">Winamax face aux autres sites</label>
+            <select id="btCbkRang" title="Compare la cote de Winamax à celles des autres sites relevées récemment (cotes inhabituelles, souvent périmées, ignorées). « Winamax paie le plus » : on ne garde le pari que si aucun autre site ne paie autant que Winamax. Mesuré le 22/11/2026 sur les paris des filtres : quand un autre site payait autant ou plus, 1 pari gagné sur 27. Un pari qu'aucun autre site ne cote est gardé.">
+              <option value="">Peu importe</option>
+              <option value="egal">Winamax paie au moins autant</option>
+              <option value="seul" selected>Winamax paie le plus</option>
             </select>
           </div>
           <div class="field">
@@ -2100,6 +2108,14 @@
             </select>
           </div>
           <div class="field">
+            <label for="uCbkRang">Winamax face aux autres sites</label>
+            <select id="uCbkRang" title="Compare la cote de Winamax à celles des autres sites relevées récemment (cotes inhabituelles, souvent périmées, ignorées). « Winamax paie le plus » : on ne garde le pari que si aucun autre site ne paie autant que Winamax. Mesuré le 22/11/2026 sur les paris des filtres : quand un autre site payait autant ou plus, 1 pari gagné sur 27. Un pari qu'aucun autre site ne cote est gardé.">
+              <option value="">Peu importe</option>
+              <option value="egal">Winamax paie au moins autant</option>
+              <option value="seul" selected>Winamax paie le plus</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="uCbkDesac">Désaccord sur l'issue</label>
             <select id="uCbkDesac" title="Compare la probabilité sans marge de CETTE issue chez les autres sites et chez Winamax. « Plus confiants » : les autres sites donnent plus de chances à l'issue que Winamax (sa cote paraît alors longue). « Moins confiants » : l'inverse.">
               <option value="" selected>Peu importe</option>
@@ -2806,7 +2822,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122135239", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122135239", APP = "app.js?v=20261122135139";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122151259", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122151259", APP = "app.js?v=20261122151153";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
