@@ -673,14 +673,14 @@
   "maj": 1795356863031
  },
  "2026-11-23|Chicago Fire - Charlotte FC|awayWin": {
-  "cote": 4.4,
+  "cote": 4,
   "cote_confirmee": false,
-  "site": "daznbet",
-  "cote_capturee": 4.4,
+  "site": "winamax",
+  "cote_capturee": 4,
   "ts": "2026-11-22T20:02:14",
   "kickoff": "2026-11-23T00:30:00",
   "capture_iso": "2026-11-22T19:57:12.638816",
   "mise": 10,
-  "maj": 1795374134008
+  "maj": 1795374137788
  }
 }
