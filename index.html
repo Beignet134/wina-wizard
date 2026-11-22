@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122154728">
+<link rel="stylesheet" href="style.css?v=20261122164128">
 </head>
 <body>
 <div class="topbar">
@@ -1366,28 +1366,43 @@
       <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="panel-fold-body">
       <p class="muted" style="margin:-.5rem 0 .9rem; font-size:.85rem">
-        Une ligne par <strong>match</strong>, pas par pari. Chaque case donne la part des matchs finis sur ce résultat,
-        et en dessous ce que le modèle attendait (forces actuelles, réglage des petits scores de la page). Fond vert : le
-        résultat est arrivé plus souvent que le modèle ne l'attendait ; rouge : moins souvent.
-        <strong>Prédiction API-Football</strong> : le favori annoncé par l'API (« ou nul » quand elle conseille la double chance).
-        <strong>Absences</strong> : le coefficient appliqué aux buts attendus quand des joueurs importants manquent
-        (domicile × coefficient, extérieur ÷ coefficient).
+        Gain net de vos paris selon ce qu'annonçait API-Football avant le match (favori, ou double chance quand
+        elle conseille « ou nul »), ou selon le coefficient d'absences appliqué aux buts attendus quand des joueurs
+        importants manquent (domicile × coefficient, extérieur ÷ coefficient). Mêmes conventions que les autres
+        matrices : teinte selon le ROI, clic sur une case pour voir ses paris. <strong>Sans aucun filtre</strong> :
+        tous les paris candidats du backtest. En dessous, le bilan par match : l'issue annoncée est-elle arrivée, et
+        les absences améliorent-elles la prévision du modèle ?
       </p>
       <div class="libre-commandes">
-        <div class="jour-modes" id="btApiMatVue" role="group" aria-label="Matrice affichée">
-          <button type="button" class="jour-mode is-active" data-vue="pred" aria-pressed="true">Prédiction API-Football</button>
-          <button type="button" class="jour-mode" data-vue="abs" aria-pressed="false">Absences</button>
-        </div>
-        <div class="jour-modes" id="btApiMatPortee" role="group" aria-label="Matchs pris en compte">
-          <button type="button" class="jour-mode is-active" data-portee="tous" aria-pressed="true" title="Tous les matchs du backtest, dans les dates, ligues et sélections de la page">Tous les matchs</button>
-          <button type="button" class="jour-mode" data-portee="paris" aria-pressed="false" title="Seulement les matchs où la page retient au moins un pari">Matchs de vos paris</button>
-        </div>
+        <div class="field"><span class="api-cmd-lbl">Lignes</span>
+          <div class="jour-modes" id="btApiMatVue" role="group" aria-label="Lignes">
+            <button type="button" class="jour-mode is-active" data-v="pred" aria-pressed="true">Prédiction API-Football</button>
+            <button type="button" class="jour-mode" data-v="abs" aria-pressed="false">Absences</button>
+          </div></div>
+        <div class="field"><span class="api-cmd-lbl">Colonnes</span>
+          <div class="jour-modes" id="btApiMatCols" role="group" aria-label="Colonnes">
+            <button type="button" class="jour-mode is-active" data-v="issue" aria-pressed="true">Issue pariée</button>
+            <button type="button" class="jour-mode" data-v="resultat" aria-pressed="false">Résultat réel</button>
+            <button type="button" class="jour-mode" data-v="cat" aria-pressed="false">Type de pari</button>
+          </div></div>
+        <div class="field"><span class="api-cmd-lbl">Paris</span>
+          <div class="jour-modes" id="btApiMatParis" role="group" aria-label="Paris de la matrice">
+            <button type="button" class="jour-mode is-active" data-v="page" aria-pressed="true">Vos paris</button>
+            <button type="button" class="jour-mode" data-v="aucun" aria-pressed="false" title="Tous les paris candidats du backtest, sans aucun filtre de la page">Sans aucun filtre</button>
+          </div></div>
       </div>
       <div class="tablewrap">
-        <div class="chart-holder"><div id="btApiMatWrap"></div></div>
+        <div class="chart-holder" id="btApiMatHolder">
+          <div id="btApiMatWrap"></div>
+        </div>
       </div>
-      <p class="muted" id="btApiMatEmpty" style="display:none; font-size:.85rem">Aucun match ne correspond.</p>
+      <div class="matrix-inspector" id="btApiMatInspector" hidden>
+        <div class="chart-tooltip score-tooltip" id="btApiMatTooltip" hidden></div>
+      </div>
+      <p class="muted" id="btApiMatEmpty" style="display:none; font-size:.85rem">Aucun pari ne correspond à ces filtres.</p>
+      <div class="score-legend" id="btApiMatLegend"></div>
       <p class="muted" id="btApiMatNote" style="margin:.7rem 0 0; font-size:.78rem"></p>
+      <p class="muted" id="btApiMatBest" style="margin:.3rem 0 0; font-size:.85rem"></p>
       <p class="muted" id="btApiMatLecture" style="margin:.3rem 0 0; font-size:.85rem"></p>
       </div>
     </details>
@@ -2859,7 +2874,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122154833", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122154833", APP = "app.js?v=20261122154728";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261122164236", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261122164236", APP = "app.js?v=20261122164128";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
