@@ -1854,6 +1854,7 @@ function activerOnglet(tab) {
   window.scrollTo({top:0, behavior:"instant"});
   if (typeof majNavMobile === "function") majNavMobile();
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
+  if (tab.dataset.page === "teams" && typeof renderTeams === "function") renderTeams();
 }
 tabs.forEach((tab, index) => {
   tab.addEventListener("click", () => activerOnglet(tab));
@@ -5581,7 +5582,67 @@ CATEGORIES_DC.forEach(cat => {
   });
 })();
 
-/* ================= PAGE 4 — STATS ÉQUIPES ================= */
+/* ================= PAGE 4 — STATS ÉQUIPES (refaite le 22/11/2026) ================= */
+// Données : TEAM_STATS (forces Dixon-Coles par équipe et ligue ; depuis le 22/11 aussi « dm » = dernier match,
+// « f » = 5 derniers matchs [date, d/e, adversaire, buts pour, buts contre], « r10 » = bilan des 10 derniers
+// [matchs, V, N, D, bp, bc, sans encaisser, les 2 marquent, +2,5 buts]) et EQUIPES_WINAMAX (« nom Winamax|pays|
+// ligue » -> index dans TEAM_STATS) pour retrouver tes paris et les prochains matchs de chaque équipe.
+const EQUIPES_WINAMAX = WIZARD_DATA.equipes_winamax || {};
+const EQ_LS = "ww_equipes_v1";
+let EQ_ETAT = (() => { try { return Object.assign({tri: "niveau", sens: -1, sel: null}, JSON.parse(localStorage.getItem(EQ_LS) || "{}")); }
+  catch (e) { return {tri: "niveau", sens: -1, sel: null}; } })();
+const eqSauver = () => { try { localStorage.setItem(EQ_LS, JSON.stringify({tri: EQ_ETAT.tri, sens: EQ_ETAT.sens})); } catch (e) { /* confort */ } };
+const eqNum = (v, d = 2) => v == null ? "—" : v.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const eqEsc = t => String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+function eqMoy(a, b) { const v = [a, b].filter(x => x != null); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; }
+function eqDerive(t) {
+  if (t._d) return t._d;
+  const atk = eqMoy(t.atk_home, t.atk_away), def = eqMoy(t.def_home, t.def_away);
+  const niveau = atk != null && def ? atk / def - 1 : null;
+  const f = t.f || [];
+  const res = f.map(m => m[3] > m[4] ? "V" : (m[3] === m[4] ? "N" : "D"));
+  const pts = res.length ? res.reduce((p, r) => p + (r === "V" ? 3 : r === "N" ? 1 : 0), 0) : null;
+  const domF = t.atk_home && t.def_home ? t.atk_home / t.def_home : null, extF = t.atk_away && t.def_away ? t.atk_away / t.def_away : null;
+  t._d = {atk, def, niveau, res, pts, n: (t.n_home || 0) + (t.n_away || 0), domicile: domF && extF ? domF / extF - 1 : null};
+  return t._d;
+}
+// Tes paris (filtres de DC rétrospectif) et prochains matchs, regroupés par équipe. Recalculés à chaque rendu :
+// les filtres de DC rétrospectif ont pu changer entre-temps.
+function eqIndexParEquipe(lignes) {
+  const m = new Map();
+  (lignes || []).forEach(r => {
+    if (!r.match || r.match.indexOf(" - ") < 0) return;
+    r.match.split(" - ").slice(0, 2).forEach((nom, cote) => {
+      const i = EQUIPES_WINAMAX[`${nom}|${r.pays}|${r.ligue}`];
+      if (i == null) return;
+      (m.get(i) || m.set(i, []).get(i)).push({r, cote});
+    });
+  });
+  return m;
+}
+function eqParis() {
+  let rows = [];
+  try { rows = btFiltered(); } catch (e) { rows = []; }
+  const parEq = eqIndexParEquipe(rows.filter(r => r.gagne != null));
+  const bilan = new Map();
+  parEq.forEach((liste, i) => {
+    let net = 0, mise = 0, g = 0;
+    liste.forEach(({r}) => { const s = btStakeFor(r); net += r.profit * s; mise += s; if (r.gagne) g++; });
+    bilan.set(i, {n: liste.length, net, mise, g, liste: liste.map(x => x.r)});
+  });
+  return bilan;
+}
+function eqProchains() {
+  const parMatch = new Map();
+  UPCOMING_COMPLET.forEach(v => { if (!parMatch.has(v.match + "|" + v.date)) parMatch.set(v.match + "|" + v.date, v); });
+  const parEq = eqIndexParEquipe([...parMatch.values()]);
+  const out = new Map();
+  parEq.forEach((liste, i) => {
+    liste.sort((a, b) => String(a.r.kickoff || a.r.date).localeCompare(String(b.r.kickoff || b.r.date)));
+    out.set(i, liste[0]);
+  });
+  return out;
+}
 function teamLigueOptions(pays) {
   const parKey = new Map();
   TEAM_STATS.filter(t => !pays || t.pays === pays).forEach(t => {
@@ -5589,25 +5650,21 @@ function teamLigueOptions(pays) {
   });
   return [...parKey.values()].sort((a, b) => ligueLabel(a.pays, a.ligue).localeCompare(ligueLabel(b.pays, b.ligue)));
 }
-
 (function initTeamFilters() {
   const pays = [...new Set(TEAM_STATS.map(t => t.pays).filter(Boolean))].sort();
-  const annees = [...new Set(TEAM_STATS.flatMap(t => t.annees || []))].sort();
-  const fill = (sel, vals) => vals.forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; $(sel).appendChild(o); });
+  const annees = [...new Set(TEAM_STATS.flatMap(t => t.annees || []))].sort().reverse();
+  const fill = (sel, vals) => vals.forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = v; $(sel).appendChild(o); });
   fill("tPays", pays);
-  // Valeur = clé combinée pays+ligue (voir ligueKey), texte = "Pays - Ligue" :
-  // un nom de ligue seul (ex. "Ligue 1") peut désigner plusieurs championnats.
   teamLigueOptions("").forEach(t => {
     const o = document.createElement("option");
     o.value = ligueKey(t.pays, t.ligue); o.textContent = ligueLabel(t.pays, t.ligue);
     $("tLigue").appendChild(o);
   });
   fill("tAnnee", annees);
+  // Sans lien vers les paris (ancien format de données), on part des équipes actives ; sans données de forme
+  // non plus, « Actives » n'a pas de sens : on affiche tout.
+  if (!Object.keys(EQUIPES_WINAMAX).length) $("tActif").value = TEAM_STATS.some(t => t.dm) ? "actives" : "toutes";
 })();
-
-let tSortKey = "atk_home", tSortDir = -1;
-
-// Quand on choisit un pays, restreindre les ligues à ce pays
 $("tPays").addEventListener("change", () => {
   const pays = $("tPays").value;
   const sel = $("tLigue"), cur = sel.value;
@@ -5620,58 +5677,219 @@ $("tPays").addEventListener("change", () => {
   if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
   renderTeams();
 });
-
-function teamCell(val, isDefense) {
-  if (val == null) return '<td class="num muted">—</td>';
-  // Attaque : >1 favorable (vert). Défense : <1 favorable (vert).
-  const good = isDefense ? val < 1 : val > 1;
-  const cls = good ? "pos" : (val === 1 ? "" : "neg");
-  return `<td class="num ${cls}">${val.toFixed(2)}</td>`;
+function eqForceCell(v, defense) {
+  if (v == null) return '<span class="muted">—</span>';
+  const bon = defense ? v < 1 : v > 1;
+  return `<span class="${Math.abs(v - 1) < 0.005 ? "" : (bon ? "pos" : "neg")}">${eqNum(v)}</span>`;
 }
-
+function eqNiveauBar(niv) {
+  if (niv == null) return '<span class="muted">—</span>';
+  const w = Math.min(50, Math.abs(niv) * 50);           // ±100 % = demi-barre pleine
+  return `<span class="eq-niv"><span class="eq-niv-bar" aria-hidden="true"><span class="${niv >= 0 ? "pos" : "neg"}" style="${niv >= 0 ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${w.toFixed(1)}%"></span></span>`
+    + `<span class="eq-niv-val ${niv >= 0 ? "pos" : "neg"}">${niv >= 0 ? "+" : "−"}${Math.round(Math.abs(niv) * 100)} %</span></span>`;
+}
+function eqFormeChips(t, grand = false) {
+  const f = t.f || [];
+  if (!f.length) return '<span class="muted">—</span>';
+  return `<span class="eq-forme${grand ? " grand" : ""}">` + f.map(m => {
+    const r = m[3] > m[4] ? "V" : (m[3] === m[4] ? "N" : "D");
+    return `<span class="eq-chip ${r}" title="${eqEsc(fmtJourComplet(m[0]))} · ${m[1] === "d" ? "à domicile contre" : "à l'extérieur contre"} ${eqEsc(m[2])} : ${m[3]}-${m[4]}">${r}</span>`;
+  }).join("") + "</span>";
+}
+let EQ_CACHE = {paris: null, prochains: null, lignes: []};
 function renderTeams() {
   const pays = $("tPays").value, ligue = $("tLigue").value, annee = $("tAnnee").value;
   const search = $("tSearch").value.trim().toLowerCase();
   const minM = parseInt($("tMinMatches").value) || 0;
-
-  let rows = TEAM_STATS.filter(t =>
+  const actif = $("tActif").value;
+  const limite = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
+  const paris = EQ_CACHE.paris = eqParis();
+  EQ_CACHE.prochains = eqProchains();
+  let rows = TEAM_STATS.map((t, i) => ({t, i})).filter(({t, i}) =>
     (!pays || t.pays === pays) &&
     (!ligue || ligueKey(t.pays, t.ligue) === ligue) &&
     (!annee || (t.annees || []).includes(annee)) &&
     (!search || t.equipe.toLowerCase().includes(search)) &&
-    (Math.max(t.n_home||0, t.n_away||0) >= minM)
+    (Math.max(t.n_home || 0, t.n_away || 0) >= minM) &&
+    (actif === "toutes" || (actif === "paris" ? paris.has(i) : (!t.dm || t.dm >= limite) && !!t.dm))
   );
-  rows.sort((a,b) => {
-    let va = a[tSortKey], vb = b[tSortKey];
-    if (va == null) va = -Infinity; if (vb == null) vb = -Infinity;
-    if (typeof va === "string") { return tSortDir * va.localeCompare(vb); }
-    return tSortDir * (va - vb);
+  const valeur = ({t, i}) => {
+    const d = eqDerive(t);
+    switch (EQ_ETAT.tri) {
+      case "equipe": return t.equipe;
+      case "atk": return d.atk; case "def": return d.def == null ? null : -d.def;
+      case "forme": return d.pts; case "n": return d.n;
+      case "net": return paris.has(i) ? paris.get(i).net : null;
+      default: return d.niveau;
+    }
+  };
+  rows.sort((a, b) => {
+    let va = valeur(a), vb = valeur(b);
+    if (typeof va === "string") return EQ_ETAT.sens * va.localeCompare(vb);
+    if (va == null) return 1; if (vb == null) return -1;
+    return EQ_ETAT.sens * (va - vb);
   });
-
-  $("teamBody").innerHTML = rows.slice(0, 500).map(t => `
-    <tr>
-      <td><strong>${t.equipe}</strong></td>
-      <td><span class="pill">${ligueLabel(t.pays, t.ligue)}</span></td>
-      ${teamCell(t.atk_home, false)}
-      ${teamCell(t.def_home, true)}
-      ${teamCell(t.atk_away, false)}
-      ${teamCell(t.def_away, true)}
-      <td class="num muted">${t.n_home}</td>
-      <td class="num muted">${t.n_away}</td>
-    </tr>`).join("") || `<tr><td colspan="8" class="muted">Aucune équipe ne correspond${TEAM_STATS.length? " à ces filtres." : " (historique de résultats encore vide)."}</td></tr>`;
-  $("teamRowInfo").textContent = `${rows.length} équipe(s)` + (rows.length>500?" (500 affichées)":"");
-  $("teamCount").textContent = `— ${TEAM_STATS.length} équipe(s) au total`;
+  EQ_CACHE.lignes = rows;
+  document.querySelectorAll("#teamTable th.sortable").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.tk === EQ_ETAT.tri);
+    th.setAttribute("aria-sort", th.dataset.tk === EQ_ETAT.tri ? (EQ_ETAT.sens > 0 ? "ascending" : "descending") : "none");
+  });
+  $("teamBody").innerHTML = rows.slice(0, 400).map(({t, i}) => {
+    const d = eqDerive(t), p = paris.get(i);
+    return `<tr class="eq-row${EQ_ETAT.sel === i ? " is-sel" : ""}" data-eq="${i}" tabindex="0">
+      <td><span class="eq-nom">${eqEsc(t.equipe)}</span><span class="eq-ligue">${eqEsc(ligueLabel(t.pays, t.ligue))}</span></td>
+      <td>${eqNiveauBar(d.niveau)}</td>
+      <td class="num eq-paire">${eqForceCell(t.atk_home)} <span class="muted">·</span> ${eqForceCell(t.atk_away)}</td>
+      <td class="num eq-paire">${eqForceCell(t.def_home, true)} <span class="muted">·</span> ${eqForceCell(t.def_away, true)}</td>
+      <td>${eqFormeChips(t)}</td>
+      <td class="num muted">${d.n}</td>
+      <td class="num">${p ? `<strong class="${p.net >= 0 ? "pos" : "neg"}">${fmtEur(p.net)}</strong><span class="eq-sub">${p.n} pari${p.n > 1 ? "s" : ""}</span>` : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="7" class="muted">Aucune équipe ne correspond${TEAM_STATS.length ? " à ces filtres." : " (historique de résultats encore vide)."}</td></tr>`;
+  $("teamRowInfo").textContent = `${rows.length.toLocaleString("fr-FR")} équipe${rows.length > 1 ? "s" : ""}` + (rows.length > 400 ? " (400 premières affichées)" : "");
+  $("teamCount").textContent = `— ${TEAM_STATS.length.toLocaleString("fr-FR")} équipes connues`;
+  eqRenderReperes(rows, paris);
+  if (EQ_ETAT.sel == null || !rows.some(x => x.i === EQ_ETAT.sel)) EQ_ETAT.sel = rows.length ? rows[0].i : null;
+  eqRenderFiche(EQ_ETAT.sel);
 }
-["tPays","tLigue","tAnnee","tSearch","tMinMatches"].forEach(id => {
-  const el=$(id); el.addEventListener("input", renderTeams); el.addEventListener("change", renderTeams);
+function eqRenderReperes(rows, paris) {
+  const zone = $("eqReperes");
+  if (!zone) return;
+  // Repères parmi les championnats (pas les coupes, aux échantillons trop petits) avec au moins 15 matchs.
+  const COUPE = /coupe|cup|copa|coppa|pokal|ta[cç]a|beker|troph|supercoupe|qualif/i;
+  const solides = rows.filter(({t}) => eqDerive(t).n >= 15 && !COUPE.test(t.ligue || ""));
+  const meilleur = (liste, f, plusGrand = true) => liste.reduce((best, x) => {
+    const v = f(x); if (v == null) return best;
+    return !best || (plusGrand ? v > best.v : v < best.v) ? {x, v} : best;
+  }, null);
+  const cartes = [];
+  const c1 = meilleur(solides, ({t}) => eqDerive(t).atk);
+  if (c1) cartes.push({ic: "⚽", titre: "Meilleure attaque", x: c1.x, val: `${eqNum(c1.v)} × la moyenne`});
+  const c2 = meilleur(solides, ({t}) => eqDerive(t).def, false);
+  if (c2) cartes.push({ic: "🛡️", titre: "Meilleure défense", x: c2.x, val: `${eqNum(c2.v)} × la moyenne`});
+  const c3 = meilleur(solides.filter(({t}) => (t.f || []).length >= 5), ({t}) => { const d = eqDerive(t); return d.pts + (t.r10 ? (t.r10[4] - t.r10[5]) / 100 : 0); });
+  if (c3) cartes.push({ic: "🔥", titre: "La plus en forme", x: c3.x, val: eqDerive(c3.x.t).res.join(" ") + ` · ${eqDerive(c3.x.t).pts} pts sur 15`});
+  const c4 = meilleur(solides, ({t}) => eqDerive(t).domicile);
+  if (c4) cartes.push({ic: "🏟️", titre: "La plus forte chez elle", x: c4.x, val: `+${Math.round(c4.v * 100)} % à domicile`});
+  const avecParis = rows.filter(({i}) => paris.has(i) && paris.get(i).n >= 3);
+  const c5 = meilleur(avecParis, ({i}) => paris.get(i).net);
+  if (c5 && c5.v > 0) cartes.push({ic: "💰", titre: "Te rapporte le plus", x: c5.x, val: `${fmtEur(c5.v)} sur ${paris.get(c5.x.i).n} paris`, cls: "pos"});
+  const c6 = meilleur(avecParis, ({i}) => paris.get(i).net, false);
+  if (c6 && c6.v < 0) cartes.push({ic: "📉", titre: "Te coûte le plus", x: c6.x, val: `${fmtEur(c6.v)} sur ${paris.get(c6.x.i).n} paris`, cls: "neg"});
+  zone.innerHTML = cartes.map(c => `<button type="button" class="eq-repere" data-eq="${c.x.i}">
+      <span class="eq-repere-tete"><span aria-hidden="true">${c.ic}</span>${c.titre}</span>
+      <span class="eq-repere-nom">${eqEsc(c.x.t.equipe)}</span>
+      <span class="eq-repere-val ${c.cls || ""}">${eqEsc(c.val)}</span>
+      <span class="eq-repere-ligue">${eqEsc(ligueLabel(c.x.t.pays, c.x.t.ligue))}</span>
+    </button>`).join("");
+}
+function eqBarreForce(lbl, v, defense) {
+  if (v == null) return "";
+  // Échelle 0,4 → 1,6 ; le côté « favorable » en vert.
+  const pos = Math.min(100, Math.max(0, (v - 0.4) / 1.2 * 100)), un = (1 - 0.4) / 1.2 * 100;
+  const bon = defense ? v < 1 : v > 1;
+  const g = Math.min(pos, un), w = Math.abs(pos - un);
+  return `<div class="eq-barre"><span class="eq-barre-lbl">${lbl}</span>
+    <span class="eq-barre-piste"><span class="eq-barre-un" style="left:${un.toFixed(1)}%"></span><span class="eq-barre-val ${bon ? "pos" : "neg"}" style="left:${g.toFixed(1)}%;width:${Math.max(0.6, w).toFixed(1)}%"></span></span>
+    <span class="eq-barre-num ${bon ? "pos" : "neg"}">${eqNum(v)}</span></div>`;
+}
+function eqRenderFiche(i) {
+  const el = $("eqFiche");
+  if (!el) return;
+  if (i == null || !TEAM_STATS[i]) { el.hidden = true; return; }
+  el.hidden = false;
+  const t = TEAM_STATS[i], d = eqDerive(t);
+  const p = EQ_CACHE.paris && EQ_CACHE.paris.get(i), pro = EQ_CACHE.prochains && EQ_CACHE.prochains.get(i);
+  // Rang dans la ligue (équipes actives de la même ligue, au moins 5 matchs)
+  const memeLigue = TEAM_STATS.filter(x => ligueKey(x.pays, x.ligue) === ligueKey(t.pays, t.ligue) && (!t.dm || (x.dm && x.dm >= String(t.dm).slice(0, 4) + "-01-01" || x.dm === t.dm)) && eqDerive(x).n >= 5 && eqDerive(x).niveau != null)
+    .sort((a, b) => eqDerive(b).niveau - eqDerive(a).niveau);
+  const rang = memeLigue.indexOf(t) + 1;
+  const r10 = t.r10;
+  const tendances = r10 ? `<div class="eq-stats">
+      <div><strong>${r10[1]}-${r10[2]}-${r10[3]}</strong><span>V-N-D sur ${r10[0]} matchs</span></div>
+      <div><strong>${eqNum(r10[4] / r10[0], 1)} · ${eqNum(r10[5] / r10[0], 1)}</strong><span>buts marqués · encaissés par match</span></div>
+      <div><strong>${r10[6]}/${r10[0]}</strong><span>sans encaisser</span></div>
+      <div><strong>${r10[7]}/${r10[0]}</strong><span>les 2 équipes marquent</span></div>
+      <div><strong>${r10[8]}/${r10[0]}</strong><span>plus de 2,5 buts</span></div>
+    </div>` : `<p class="muted">Pas de match récent dans l'historique (dernier match : ${t.dm ? fmtJourComplet(t.dm) : "inconnu"}).</p>`;
+  const derniers = (t.f || []).slice().reverse().map(m => {
+    const r = m[3] > m[4] ? "V" : (m[3] === m[4] ? "N" : "D");
+    return `<li><span class="eq-chip ${r}">${r}</span><span class="eq-dm-date">${eqEsc(fmtJourComplet(m[0]))}</span>
+      <span class="eq-dm-adv">${m[1] === "d" ? "vs" : "à"} ${eqEsc(m[2])}</span><strong class="eq-dm-score">${m[3]}-${m[4]}</strong></li>`;
+  }).join("");
+  let prochain = "";
+  if (pro) {
+    const v = pro.r, dom = pro.cote === 0;
+    const adv = v.match.split(" - ")[dom ? 1 : 0];
+    const rho = MODELE_RHO ? MODELE_RHO.actuel : -0.13;
+    let probas = "";
+    if (v.lam_home > 0 && v.lam_away > 0) {
+      const pH = niveauProba(v.lam_home, v.lam_away, rho, "homeWin"), pD = niveauProba(v.lam_home, v.lam_away, rho, "draw"), pA = niveauProba(v.lam_home, v.lam_away, rho, "awayWin");
+      const [pg, pp] = dom ? [pH, pA] : [pA, pH];
+      probas = `<div class="eq-probas" role="img" aria-label="Victoire ${Math.round(pg * 100)} %, nul ${Math.round(pD * 100)} %, défaite ${Math.round(pp * 100)} %">
+        <span class="g" style="flex:${pg}">${Math.round(pg * 100)} %</span><span class="n" style="flex:${pD}">${Math.round(pD * 100)} %</span><span class="p" style="flex:${pp}">${Math.round(pp * 100)} %</span></div>
+        <div class="eq-probas-lgd"><span>victoire</span><span>nul</span><span>défaite</span></div>
+        <p class="muted eq-xg">Buts attendus : ${eqNum(dom ? v.lam_home : v.lam_away, 1)} pour, ${eqNum(dom ? v.lam_away : v.lam_home, 1)} contre.</p>`;
+    }
+    prochain = `<section class="eq-bloc"><h3>Prochain match</h3>
+      <p class="eq-pro-titre"><strong>${dom ? "vs" : "à"} ${eqEsc(adv)}</strong> <span class="muted">· ${eqEsc(v.kickoff ? fmtJourComplet(v.kickoff.slice(0, 10)) + " à " + v.kickoff.slice(11, 16) : fmtJourComplet(v.date))}</span></p>
+      ${probas}</section>`;
+  }
+  let mesParis = `<section class="eq-bloc"><h3>Tes paris sur ses matchs</h3><p class="muted">Aucun pari retenu par les filtres de DC rétrospectif.</p></section>`;
+  if (p) {
+    const liste = p.liste.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map(r => {
+      const gain = r.profit * btStakeFor(r);
+      return `<li><span class="eq-chip ${r.gagne ? "V" : "D"}">${r.gagne ? "✓" : "✗"}</span><span class="eq-dm-date">${eqEsc(fmtJourComplet(r.date))}</span>
+        <span class="eq-dm-adv">${eqEsc(r.match)} · ${eqEsc(r.categorie === "Score exact" ? r.colonne : (RESULT_LABEL[r.colonne] || r.colonne))} à ${eqNum(r.cote)}</span>
+        <strong class="eq-dm-score ${gain >= 0 ? "pos" : "neg"}">${fmtEur(gain)}</strong></li>`;
+    }).join("");
+    mesParis = `<section class="eq-bloc"><h3>Tes paris sur ses matchs</h3>
+      <div class="eq-stats compact"><div><strong class="${p.net >= 0 ? "pos" : "neg"}">${fmtEur(p.net)}</strong><span>gain net</span></div>
+      <div><strong>${p.g}/${p.n}</strong><span>gagnés</span></div><div><strong>${fmtPct(p.mise ? p.net / p.mise : 0)}</strong><span>ROI</span></div></div>
+      <ul class="eq-liste">${liste}</ul></section>`;
+  }
+  el.innerHTML = `
+    <div class="eq-fiche-tete">
+      <div><p class="eq-fiche-ligue">${eqEsc(ligueLabel(t.pays, t.ligue))}${rang ? ` · ${rang}ᵉ niveau sur ${memeLigue.length}` : ""}</p>
+        <h2 class="eq-fiche-nom">${eqEsc(t.equipe)}</h2></div>
+      <div class="eq-fiche-niveau"><span class="${d.niveau >= 0 ? "pos" : "neg"}">${d.niveau == null ? "—" : (d.niveau >= 0 ? "+" : "−") + Math.round(Math.abs(d.niveau) * 100) + " %"}</span>
+        <small>niveau par rapport à la moyenne de la ligue</small></div>
+    </div>
+    <div class="eq-fiche-grille"><div class="eq-col">
+      <section class="eq-bloc"><h3>Forces <span class="hint">— 1,00 = moyenne de la ligue · ${d.n} matchs</span></h3>
+        ${eqBarreForce("Attaque à domicile", t.atk_home)}${eqBarreForce("Attaque à l'extérieur", t.atk_away)}
+        ${eqBarreForce("Défense à domicile", t.def_home, true)}${eqBarreForce("Défense à l'extérieur", t.def_away, true)}
+        ${d.domicile != null ? `<p class="muted eq-xg">${d.domicile >= 0 ? `${Math.round(d.domicile * 100)} % plus forte à domicile qu'à l'extérieur` : `${Math.round(-d.domicile * 100)} % plus forte à l'extérieur qu'à domicile`}.</p>` : ""}
+      </section>
+      ${mesParis}</div><div class="eq-col">
+      <section class="eq-bloc"><h3>Forme récente</h3>${eqFormeChips(t, true)}${tendances}
+        ${derniers ? `<ul class="eq-liste">${derniers}</ul>` : ""}</section>
+      ${prochain}
+    </div></div>`;
+}
+function eqChoisir(i, defiler) {
+  EQ_ETAT.sel = i;
+  document.querySelectorAll("#teamBody tr.eq-row").forEach(tr => tr.classList.toggle("is-sel", +tr.dataset.eq === i));
+  eqRenderFiche(i);
+  if (defiler && $("eqFiche")) $("eqFiche").scrollIntoView({behavior: "smooth", block: "start"});
+}
+["tPays", "tLigue", "tAnnee", "tSearch", "tMinMatches", "tActif"].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener(id === "tSearch" ? "input" : "change", () => { EQ_ETAT.sel = null; renderTeams(); });
 });
 document.querySelectorAll("#teamTable th.sortable").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.dataset.tk;
-    if (tSortKey===k) tSortDir*=-1; else { tSortKey=k; tSortDir=(k==="equipe"||k==="ligue")?1:-1; }
-    renderTeams();
+    if (EQ_ETAT.tri === k) EQ_ETAT.sens *= -1; else { EQ_ETAT.tri = k; EQ_ETAT.sens = k === "equipe" ? 1 : -1; }
+    eqSauver(); renderTeams();
   });
 });
+$("teamBody").addEventListener("click", ev => { const tr = ev.target.closest("tr.eq-row"); if (tr) eqChoisir(+tr.dataset.eq, true); });
+$("teamBody").addEventListener("keydown", ev => {
+  if (ev.key !== "Enter" && ev.key !== " ") return;
+  const tr = ev.target.closest("tr.eq-row"); if (tr) { ev.preventDefault(); eqChoisir(+tr.dataset.eq, true); }
+});
+$("eqReperes").addEventListener("click", ev => { const b = ev.target.closest(".eq-repere"); if (b) eqChoisir(+b.dataset.eq, true); });
 
 /* ================= PAGE 0 — VUE D'ENSEMBLE ================= */
 // Bascule vers un autre onglet en JS — utilisé par le chip d'alerte
@@ -14716,9 +14934,11 @@ function drawFanChartMulti(series, wrapId) {
   const xMax = nPts - 1;
   let yMin = Infinity, yMax = -Infinity;
   valides.forEach(s => s.pts.forEach(p => {
-    if (p.p50 == null) return;
-    if (p.p50 < yMin) yMin = p.p50;
-    if (p.p50 > yMax) yMax = p.p50;
+    [p.p50, p.p25, p.p75].forEach(v => {
+      if (v == null) return;
+      if (v < yMin) yMin = v;
+      if (v > yMax) yMax = v;
+    });
   }));
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.12; yMin = Math.max(0, yMin - pad); yMax += pad;
@@ -14740,6 +14960,12 @@ function drawFanChartMulti(series, wrapId) {
     xticks += `<text x="${sx(i).toFixed(1)}" y="${H-12}" text-anchor="middle" class="chart-tip" fill="var(--ink-faint)">${d === "Départ" ? "Départ" : fmtChartDate(d)}</text>`;
   }
 
+  // Bandes P25–P75 (22/11/2026) : la moitié centrale des simulations, sous les médianes.
+  const bandes = principales.filter(s => s.pts.every(p => p.p25 != null && p.p75 != null)).map(s => {
+    const haut = s.pts.map((p, i) => `${sx(i).toFixed(1)} ${sy(p.p75).toFixed(1)}`);
+    const bas = s.pts.map((p, i) => `${sx(i).toFixed(1)} ${sy(p.p25).toFixed(1)}`).reverse();
+    return `<path d="M${haut.join(" L")} L${bas.join(" L")} Z" fill="${s.color}" fill-opacity="${principales.length > 2 ? ".08" : ".13"}" stroke="${s.color}" stroke-opacity=".25" stroke-width="1"/>`;
+  }).join("");
   const lignes = valides.map(s => {
     // Tracé par segments : un point nul interrompt la courbe au lieu de la relier.
     let path = "", plume = false;
@@ -14766,6 +14992,7 @@ function drawFanChartMulti(series, wrapId) {
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Bankroll médiane par stratégie${reelles.length ? ", et trajectoire réelle en pointillés" : ""}">
         ${yticks}
         <line x1="${padL}" y1="${yDepart.toFixed(1)}" x2="${W-padR}" y2="${yDepart.toFixed(1)}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".55"/>
+        ${bandes}
         ${lignes}
         <line class="chart-cursor" x1="0" y1="${padT}" x2="0" y2="${H-padB}" opacity="0"/>
         ${xticks}
@@ -14774,7 +15001,7 @@ function drawFanChartMulti(series, wrapId) {
       <div class="chart-tooltip" hidden></div>
     </div>
     <p class="muted" style="margin:.6rem 0 .2rem; font-size:.78rem">${legende}</p>
-    <p class="muted" style="margin:0; font-size:.78rem">Courbes pleines = bankroll <strong>médiane</strong> (P50) de chaque stratégie cochée ; le tableau au-dessus donne leur fourchette complète (P5 à P95).${reelles.length ? " Pointillés = ce qui s'est réellement passé avec la même mise : une seule trajectoire, qui s'arrête à la fin de l'historique." : ""}</p>`;
+    <p class="muted" style="margin:0; font-size:.78rem">Ligne pleine = bankroll médiane · bande = moitié centrale des simulations${reelles.length ? " · pointillés = ce qui s'est vraiment passé" : ""}.</p>`;
 
   const holder = wrap.querySelector(".chart-holder");
   const svg = holder.querySelector("svg");
@@ -14988,6 +15215,60 @@ function mcMises(strat, jour, bankroll) {
   }
   if (strat.type === "pct") return new Array(k).fill(bankroll * strat.pct / k);
   return new Array(k).fill(strat.montant);
+}
+
+// Résumé en tête des résultats (22/11/2026) : une carte par stratégie, avec la bankroll médiane, la
+// fourchette P5–P95 sur une échelle COMMUNE à toutes les cartes (pour comparer d'un coup d'œil), la
+// trajectoire réelle (losange), la bankroll de départ (pointillé) et les risques en pastilles colorées.
+function mcRenderResume(resultatsStrat, reels, depart, M, extrapole) {
+  const zone = $("mcResume");
+  if (!zone) return;
+  const eur0 = v => v.toLocaleString("fr-FR", {maximumFractionDigits: v >= 1000 ? 0 : 2}) + " €";
+  const pc = v => (v * 100).toLocaleString("fr-FR", {maximumFractionDigits: v < 0.1 ? 1 : 0}) + " %";
+  // Échelle propre à chaque carte (départ, P5, P95 et réel) : une stratégie très dispersée (montant fixe qui
+  // compose mal, Kelly entier) écraserait sinon les fourchettes des autres. Les chiffres se comparent d'une carte à
+  // l'autre ; la barre montre où se situent départ, médiane et réel dans la fourchette de CETTE stratégie.
+  const echelle = (r, reel) => {
+    let lo = Math.min(depart, r.p5, reel ? reel.final : depart), hi = Math.max(depart, r.p95, reel ? reel.final : depart);
+    if (hi - lo < 1) hi = lo + 1;
+    const marge = (hi - lo) * 0.03;
+    lo = Math.max(0, lo - marge); hi += marge;
+    return v => Math.min(100, Math.max(0, (v - lo) / (hi - lo) * 100));
+  };
+  const niveau = (p, s1, s2) => p < s1 ? "ok" : (p < s2 ? "moyen" : "fort");
+  zone.innerHTML = resultatsStrat.map((r, i) => {
+    const st = r.strat, reel = reels[i], x = echelle(r, reel);
+    const varPct = depart > 0 ? (r.mediane - depart) / depart : 0;
+    const reglage = st.type === "fixe" ? `${st.montant} € par pari` : st.type === "pct" ? `${+(st.pct * 100).toFixed(1)} % par jour`
+      : ({0.125: "très prudent", 0.25: "recommandé", 0.5: "agressif", 1: "déconseillé"})[st.frac] || "";
+    const reelHtml = reel ? `<span class="mc-range-reel" style="left:${x(reel.final).toFixed(2)}%" title="Réel : ${eur0(reel.final)}"></span>` : "";
+    let reelTxt = "";
+    if (reel) {
+      const g = reel.final - depart;
+      reelTxt = `<div class="mc-card-reel">En vrai : <strong class="${g >= 0 ? "pos" : "neg"}">${eur0(reel.final)}</strong>`
+        + (reel.ruine ? ` <span class="neg">(ruine)</span>` : ` (${g >= 0 ? "+" : ""}${eur0(g)})`)
+        + (reel.rang != null ? ` · mieux que <strong>${Math.round(reel.rang * 100)} %</strong> des simulations` : "") + `</div>`;
+    }
+    return `<article class="mc-card" style="--c:${st.color}">
+      <div class="mc-card-tete"><span class="mc-card-titre">${st.label}</span><span class="mc-card-reglage">${reglage}</span></div>
+      <div class="mc-card-chiffre"><span class="mc-big">${eur0(r.mediane)}</span>
+        <span class="mc-var ${varPct >= 0 ? "pos" : "neg"}">${varPct >= 0 ? "+" : ""}${(varPct * 100).toLocaleString("fr-FR", {maximumFractionDigits: 0})} %</span></div>
+      <div class="mc-card-lbl">bankroll médiane à la fin</div>
+      <div class="mc-range" role="img" aria-label="${st.label} : 9 simulations sur 10 entre ${eur0(r.p5)} et ${eur0(r.p95)}, médiane ${eur0(r.mediane)}${reel ? `, réel ${eur0(reel.final)}` : ""}">
+        <span class="mc-range-axe"></span>
+        <span class="mc-range-dep" style="left:${x(depart).toFixed(2)}%"></span>
+        <span class="mc-range-bar" style="left:${x(r.p5).toFixed(2)}%; width:${Math.max(0.8, x(r.p95) - x(r.p5)).toFixed(2)}%"></span>
+        <span class="mc-range-med" style="left:${x(r.mediane).toFixed(2)}%"></span>${reelHtml}
+        <span class="mc-range-lbl g">P5 ${eur0(r.p5)}</span>
+        <span class="mc-range-lbl d">P95 ${eur0(r.p95)}</span>
+      </div>
+      <div class="mc-badges">
+        <span class="mc-badge ${niveau(r.probaPerte, 0.2, 0.4)}" title="Part des simulations qui finissent sous la bankroll de départ">Finir en perte <strong>${pc(r.probaPerte)}</strong></span>
+        <span class="mc-badge ${niveau(r.probaRuine, 0.005, 0.05)}" title="Part des simulations où la bankroll tombe à zéro">Ruine <strong>${pc(r.probaRuine)}</strong></span>
+        <span class="mc-badge ${niveau(r.ddMediane, 0.2, 0.4)}" title="Baisse typique depuis un plus haut (médiane des simulations)">Creux typique <strong>−${pc(r.ddMediane)}</strong></span>
+      </div>${reelTxt}
+    </article>`;
+  }).join("");
 }
 
 // Complément du libellé d'une stratégie dans les tableaux : son réglage numérique.
@@ -15224,6 +15505,8 @@ function runMonteCarlo() {
 
   if ($("mcNTraj")) $("mcNTraj").textContent = M.toLocaleString("fr-FR");
 
+  mcRenderResume(resultatsStrat, reels, depart, M, extrapole);
+
   // --- Tableau comparatif ---
   const body = $("mcCmpBody");
   if (body) {
@@ -15274,11 +15557,11 @@ function runMonteCarlo() {
   // ce rang) — on affiche la date réelle tant que l'index est dans
   // l'historique, "Jour N" sinon.
   const serieParStrat = strategies.map((strat, s) => {
-    const pts = [{date: "Départ", p50: depart}];
+    const pts = [{date: "Départ", p50: depart, p25: depart, p75: depart}];
     cpIdx.forEach((idxJour, c) => {
       const sorted = Float64Array.from(cpValeurs[s][c]).sort();
       const date = (extrapole && idxJour >= histJours) ? `Jour ${idxJour + 1}` : joursData[idxJour % histJours].date;
-      pts.push({ date, p50: pctOf(sorted, 0.50) });
+      pts.push({ date, p50: pctOf(sorted, 0.50), p25: pctOf(sorted, 0.25), p75: pctOf(sorted, 0.75) });
     });
     return { label: strat.label, color: strat.color, pts };
   });
@@ -15323,23 +15606,26 @@ function runMonteCarlo() {
   if ($("mcVerdict")) {
     const meilleure = resultatsStrat.reduce((a, b) => (b.mediane > a.mediane ? b : a));
     const plusSure = resultatsStrat.reduce((a, b) => (b.probaRuine < a.probaRuine ? b : a));
-    let phrase = `Sur ${M.toLocaleString("fr-FR")} trajectoires simulées (départ : ${eur(depart)})`;
-    phrase += extrapole ? `, sur un horizon étendu à ${horizonJours} jours, ` : `, sur les ${horizonJours} jours de l'historique filtré, `;
-    phrase += `« ${meilleure.strat.label} » donne la bankroll médiane la plus haute (${eur(meilleure.mediane)})`;
+    let phrase = extrapole ? `Sur ${horizonJours} jours simulés, ` : `Sur les ${horizonJours} jours de ton historique filtré, `;
+    phrase += `<strong>${meilleure.strat.label}</strong> donne la bankroll médiane la plus haute (${eur(meilleure.mediane)} pour ${eur(depart)} au départ)`;
     // "plus prudente" seulement si une AUTRE stratégie a un risque de ruine
     // strictement plus faible — sinon (ex-aequo à 0 %, comme c'est souvent
     // le cas quand plusieurs fractions de Kelly cochées ne ruinent jamais
     // sur l'historique filtré), comparer deux pourcentages identiques
     // n'apporte rien et sonne faux ("0,0 % contre 0,0 %").
     if (plusSure.strat.id !== meilleure.strat.id && plusSure.probaRuine < meilleure.probaRuine) {
-      phrase += `, mais « ${plusSure.strat.label} » limite mieux le risque de ruine (${pct(plusSure.probaRuine)} contre ${pct(meilleure.probaRuine)} pour la première).`;
+      phrase += `, mais <strong>${plusSure.strat.label}</strong> limite mieux le risque de ruine (${pct(plusSure.probaRuine)} contre ${pct(meilleure.probaRuine)}).`;
     } else if (meilleure.probaRuine > 0) {
       phrase += `, avec ${pct(meilleure.probaRuine)} de risque de ruine.`;
     } else {
-      phrase += ` et aucune trajectoire simulée ne tombe à zéro avec cette stratégie.`;
+      phrase += `, sans qu'aucune simulation ne tombe à zéro.`;
     }
-    phrase += ` Le tableau ci-dessus donne la fourchette complète de chaque stratégie — la médiane seule ne montre pas le risque pris pour l'atteindre.`;
-    $("mcVerdict").textContent = phrase;
+    const risquees = resultatsStrat.filter(r => r.probaRuine >= 0.05);
+    if (risquees.length) {
+      phrase += ` Attention : ${risquees.map(r => `<strong>${r.strat.label}</strong> (${pct(r.probaRuine)})`).join(", ")} `
+        + `${risquees.length > 1 ? "mènent" : "mène"} souvent à la ruine avec cette bankroll.`;
+    }
+    $("mcVerdict").innerHTML = phrase;
   }
 
   const duree = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
@@ -15813,7 +16099,9 @@ renderBankroll();
 // Même raison pour l'onglet Simulation (Monte Carlo) : sans cet appel il
 // resterait vide jusqu'au premier clic sur "Relancer".
 if (typeof runMonteCarlo === "function") runMonteCarlo();
-renderTeams();
+// Stats équipes : rendu à l'ouverture de l'onglet (activerOnglet), car la page relit tes paris filtrés ;
+// rendu immédiat seulement si elle est déjà affichée.
+if ($("page-teams") && $("page-teams").classList.contains("active")) renderTeams();
 renderOverview();
 try { initMobile(); } catch (e) { console.error("initMobile", e); }
 /* ================= PAGE — TIRS CADRÉS (récap) ================= */
