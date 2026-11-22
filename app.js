@@ -10398,7 +10398,7 @@ initMatrixCellInspector({
    Les probabilités du modèle sont recalculées sur la grille Dixon-Coles (niveauProba) avec le ρ de la page. */
 const API_MAT_LS = "ww_bt_apimat_v1";
 let API_MAT = (() => {
-  const def = {vue: "pred", portee: "tous"};
+  const def = {vue: "pred", colonnes: "issue", paris: "page"};
   try { return Object.assign(def, JSON.parse(localStorage.getItem(API_MAT_LS) || "{}")); } catch (e) { return def; }
 })();
 let API_MAT_MATCHS = null, API_MAT_DERNIER = null;
@@ -10452,130 +10452,102 @@ const API_ABS_LIGNES = [
 function apiMatProbas(lh, la, rho) {
   return {H: niveauProba(lh, la, rho, "homeWin"), D: niveauProba(lh, la, rho, "draw"), A: niveauProba(lh, la, rho, "awayWin")};
 }
+function apiMatClasseAbs(ab) {
+  const g = ab && ab[0];
+  if (!g) return "sans";
+  const t = API_ABS_LIGNES.find(x => g >= x.lo && g < x.hi);
+  return t ? t.k : "sans";
+}
+// Même moteur que la matrice libre (renderMatriceVariables), avec des lignes et des colonnes choisies par boutons.
+// En dessous, le bilan « par match » (le résultat annoncé arrive-t-il, l'erreur du modèle avec et sans absences)
+// sur tous les matchs du périmètre de la page.
+let API_MAT_DATA = {};
+const API_MAT_CTX = {pre: "btApiMat", dataKey: "apimat", dernier: null,
+  etat: () => ({lignes: API_MAT.vue === "abs" ? "absCoef" : "predApi", colonnes: API_MAT.colonnes, paris: API_MAT.paris}),
+  setData: d => { API_MAT_DATA = d; }};
 function renderApiMatrix(rowsPage) {
-  const wrap = $("btApiMatWrap");
-  if (!wrap) return;
-  API_MAT_DERNIER = {rowsPage};
-  document.querySelectorAll("#btApiMatVue .jour-mode").forEach(b => { const a = b.dataset.vue === API_MAT.vue; b.classList.toggle("is-active", a); b.setAttribute("aria-pressed", a ? "true" : "false"); });
-  document.querySelectorAll("#btApiMatPortee .jour-mode").forEach(b => { const a = b.dataset.portee === API_MAT.portee; b.classList.toggle("is-active", a); b.setAttribute("aria-pressed", a ? "true" : "false"); });
-  const empty = $("btApiMatEmpty"), note = $("btApiMatNote"), lecture = $("btApiMatLecture");
-  const fr = x => x.toLocaleString("fr-FR");
-  const pc = x => (x * 100).toFixed(0) + " %";
-  const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  // Matchs retenus : périmètre de la page (dates, ligues, sélections) ou matchs des paris de la page.
-  const dd = $("btDateDebut") ? $("btDateDebut").value : "", df = $("btDateFin") ? $("btDateFin").value : "";
-  const ligues = liguesCochees("bt"), exclSel = selectionsExclues("bt");
-  const clesParis = new Set((rowsPage || []).map(r => r.date + "|" + r.match));
-  const matchs = apiMatMatchs().filter(m => API_MAT.portee === "paris" ? clesParis.has(m.cle)
-    : (!dd || m.date >= dd) && (!df || m.date <= df) && (!ligues || ligues.has(ligueKey(m.pays, m.ligue)))
-      && !(exclSel && estSelectionNationale(m.pays, m.ligue)));
-  // Paris « Vainqueur du match » de la page, rattachés à leur match.
-  const parisVm = new Map();
-  (rowsPage || []).forEach(r => {
-    if (r.categorie !== "Vainqueur du match") return;
-    const k = r.date + "|" + r.match;
-    (parisVm.get(k) || parisVm.set(k, []).get(k)).push(r);
-  });
-  const rho = rhoActif("bt") && MODELE_RHO ? MODELE_RHO.corrige : (MODELE_RHO ? MODELE_RHO.actuel : -0.13);
-  const pred = API_MAT.vue === "pred";
-  const lignesDef = pred ? API_PRED_LIGNES : API_ABS_LIGNES;
-  const cleLigne = m => pred ? m.predCl : (m.g == null ? null : (API_ABS_LIGNES.find(t => m.g >= t.lo && m.g < t.hi) || {}).k);
-  const agg = {};
-  const nouv = () => ({n: 0, H: 0, D: 0, A: 0, m0: {H: 0, D: 0, A: 0}, m1: {H: 0, D: 0, A: 0}, ok: 0, mok: 0,
-    b0: 0, b1: 0, bd: 0, be: 0, lh0: 0, la0: 0, lh1: 0, la1: 0, paris: 0, net: 0, mise: 0, gagnes: 0});
-  let sansCle = 0;
-  matchs.forEach(m => {
-    const k = cleLigne(m);
-    if (k == null) { sansCle++; return; }
-    const def = lignesDef.find(t => t.k === k);
-    const p0 = apiMatProbas(m.lh, m.la, rho);
-    const p1 = pred || m.g == null ? p0 : apiMatProbas(m.lh * m.g, m.la / m.g, rho);
-    [k, "*"].forEach(cle => {
-      const a = agg[cle] || (agg[cle] = nouv());
-      a.n++; a[m.res]++;
-      ["H", "D", "A"].forEach(x => { a.m0[x] += p0[x]; a.m1[x] += p1[x]; });
-      if (def && def.juste) { a.ok += def.juste.includes(m.res) ? 1 : 0; a.mok += def.juste.reduce((t, x) => t + p0[x], 0); a.nJ = (a.nJ || 0) + 1; }
-      ["H", "D", "A"].forEach(x => { const o = m.res === x ? 1 : 0; a.b0 += (p0[x] - o) ** 2; a.b1 += (p1[x] - o) ** 2; });
-      a.bd += m.bd; a.be += m.be; a.lh0 += m.lh; a.la0 += m.la;
-      a.lh1 += m.g ? m.lh * m.g : m.lh; a.la1 += m.g ? m.la / m.g : m.la;
-      (parisVm.get(m.cle) || []).forEach(r => { const mise = btStakeFor(r); a.paris++; a.net += r.profit * mise; a.mise += mise; if (r.gagne) a.gagnes++; });
+  if (!$("btApiMatWrap")) return;
+  if (!["issue", "resultat", "cat", "aucune"].includes(API_MAT.colonnes)) API_MAT.colonnes = "issue";
+  if (!["page", "aucun"].includes(API_MAT.paris)) API_MAT.paris = "page";
+  [["btApiMatVue", "vue"], ["btApiMatCols", "colonnes"], ["btApiMatParis", "paris"]].forEach(([id, champ]) => {
+    document.querySelectorAll(`#${id} .jour-mode`).forEach(b => {
+      const a = b.dataset.v === API_MAT[champ];
+      b.classList.toggle("is-active", a); b.setAttribute("aria-pressed", a ? "true" : "false");
     });
   });
-  const lignes = lignesDef.filter(t => agg[t.k]);
-  if (!lignes.length) {
-    wrap.innerHTML = "";
-    if (empty) empty.style.display = "";
-    if (note) note.textContent = "";
-    if (lecture) lecture.textContent = "";
-    return;
-  }
-  if (empty) empty.style.display = "none";
-  // Teinte : écart entre la part réelle et la part attendue par le modèle (avec absences en vue « Absences »).
-  const cellule = (a, x) => {
-    const reel = a[x] / a.n, att0 = a.m0[x] / a.n, att1 = a.m1[x] / a.n;
-    const att = pred ? att0 : att1;
-    const ecart = reel - att;
-    const alpha = Math.min(0.7, 0.1 + Math.abs(ecart) * 4).toFixed(2);
-    const fond = a.n >= 20 && Math.abs(ecart) >= 0.02 ? ` style="background:${ecart >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"` : "";
-    const sous = pred ? `modèle ${pc(att0)}` : `modèle ${pc(att0)} → ${pc(att1)}`;
-    return `<td class="score-cell${a.n < 20 ? " score-cell-lowdata" : ""}"${fond}><div class="api-pct">${pc(reel)}</div><div class="api-sub">${fr(a[x])} match${a[x] > 1 ? "s" : ""} · ${sous}</div></td>`;
-  };
-  const parisTd = a => a.paris
-    ? `<td class="api-info"><strong class="${a.net >= 0 ? "pos" : "neg"}">${fmtEur(a.net)}</strong><div class="api-sub">${a.paris} pari${a.paris > 1 ? "s" : ""} · ${a.gagnes}✓ · ROI ${fmtPct(a.mise ? a.net / a.mise : 0)}</div></td>`
-    : `<td class="api-info"><span class="muted">—</span></td>`;
-  let thead = `<tr><th class="score-corner">${pred ? "Prédiction API-Football" : "Absences : coefficient"} ↓<br>Résultat réel →</th>`
-    + `<th class="num">Domicile</th><th class="num">Nul</th><th class="num">Extérieur</th>`;
-  thead += pred ? `<th class="num">Prédiction juste</th>` : `<th class="num">Buts dom. / ext.</th><th class="num">Erreur du modèle</th>`;
-  thead += `<th class="num">Vos paris Vainqueur</th></tr>`;
-  const ligneHtml = (lab, a, total) => {
-    let h = `<tr${total ? ` class="score-total-row"` : ""}><th class="num" scope="row">${lab}<span class="mvt-sens">${fr(a.n)} match${a.n > 1 ? "s" : ""}</span></th>`;
-    h += cellule(a, "H") + cellule(a, "D") + cellule(a, "A");
-    if (pred) {
-      h += a.nJ ? `<td class="api-info"><strong>${pc(a.ok / a.nJ)}</strong><div class="api-sub">le modèle attendait ${pc(a.mok / a.nJ)}</div></td>`
-        : `<td class="api-info"><span class="muted">—</span></td>`;
-    } else {
-      h += `<td class="api-info"><strong>${(a.bd / a.n).toFixed(2).replace(".", ",")} / ${(a.be / a.n).toFixed(2).replace(".", ",")}</strong>`
-        + `<div class="api-sub">attendus ${(a.lh0 / a.n).toFixed(2).replace(".", ",")} / ${(a.la0 / a.n).toFixed(2).replace(".", ",")}<br>→ `
-        + `${(a.lh1 / a.n).toFixed(2).replace(".", ",")} / ${(a.la1 / a.n).toFixed(2).replace(".", ",")}</div></td>`;
-      const b0 = a.b0 / a.n, b1 = a.b1 / a.n, mieux = b1 < b0 - 0.0005, pire = b1 > b0 + 0.0005;
-      h += `<td class="api-info"><strong>${b0.toFixed(3).replace(".", ",")} → ${b1.toFixed(3).replace(".", ",")}</strong>`
-        + `<div class="api-sub">${mieux ? "meilleure avec absences" : pire ? "moins bonne avec absences" : "sans effet"}</div></td>`;
-    }
-    return h + parisTd(a) + "</tr>";
-  };
-  let tbody = "";
-  lignes.forEach(t => { tbody += ligneHtml(`${esc(t.label)}${t.detail ? `<span class="mvt-sens">${t.detail}</span>` : ""}`, agg[t.k], false); });
-  tbody += ligneHtml("Total", agg["*"], true);
-  wrap.innerHTML = `<table class="score-matrix mvt-matrix api-matrix"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
-  if (note) {
-    let t = `${fr(agg["*"].n)} match${agg["*"].n > 1 ? "s" : ""} terminé${agg["*"].n > 1 ? "s" : ""}`
-      + (API_MAT.portee === "paris" ? " où la page retient au moins un pari" : " dans le périmètre de la page (dates, ligues, sélections)");
-    t += pred ? ` · ${fr(sansCle)} sans prédiction d'API-Football (non affichés)`
-      : ` · ${fr(sansCle)} sans relevé d'absences (non affichés ; relevés depuis le 08/09)`;
-    t += ` · ρ ${rhoActif("bt") ? "corrigé" : "actuel"} · fond coloré à partir de 20 matchs et 2 points d'écart`;
-    t += pred ? "." : " · « modèle 46 % → 39 % » : ce que le modèle attendait sans puis avec les absences · buts attendus de même"
-      + " · erreur du modèle = score de Brier moyen sur les 3 issues, sans → avec absences (plus bas = meilleur).";
-    note.textContent = t;
-  }
-  if (lecture) {
-    const tot = agg["*"];
-    if (pred && tot.nJ) {
-      lecture.innerHTML = `L'issue annoncée par l'API est arrivée dans <strong>${pc(tot.ok / tot.nJ)}</strong> des matchs, quand le modèle `
-        + `l'attendait dans ${pc(tot.mok / tot.nJ)}. Un écart positif veut dire que l'API voit quelque chose que le modèle ne voit pas ; `
-        + `cela ne dit pas si les cotes Winamax l'intégraient déjà.`;
-    } else if (!pred) {
-      lecture.innerHTML = `Sur l'ensemble, l'erreur du modèle passe de ${(tot.b0 / tot.n).toFixed(3).replace(".", ",")} sans absences à `
-        + `<strong>${(tot.b1 / tot.n).toFixed(3).replace(".", ",")}</strong> avec. Les lignes de moins de 100 matchs restent très bruitées.`;
-    } else lecture.textContent = "";
+  renderMatriceVariables(rowsPage, API_MAT_CTX);
+  renderApiMatBilan();
+}
+function renderApiMatBilan() {
+  const el = $("btApiMatLecture");
+  if (!el) return;
+  const dd = $("btDateDebut") ? $("btDateDebut").value : "", df = $("btDateFin") ? $("btDateFin").value : "";
+  const ligues = liguesCochees("bt"), exclSel = selectionsExclues("bt");
+  const matchs = apiMatMatchs().filter(m => (!dd || m.date >= dd) && (!df || m.date <= df)
+    && (!ligues || ligues.has(ligueKey(m.pays, m.ligue))) && !(exclSel && estSelectionNationale(m.pays, m.ligue)));
+  const rho = rhoActif("bt") && MODELE_RHO ? MODELE_RHO.corrige : (MODELE_RHO ? MODELE_RHO.actuel : -0.13);
+  const pc = x => (x * 100).toFixed(0) + " %";
+  const vg = x => x.toFixed(3).replace(".", ",");
+  if (API_MAT.vue !== "abs") {
+    const parts = [], tot = {n: 0, ok: 0, att: 0};
+    API_PRED_LIGNES.filter(t => t.juste).forEach(t => {
+      const ms = matchs.filter(m => m.predCl === t.k);
+      if (!ms.length) return;
+      let ok = 0, att = 0;
+      ms.forEach(m => { const p = apiMatProbas(m.lh, m.la, rho); ok += t.juste.includes(m.res) ? 1 : 0; att += t.juste.reduce((a, x) => a + p[x], 0); });
+      tot.n += ms.length; tot.ok += ok; tot.att += att;
+      parts.push(`${t.label.toLowerCase()} : <strong>${pc(ok / ms.length)}</strong> juste (modèle ${pc(att / ms.length)}, ${ms.length} matchs)`);
+    });
+    el.innerHTML = tot.n ? `<strong>Fiabilité de l'API</strong> sur ${tot.n.toLocaleString("fr-FR")} matchs terminés du périmètre : l'issue annoncée `
+      + `est arrivée dans <strong>${pc(tot.ok / tot.n)}</strong> des cas, quand le modèle l'attendait dans ${pc(tot.att / tot.n)}. ${parts.join(" · ")}.` : "";
+  } else {
+    const parts = [];
+    let n = 0, b0 = 0, b1 = 0;
+    API_ABS_LIGNES.forEach(t => {
+      const ms = matchs.filter(m => m.g != null && m.g >= t.lo && m.g < t.hi);
+      if (!ms.length) return;
+      let x0 = 0, x1 = 0, dom = 0, d0 = 0, d1 = 0;
+      ms.forEach(m => {
+        const p0 = apiMatProbas(m.lh, m.la, rho), p1 = apiMatProbas(m.lh * m.g, m.la / m.g, rho);
+        ["H", "D", "A"].forEach(x => { const o = m.res === x ? 1 : 0; x0 += (p0[x] - o) ** 2; x1 += (p1[x] - o) ** 2; });
+        dom += m.res === "H" ? 1 : 0; d0 += p0.H; d1 += p1.H;
+      });
+      n += ms.length; b0 += x0; b1 += x1;
+      parts.push(`${t.label.toLowerCase()} (${ms.length} matchs) : victoire domicile ${pc(dom / ms.length)}, modèle ${pc(d0 / ms.length)} → ${pc(d1 / ms.length)} avec absences, erreur ${vg(x0 / ms.length)} → ${vg(x1 / ms.length)}`);
+    });
+    el.innerHTML = n ? `<strong>Effet des absences sur la prévision</strong> (${n} matchs terminés du périmètre avec un relevé d'absences) : `
+      + `erreur du modèle ${vg(b0 / n)} sans → <strong>${vg(b1 / n)}</strong> avec (score de Brier, plus bas = meilleur). ${parts.join(" · ")}.` : "";
   }
 }
 (function initApiMat() {
   const sauver = () => { try { localStorage.setItem(API_MAT_LS, JSON.stringify(API_MAT)); } catch (e) { /* confort seulement */ } };
-  const relancer = () => { sauver(); if (API_MAT_DERNIER) renderApiMatrix(API_MAT_DERNIER.rowsPage); };
-  const V = $("btApiMatVue"), P = $("btApiMatPortee");
-  if (V) V.addEventListener("click", ev => { const b = ev.target.closest("[data-vue]"); if (!b) return; API_MAT.vue = b.dataset.vue; relancer(); });
-  if (P) P.addEventListener("click", ev => { const b = ev.target.closest("[data-portee]"); if (!b) return; API_MAT.portee = b.dataset.portee; relancer(); });
+  [["btApiMatVue", "vue"], ["btApiMatCols", "colonnes"], ["btApiMatParis", "paris"]].forEach(([id, champ]) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("click", ev => {
+      const b = ev.target.closest(".jour-mode[data-v]");
+      if (!b || API_MAT[champ] === b.dataset.v) return;
+      API_MAT[champ] = b.dataset.v;
+      sauver();
+      const insp = $("btApiMatInspector");
+      if (insp) insp.hidden = true;
+      if (API_MAT_CTX.dernier) renderApiMatrix(API_MAT_CTX.dernier.rowsPage);
+    });
+  });
 })();
+initMatrixCellInspector({
+  holderId: "btApiMatHolder", panelId: "btApiMatPanel",
+  inspectorId: "btApiMatInspector", tooltipId: "btApiMatTooltip",
+  dataKey: "apimat", getData: () => API_MAT_DATA,
+  rowMeta: r => libreMetaPari(r),
+  buildDetails: c => matrixDetailMarkup(
+    c, `${c.tLabel} · ${c.gLabel}`,
+    `Net ${fmtEur(c.net)} · ROI ${fmtPct(c.roi)} · cote moyenne ${c.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}`
+      + `${c.evMoy != null ? ` · espérance moyenne ${evMatPct(c.evMoy)}` : ""} · ${c.wins} gagné(s) (${(c.taux * 100).toFixed(0)} %)`
+      + ` · ${c.attMarche.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendu(s) selon le marché`,
+    r => libreMetaPari(r)
+  )
+});
 
 /* ---- Matrice libre (14/11/2026) ----
    Demande de l'utilisateur : « une matrice dynamique où je peux moi-même choisir quelles variables afficher dans
@@ -10655,6 +10627,19 @@ const LIBRE_VARIABLES = {
   mvtDaznbet: LIBRE_SITE_MVT("daznbet"),
   pays: Object.assign({nom: "Pays", groupe: "Compétition"}, libreFrequents(r => r.pays || null)),
   ligue: Object.assign({nom: "Ligue", groupe: "Compétition"}, libreFrequents(r => (r.pays || r.ligue) ? ligueLabel(r.pays, r.ligue) : null)),
+  predApi: {nom: "Prédiction API-Football", groupe: "API-Football et absences",
+    groupes: () => API_PRED_LIGNES.map(t => ({k: t.k, label: t.label})).concat([{k: "sans", label: "Pas de prédiction"}]),
+    cle: r => apiMatClassePred((r.orig || r).prediction) || "sans"},
+  avisApi: {nom: "Second avis API (sur le pari)", groupe: "API-Football et absences",
+    groupes: () => [{k: "accord", label: "Confirme le pari"}, {k: "desaccord", label: "Avis divergent"},
+      {k: "neutre", label: "Neutre"}, {k: "sans", label: "Pas de prédiction"}],
+    cle: r => { const o = r.orig || r; return o.prediction_accord === "accord" ? "accord" : o.prediction_accord === "desaccord" ? "desaccord" : (o.prediction ? "neutre" : "sans"); }},
+  absCoef: {nom: "Absences : coefficient", groupe: "API-Football et absences",
+    groupes: () => API_ABS_LIGNES.map(t => ({k: t.k, label: `${t.label} (${t.detail})`})).concat([{k: "sans", label: "Pas de relevé d'absences"}]),
+    cle: r => apiMatClasseAbs((r.orig || r).ab)},
+  resultat: {nom: "Résultat réel du match", groupe: "API-Football et absences",
+    groupes: () => [{k: "H", label: "Victoire domicile"}, {k: "D", label: "Match nul"}, {k: "A", label: "Victoire extérieur"}],
+    cle: r => { const m = /^(\d+)\s*-\s*(\d+)$/.exec(String(r.score_reel || "").trim()); return !m ? null : (+m[1] > +m[2] ? "H" : (+m[1] === +m[2] ? "D" : "A")); }},
   mois: {nom: "Mois du match", groupe: "Date",
     groupes: rows => [...new Set(rows.map(r => String(r.date || "").slice(0, 7)).filter(Boolean))].sort()
       .map(k => ({k, label: `${LIBRE_MOIS[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}`})),
@@ -10677,6 +10662,8 @@ let BT_LIBRE = (() => {
 })();
 let LIBRE_DATA = {};
 let LIBRE_DERNIER = null;
+const LIBRE_CTX = {pre: "btLibreMat", dataKey: "libre", etat: () => BT_LIBRE, setData: d => { LIBRE_DATA = d; },
+  avant: () => { libreRemplirListes(); marquerLibre(); }, get dernier() { return LIBRE_DERNIER; }, set dernier(v) { LIBRE_DERNIER = v; }};
 function libreSauver() { try { localStorage.setItem(LIBRE_LS, JSON.stringify(BT_LIBRE)); } catch (e) { /* confort seulement */ } }
 function libreRemplirListes() {
   const L = $("btLibreLignes"), C = $("btLibreColonnes");
@@ -10700,29 +10687,33 @@ function libreMetaPari(r) {
   return `${ligueLabel(r.pays, r.ligue)} · ${r.date} · ${r.categorie} · ${r.colonne} · cote ${r.cote}`
     + ` · espérance ${ev == null ? "non calculée" : evMatPct(ev)}`;
 }
-function renderLibreMatrix(rowsPage) {
-  const wrap = $("btLibreMatWrap");
+// Moteur commun (22/11/2026) : la matrice libre et la matrice « API-Football et absences » partagent ce rendu,
+// pour avoir exactement le même style (teinte par ROI, totaux, détail au clic, résumé). ctx : {pre (préfixe des
+// id), etat() → {lignes, colonnes, paris}, dataKey (attribut data- des cases), setData(agg), avant()}.
+function renderLibreMatrix(rowsPage) { return renderMatriceVariables(rowsPage, LIBRE_CTX); }
+function renderMatriceVariables(rowsPage, ctx) {
+  const E = ctx.etat();
+  const wrap = $(ctx.pre + "Wrap");
   if (!wrap) return;
-  libreRemplirListes();
-  marquerLibre();
-  const empty = $("btLibreMatEmpty"), legend = $("btLibreMatLegend"), note = $("btLibreMatNote"), bestEl = $("btLibreMatBest");
-  LIBRE_DERNIER = {rowsPage};
-  const VL = LIBRE_VARIABLES[BT_LIBRE.lignes] || LIBRE_VARIABLES.cote;
-  const VC = BT_LIBRE.colonnes === "aucune" ? null : (LIBRE_VARIABLES[BT_LIBRE.colonnes] || null);
+  if (ctx.avant) ctx.avant();
+  const empty = $(ctx.pre + "Empty"), legend = $(ctx.pre + "Legend"), note = $(ctx.pre + "Note"), bestEl = $(ctx.pre + "Best");
+  ctx.dernier = {rowsPage};
+  const VL = LIBRE_VARIABLES[E.lignes] || LIBRE_VARIABLES.cote;
+  const VC = E.colonnes === "aucune" ? null : (LIBRE_VARIABLES[E.colonnes] || null);
   const dedupActif = $("btDedup") ? $("btDedup").value === "1" : false;
   const opts = {};
   [VL, VC].forEach(v => { if (v && v.filtre) opts[v.filtre] = true; });
   // « Sans aucun filtre » : tous les paris candidats (btFiltered referenceComplete), lecture et réglages du modèle
   // compris ; « un pari par match » reste refait par case si la page l'applique.
-  const aucun = BT_LIBRE.paris === "aucun";
-  const relache = aucun || (BT_LIBRE.paris === "sans" && Object.keys(opts).length > 0);
+  const aucun = E.paris === "aucun";
+  const relache = aucun || (E.paris === "sans" && Object.keys(opts).length > 0);
   const rowsBruts = aucun ? btFiltered({referenceComplete: true, sansDedup: true})
     : relache ? btFiltered(Object.assign({sansDedup: true}, opts)) : rowsPage;
   if (!rowsBruts.length) {
     wrap.innerHTML = "";
     [legend, note, bestEl].forEach(el => { if (el) el.innerHTML = ""; });
     if (empty) empty.style.display = "";
-    LIBRE_DATA = {};
+    ctx.setData({});
     return;
   }
   if (empty) empty.style.display = "none";
@@ -10756,7 +10747,7 @@ function renderLibreMatrix(rowsPage) {
       coteMoy: c.rows.reduce((a, r) => a + r.cote, 0) / c.rows.length,
     });
   });
-  LIBRE_DATA = agg;
+  ctx.setData(agg);
   const lignes = gL.filter(g => agg[`${g.k}|*`]);
   const colonnes = VC ? gC.filter(g => agg[`*|${g.k}`]) : [];
   const teinteesToutes = Object.values(agg).filter(c => c.t !== "*" && (VC ? c.g !== "*" : true) && c.roi != null);
@@ -10775,7 +10766,7 @@ function renderLibreMatrix(rowsPage) {
       const alpha = (0.12 + intensite * 0.58).toFixed(2);
       style = ` style="background:${roi >= 0 ? `rgba(60,232,143,${alpha})` : `rgba(255,92,124,${alpha})`}"`;
     }
-    return `<td class="score-cell ${cls}${!c.fiable ? " score-cell-lowdata" : ""}${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-libre="${esc(key)}" tabindex="0" aria-label="Afficher le détail : ${esc(desc)} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)}">
+    return `<td class="score-cell ${cls}${!c.fiable ? " score-cell-lowdata" : ""}${neutre ? " score-cell-total" : ""}${coin ? " score-cell-coin" : ""}"${style} data-${ctx.dataKey}="${esc(key)}" tabindex="0" aria-label="Afficher le détail : ${esc(desc)} ; ${c.n} pari${c.n > 1 ? "s" : ""} ; gain net ${fmtEur(c.net)}">
         <div class="score-net${neutre ? " " + cls : ""}">${fmtEur(c.net)}</div>
         <div class="score-sub">${c.n} pari${c.n > 1 ? "s" : ""} · ${c.wins}✓</div>
         <div class="score-roi">${fmtPct(roi)}</div>
@@ -10822,7 +10813,7 @@ function renderLibreMatrix(rowsPage) {
       if (dedupActif) txt += " (un pari par match et par case)";
     } else {
       txt += " de la page";
-      if (BT_LIBRE.paris === "sans") txt += " (aucune des variables choisies n'a de filtre à retirer)";
+      if (E.paris === "sans") txt += " (aucune des variables choisies n'a de filtre à retirer)";
     }
     if (horsL) txt += ` · ${fr(horsL)} sans valeur pour « ${VL.nom} »`;
     if (horsC) txt += ` · ${fr(horsC)} sans valeur pour « ${VC.nom} »`;
