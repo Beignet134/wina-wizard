@@ -3292,6 +3292,7 @@ function cbkSynthese(v, ref, autres, ageMax) {
     dpAbsMax: mes.length ? Math.max.apply(null, mes.map(q => Math.abs(q.dp))) : null,
     dmMax: dms.length ? Math.max.apply(null, dms) : null,
     ecartMax,
+    seuilInhab: seuil,
   };
 }
 
@@ -3319,6 +3320,7 @@ function cbkLireFiltres(pref) {
     desacSeuil: parseFloat(lire(pref + "CbkDesacSeuil", "0.01")),
     match: lire(pref + "CbkMatch", ""),
     matchSeuil: parseFloat(lire(pref + "CbkMatchSeuil", "0.015")),
+    rang: lire(pref + "CbkRang", ""),          // 22/11/2026 : « egal » / « seul » (Winamax face aux autres sites)
   };
   // « Paris sans autre site » n'existe que dans DC rétrospectif : un pari passé qui n'a que la cote Winamax
   // (relevés des autres sites pas encore collectés) y est GARDÉ par défaut, et écarté si on le demande.
@@ -3326,15 +3328,40 @@ function cbkLireFiltres(pref) {
   f.ecarteSans = pref !== "u" && lire(pref + "CbkSans", "garder") === "ecarter";
   f.garder = pref !== "u" && !f.ecarteSans;
   f.actif = !!box && box.style.display !== "none"
-    && (f.ev > -900 || f.gain > 0 || !!f.desac || !!f.match || f.ecarteSans);
+    && (f.ev > -900 || f.gain > 0 || !!f.desac || !!f.match || !!f.rang || f.ecarteSans);
   return f;
 }
 // Motifs d'échec d'un pari (liste vide = il passe). `a` : résultat de cbkAnalyser (null si aucun autre site ne cote ce pari).
 function cbkAutreUtilisable(a) {
   return !!a && a.tous.some(q => q !== a.ref && q.retenue);
 }
+// Meilleure cote d'un AUTRE site qui compte pour « Winamax face aux autres sites » : relevé retenu (assez récent,
+// ou assez proche de celui de Winamax en rétrospectif), hors cotes inhabituelles (souvent périmées). null : aucun.
+function cbkMeilleurAutre(a) {
+  if (!a) return null;
+  let m = null;
+  a.tous.forEach(q => {
+    if (q === a.ref || !q.retenue || q.cote / a.ref.cote - 1 > a.seuilInhab) return;
+    if (!m || q.cote > m.cote) m = q;
+  });
+  return m;
+}
 function cbkFiltresEchecs(a, f, evRef) {
   const echecs = [];
+  // « Winamax face aux autres sites » (22/11/2026) : un pari qu'aucun autre site ne cote est gardé, sur les deux pages.
+  if (f.rang) {
+    const m = cbkMeilleurAutre(a);
+    if (m) {
+      const ref = a.ref.cote;
+      if (f.rang === "egal" && m.cote > ref * (1 + CBK_EGALITE)) {
+        echecs.push({sens: "fixe", texte: `${m.nom} paie ${cbkCote(m.cote)}, plus que Winamax (${cbkCote(ref)})`});
+      } else if (f.rang === "seul" && !(ref > m.cote * (1 + CBK_EGALITE))) {
+        echecs.push({sens: "fixe", texte: m.cote > ref * (1 + CBK_EGALITE)
+          ? `${m.nom} paie ${cbkCote(m.cote)}, plus que Winamax (${cbkCote(ref)})`
+          : `${m.nom} paie autant que Winamax (${cbkCote(m.cote)}) : Winamax n'est pas seul au meilleur prix`});
+      }
+    }
+  }
   // Aucun autre site utilisable : pas de relevé d'un autre site, ou relevé trop éloigné de celui de Winamax.
   const sansAutre = !cbkAutreUtilisable(a);
   if (f.ecarteSans && sansAutre) {
@@ -4688,7 +4715,7 @@ function attachPredTooltips() {
   const el=$(id); if (!el) return; el.addEventListener("input", renderUpcoming); el.addEventListener("change", renderUpcoming);
 });
 // Filtres « entre bookmakers » : le rendu relit les contrôles ; l'infobulle ouverte (calculée sur l'ancien état) est fermée.
-["uCbkEv","uCbkGain","uCbkDesac","uCbkDesacSeuil","uCbkMatch","uCbkMatchSeuil","uCbkEcart"].forEach(id => {
+["uCbkEv","uCbkGain","uCbkRang","uCbkDesac","uCbkDesacSeuil","uCbkMatch","uCbkMatchSeuil","uCbkEcart"].forEach(id => {
   const el = $(id);
   if (!el) return;
   const maj = () => { cbkFermerTip(); renderUpcoming(); };
@@ -5409,7 +5436,7 @@ cablerMenusDeroulants();
  ["btCalib","uCalib"], ["btMise","uMise2"]].forEach(([a,b]) => lierFiltres(a,b));
 
 // Filtres « entre bookmakers » : mêmes réglages sur « Paris à venir » (u…) et « DC rétrospectif » (bt…).
-["Ev", "Gain", "Desac", "DesacSeuil", "Match", "MatchSeuil", "Ecart"].forEach(s => {
+["Ev", "Gain", "Rang", "Desac", "DesacSeuil", "Match", "MatchSeuil", "Ecart"].forEach(s => {
   const bt = $("btCbk" + s);
   if (!bt) return;
   bt.addEventListener("change", () => renderBacktest());
