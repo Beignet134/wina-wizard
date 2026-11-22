@@ -2303,10 +2303,69 @@ async function copierTexte(texte, btn) {
 // que celle suivie à la main dans tout TEAM_ALIASES existant (ex: 'psg':
 // 'paris saint germain'). Reste une SUGGESTION : à relire avant de coller,
 // exactement comme pour les 116 alias ajoutés aujourd'hui à la main.
+// Garde-fous du 22/11/2026 : le « candidat » est le match le plus proche du même jour,
+// souvent un AUTRE match (Maccabi Haifa proposé pour Maccabi Petah Tikva, MC Alger pour
+// USM Alger, Dundee FC pour Dundee United…). Une suggestion n'est faite que si, des DEUX
+// côtés, les deux noms désignent visiblement le même club : chaque mot distinctif du nom
+// le plus court se retrouve dans l'autre (mot identique, début de mot « C. » = Corvinul,
+// ou initiales « CP » = Clube de Portugal), et le nom côté résultats n'est pas celui
+// d'un AUTRE club connu chez Winamax. Score 1 = noms déjà identiques pour le script
+// (alias présent) : rien à proposer, la cause est ailleurs (match reporté, résultat absent).
+const ALIAS_MOTS_GENERIQUES = new Set(["fc","sc","ac","cf","cd","ud","sd","club","de","da","do","du","la","le","el","al","the","fk","sk","if","ik","cs","sv","afc","1","f"]);
+function aliasMots(n) {
+  return n.split(" ").map(w => w === "utd" ? "united" : w).filter(w => w && !ALIAS_MOTS_GENERIQUES.has(w));
+}
+function aliasCanon(n) { return aliasMots(n).join(" "); }
+let ALIAS_CLUBS_WINAMAX = null;            // noms canoniques des équipes vues chez Winamax (calculé une fois)
+function aliasClubsWinamax() {
+  if (ALIAS_CLUBS_WINAMAX) return ALIAS_CLUBS_WINAMAX;
+  const vus = new Set(), noms = new Set();
+  (typeof BETS !== "undefined" ? BETS : []).forEach(b => {
+    if (!b || !b.match || vus.has(b.match)) return;
+    vus.add(b.match);
+    b.match.split(" - ").forEach(x => noms.add(aliasCanon(normalizeNameJs(x))));
+  });
+  ALIAS_CLUBS_WINAMAX = noms;
+  return noms;
+}
+function aliasMotsCouverts(court, long) {
+  const L = aliasMots(long);
+  if (!L.length) return false;
+  return aliasMots(court).every(w => {
+    if (L.includes(w)) return true;
+    if (L.some(x => x.length > w.length && x.startsWith(w))) return true;       // « c » -> corvinul
+    for (let i = 0; i + w.length <= L.length; i++) {                          // « cp » -> clube portugal
+      if (L.slice(i, i + w.length).map(x => x[0]).join("") === w) return true;
+    }
+    return false;
+  });
+}
+function aliasMemeClub(odds, res) {
+  const na = normalizeNameJs(odds), nb = normalizeNameJs(res);
+  if (!na || !nb) return false;
+  if (na === nb || aliasCanon(na) === aliasCanon(nb)) return true;
+  const ca = aliasCanon(na), cb = aliasCanon(nb);
+  if (cb && cb !== ca && aliasClubsWinamax().has(cb)) return false;              // autre club connu chez Winamax
+  // le nom qui a le moins de mots distinctifs doit se retrouver dans l'autre (« UD da Serra » -> « Uniao Serra »)
+  const ma = aliasMots(na).length, mb = aliasMots(nb).length;
+  const [court, long] = (ma < mb || (ma === mb && na.length <= nb.length)) ? [na, nb] : [nb, na];
+  return aliasMotsCouverts(court, long);
+}
+function raisonSansAlias(t) {
+  if (!t || !t.candidat || !t.ligue_ok) return null;
+  if (t.score >= 0.999) return "noms déjà identiques pour le script (alias présent) : la cause est ailleurs, match reporté ou résultat absent";
+  const m = t.candidat.match(/^(.+?) - (.+?)\s*\(/);
+  if (!m || !t.match || t.match.indexOf(" - ") < 0) return null;
+  const [homeOdds, awayOdds] = t.match.split(" - ", 2);
+  if (!aliasMemeClub(homeOdds, m[1]) || !aliasMemeClub(awayOdds, m[2]))
+    return "équipes différentes : sans doute un autre match du même jour, pas d'alias proposé";
+  return null;
+}
 function suggestionAliasEquipes(t) {
   if (!t.candidat || !t.match || t.match.indexOf(" - ") < 0) return null;
   const m = t.candidat.match(/^(.+?) - (.+?)\s*\(/);
   if (!m) return null;
+  if (raisonSansAlias(t)) return null;
   const [homeOdds, awayOdds] = t.match.split(" - ", 2);
   const [, homeRes, awayRes] = m;
   const lignes = [];
@@ -2434,6 +2493,8 @@ function renderUnmatchedItem(t, idx) {
         ? `<span class="match-check ok" title="Pays/ligue alignés entre cotes et résultats.">✓ même ligue</span>`
         : `<span class="match-check warn" title="Côté résultats : ${t.candidat_pays} · ${t.candidat_ligue} — différent de ${t.pays} · ${t.ligue}. Probablement un trou de couverture (aucun match de cette ligue ce jour-là) plutôt qu'un nom mal rapproché : à vérifier avant de faire confiance au nom suggéré ci-dessous.">⚠ ligue différente</span>`);
     suffix = ` <br>${checks}<br><span class="muted">↳ candidat le plus proche (score ${t.score}) : ${t.candidat}</span>`;
+    const sansAlias = raisonSansAlias(t);
+    if (sansAlias) suffix += `<br><span class="muted">↳ ${sansAlias}</span>`;
     // La ligue doit être alignée pour proposer un alias : un candidat
     // d'une autre compétition n'est presque jamais le bon match (voir
     // l'exemple Karlsruhe/Sankt Pauli II ci-dessus) — générer un alias
@@ -13353,6 +13414,14 @@ function rattLibellePari(r) {
   const m = /^(\d+) - (\d+)$/.exec(String(r.colonne));
   return m ? `Score exact ${m[1]}-${m[2]}` : String(r.colonne);
 }
+const RATT_JOURS_NOMS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+const RATT_MOIS_NOMS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
+                        "octobre", "novembre", "décembre"];
+function rattTitreJour(iso) {
+  const [a, m, j] = String(iso).split("-").map(Number);
+  const d = new Date(a, m - 1, j);
+  return `${RATT_JOURS_NOMS[d.getDay()]} ${j} ${RATT_MOIS_NOMS[m - 1]}`;
+}
 function renderRattrapage() {
   const liste = $("bkRattListe");
   if (!liste || typeof btFiltrerWinamax !== "function") return;
@@ -13366,38 +13435,50 @@ function renderRattrapage() {
   });
   const d0 = new Date(); d0.setDate(d0.getDate() - (parseInt(RATT_ETAT.jours, 10) || 3));
   const depuis = isoAujourdhui(d0);
-  let lignes = [];
-  try { lignes = btFiltrerWinamax({}); } catch (e) { lignes = []; }
-  lignes = lignes.filter(r => r.date >= depuis)
+  let periode = [];
+  try { periode = btFiltrerWinamax({}).filter(r => r.date >= depuis); } catch (e) { periode = []; }
+  // Compteur du titre : paris de la période pas encore cochés (visible panneau replié).
+  const nACocher = periode.filter(r => !PLACED.has(betKey(r))).length;
+  const compteur = $("bkRattCompteur");
+  if (compteur) {
+    compteur.hidden = false;
+    compteur.classList.toggle("is-vide", !nACocher);
+    compteur.textContent = nACocher ? `${nACocher} à cocher` : "rien à cocher";
+  }
+  const lignes = periode
     .filter(r => RATT_ETAT.mode === "tous" || !PLACED.has(betKey(r)) || RATT_COCHES_SESSION.has(betKey(r)))
     .sort((a, b) => (b.date + b.match).localeCompare(a.date + a.match));
   if (!lignes.length) {
-    liste.innerHTML = `<p class="muted">${RATT_ETAT.mode === "tous"
+    liste.innerHTML = `<p class="ratt-vide">${RATT_ETAT.mode === "tous"
       ? "Aucun pari de match terminé ne passe les filtres du DC rétrospectif sur cette période."
       : "Rien à rattraper : tous les paris de cette période sont déjà cochés, ou aucun ne passe les filtres."}</p>`;
     return;
   }
   const miseDefaut = parseFloat(($("uStake") || {}).value) || 5;
+  let jourCourant = null;
   liste.innerHTML = lignes.slice(0, 80).map(r => {
     const key = betKey(r), info = PLACED.get(key);
     const joue = !!info;
     const cote = info && info.cote != null ? info.cote : r.cote;
     const res = r.gagne === true ? `<span class="ratt-res gagne">Gagné</span>`
       : (r.gagne === false ? `<span class="ratt-res perdu">Perdu</span>` : "");
-    const [a, m, j] = String(r.date).split("-");
-    return `<div class="ratt-ligne${joue ? " is-joue" : ""}" data-key="${cbkEsc(key)}" data-cote="${r.cote}">
+    const cat = r.categorie === "Score exact" ? "cat-se" : (r.categorie === "Vainqueur du match" ? "cat-vm" : "");
+    const entete = r.date !== jourCourant ? `<p class="ratt-jour">${rattTitreJour(r.date)}</p>` : "";
+    jourCourant = r.date;
+    return `${entete}<div class="ratt-ligne ${cat}${joue ? " is-joue" : ""}" data-key="${cbkEsc(key)}" data-cote="${r.cote}">
       <div class="ratt-info">
-        <span class="ratt-titre">${cbkEsc(r.match)}${res}</span>
-        <span class="muted">${j}/${m} · ${cbkEsc(rattLibellePari(r))} · ${cbkEsc(r.categorie)} · cote Winamax ${fmtCoteFr(r.cote)}</span>
+        <span class="ratt-titre">${cbkEsc(r.match)}</span>
+        <span class="ratt-meta"><span class="ratt-pari">${cbkEsc(rattLibellePari(r))}</span>
+          <span>${cbkEsc(r.categorie)}</span><span class="ratt-cotew">Winamax ${fmtCoteFr(r.cote)}</span>${res}</span>
       </div>
       <div class="ratt-saisie">
-        <label><input type="checkbox" class="chk ratt-chk"${joue ? " checked" : ""}> Joué</label>
-        <label>Mise <input type="number" class="ratt-mise" min="0" step="0.5" value="${info && info.mise != null ? info.mise : miseDefaut}"> €</label>
-        <label>Cote obtenue <input type="text" class="ratt-cote" inputmode="decimal" autocomplete="off" value="${fmtCoteFr(cote)}"
-          data-touche="${info && info.cote_confirmee ? 1 : 0}" title="Cote réellement obtenue (corrige-la si elle avait bougé)"></label>
+        <label class="ratt-champ">Mise <input type="number" class="ratt-mise" min="0" step="0.5" value="${info && info.mise != null ? info.mise : miseDefaut}" aria-label="Mise (€)"> €</label>
+        <label class="ratt-champ">Cote <input type="text" class="ratt-cote" inputmode="decimal" autocomplete="off" value="${fmtCoteFr(cote)}"
+          data-touche="${info && info.cote_confirmee ? 1 : 0}" aria-label="Cote obtenue" title="Cote réellement obtenue (corrige-la si elle avait bougé)"></label>
+        <label class="ratt-joue"><input type="checkbox" class="ratt-chk"${joue ? " checked" : ""}><span>Joué</span></label>
       </div>
     </div>`;
-  }).join("") + (lignes.length > 80 ? `<p class="muted">… et ${lignes.length - 80} de plus : réduis la période.</p>` : "");
+  }).join("") + (lignes.length > 80 ? `<p class="ratt-vide">… et ${lignes.length - 80} de plus : réduis la période.</p>` : "");
 }
 function rattEnregistrer(ligne, cocher) {
   const key = ligne.dataset.key;
@@ -13417,6 +13498,12 @@ function rattEnregistrer(ligne, cocher) {
   const liste = $("bkRattListe");
   if (!liste) return;
   const sauver = () => { try { localStorage.setItem(RATT_LS, JSON.stringify(RATT_ETAT)); } catch (e) { /* sans stockage */ } };
+  // Replié par défaut ; l'état choisi (ouvert / replié) est retenu dans ce navigateur.
+  const panneau = $("bkRattPanel");
+  if (panneau) {
+    panneau.open = !!RATT_ETAT.ouvert;
+    panneau.addEventListener("toggle", () => { RATT_ETAT.ouvert = panneau.open; sauver(); });
+  }
   [["bkRattModes", "rattMode", "mode"], ["bkRattJours", "rattJours", "jours"]].forEach(([id, attr, cle]) => {
     const g = $(id);
     if (g) g.addEventListener("click", e => {
