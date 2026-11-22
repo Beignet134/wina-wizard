@@ -1855,6 +1855,9 @@ function activerOnglet(tab) {
   if (typeof majNavMobile === "function") majNavMobile();
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
   if (tab.dataset.page === "teams" && typeof renderTeams === "function") renderTeams();
+  if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
+  if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
+  if (tab.dataset.page === "dc" && typeof renderDcCalibration === "function") renderDcCalibration();
 }
 tabs.forEach((tab, index) => {
   tab.addEventListener("click", () => activerOnglet(tab));
@@ -2675,44 +2678,146 @@ function renderUnmatchedItem(t, idx) {
   rerender();
 })();
 
-/* ================= PAGE 2 — DIXON-COLES ================= */
-let vSortKey = "ev", vSortDir = -1;
-function vFilters() { return { cat:$("vCat").value, edge:parseFloat($("vEdge").value), search:$("vSearch").value.trim().toLowerCase() }; }
+/* ================= PAGE 2 — DIXON-COLES (refaite le 22/11/2026) ================= */
+let vSortKey = "ev", vSortDir = -1, vLimite = 100;
+const DC_ISSUE = {homeWin: "Victoire domicile", draw: "Match nul", awayWin: "Victoire extérieur"};
+const dcV = (x, d = 1) => x == null || !isFinite(x) ? "—" : x.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const dcS = (x, d = 0) => x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + dcV(Math.abs(x), d);
+function vFilters() {
+  return {cat: $("vCat").value, edge: parseFloat($("vEdge").value), search: $("vSearch").value.trim().toLowerCase(),
+          quand: $("vQuand") ? $("vQuand").value : "tous"};
+}
 function vFiltered() {
   const f = vFilters();
-  return VALUE_BETS.filter(v => (!f.cat||v.categorie===f.cat) && (v.edge>=f.edge) && (!f.search||v.match.toLowerCase().includes(f.search)));
+  return VALUE_BETS.filter(v => (!f.cat || v.categorie === f.cat) && (v.edge >= f.edge)
+    && (!f.search || v.match.toLowerCase().includes(f.search))
+    && (f.quand === "tous" || (f.quand === "avenir" ? v.is_upcoming : !v.is_upcoming)));
+}
+// Paris passés du test (avec résultat) servant à mesurer la fiabilité du modèle.
+function dcCalRows() {
+  const src = $("dcCalSrc") ? $("dcCalSrc").value : "tous", cat = $("dcCalCat") ? $("dcCalCat").value : "";
+  let rows;
+  try { rows = src === "filtres" ? btFiltered() : BT_ROWS; } catch (e) { rows = []; }
+  return rows.filter(r => r.gagne != null && r.p_model != null && (!cat || r.categorie === cat));
+}
+const DC_TR_PROBA = [[0, .05, "0–5 %"], [.05, .10, "5–10 %"], [.10, .20, "10–20 %"], [.20, .35, "20–35 %"], [.35, .50, "35–50 %"], [.50, .70, "50–70 %"], [.70, 1.01, "70–100 %"]];
+const DC_TR_EDGE = [[-9, 0, "négatif"], [0, .05, "0 à 5 %"], [.05, .10, "5 à 10 %"], [.10, .15, "10 à 15 %"], [.15, 9, "15 % et plus"]];
+function dcAgg(sub) {
+  const n = sub.length;
+  if (!n) return null;
+  let p = 0, g = 0, ev = 0, pr = 0;
+  sub.forEach(r => { p += r.p_model; g += r.gagne ? 1 : 0; ev += r.ev || 0; pr += r.profit; });
+  return {n, p: p / n * 100, g: g / n * 100, ev: ev / n * 100, roi: pr / n * 100};
+}
+let DC_CAL = null;
+function renderDcCalibration() {
+  const rows = dcCalRows();
+  const zP = $("dcCalProba"), zE = $("dcCalEdge");
+  if (!zP || !zE) return;
+  const tot = dcAgg(rows);
+  DC_CAL = tot;
+  if (!tot || tot.n < 30) {
+    zP.innerHTML = zE.innerHTML = '<p class="muted">Pas assez de paris passés pour mesurer la fiabilité avec ce choix.</p>';
+    renderDcVerdict();
+    return;
+  }
+  const fiable = n => n >= 100 ? "" : n >= 30 ? " · peu de paris" : " · trop peu de paris";
+  zP.innerHTML = `<div class="dc-cal-lignes">` + DC_TR_PROBA.map(([lo, hi, lab]) => {
+    const a = dcAgg(rows.filter(r => r.p_model >= lo && r.p_model < hi));
+    if (!a || a.n < 10) return "";
+    const ecart = a.g - a.p, cl = Math.abs(ecart) < 1.5 ? "" : ecart > 0 ? "pos" : "neg";
+    const g = Math.min(a.p, a.g), d = Math.max(a.p, a.g);
+    return `<div class="dc-cal-ligne" title="${a.n.toLocaleString("fr-FR")} paris : ${dcV(a.p)} % annoncé, ${dcV(a.g)} % réalisé">
+      <span class="dc-cal-lbl">${lab}</span>
+      <span class="dc-cal-piste"><span class="dc-cal-ecart ${cl}" style="left:${g.toFixed(1)}%;width:${Math.max(0.4, d - g).toFixed(1)}%"></span>
+        <span class="dc-pt annonce" style="left:${a.p.toFixed(1)}%"></span><span class="dc-pt reel ${cl}" style="left:${a.g.toFixed(1)}%"></span></span>
+      <span class="dc-cal-val"><strong class="${cl}">${dcS(ecart, 1)} pt</strong><small>${dcV(a.p, 0)} → ${dcV(a.g, 0)} % · ${a.n.toLocaleString("fr-FR")}${fiable(a.n)}</small></span>
+    </div>`;
+  }).join("") + `</div><div class="dc-cal-leg"><span><i class="dc-pt annonce"></i>annoncé</span><span><i class="dc-pt reel"></i>réalisé</span><span>échelle 0 à 100 %</span></div>`;
+  const tr = DC_TR_EDGE.map(([lo, hi, lab]) => ({lab, a: dcAgg(rows.filter(r => r.edge >= lo && r.edge < hi))})).filter(x => x.a && x.a.n >= 10);
+  const span = Math.max(40, ...tr.map(x => Math.min(150, Math.max(Math.abs(x.a.ev), Math.abs(x.a.roi)))));
+  const barre = v => {
+    const c = Math.max(-span, Math.min(span, v)), w = Math.abs(c) / span * 50;
+    return `<span class="mg-roi-piste"><span class="${v >= 0 ? "pos" : "neg"}" style="${v >= 0 ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${Math.max(0.8, w).toFixed(1)}%"></span></span>`;
+  };
+  zE.innerHTML = tr.map(x => `<div class="dc-edge">
+      <div class="dc-edge-tete"><strong>Edge ${x.lab}</strong><span class="muted">${x.a.n.toLocaleString("fr-FR")} paris${fiable(x.a.n)}</span></div>
+      <div class="mg-roi-ligne"><span class="mg-roi-lbl">Annoncé</span>${barre(x.a.ev)}<span class="mg-roi-val ${x.a.ev >= 0 ? "pos" : "neg"}">${dcS(x.a.ev)} %</span></div>
+      <div class="mg-roi-ligne"><span class="mg-roi-lbl">Réel</span>${barre(x.a.roi)}<span class="mg-roi-val ${x.a.roi >= 0 ? "pos" : "neg"}">${dcS(x.a.roi)} %</span></div>
+    </div>`).join("");
+  renderDcVerdict();
+}
+function renderDcVerdict() {
+  const vb = $("dcVerdict");
+  if (!vb) return;
+  const av = VALUE_BETS.filter(v => v.is_upcoming).length;
+  let txt = `<strong>L'essentiel.</strong> ${VALUE_BETS.length.toLocaleString("fr-FR")} value bets repérés, dont ${av.toLocaleString("fr-FR")} sur des matchs à venir.`;
+  const t = DC_CAL;
+  if (t && t.n >= 30) {
+    const src = $("dcCalSrc") && $("dcCalSrc").value === "filtres" ? "tes paris filtrés" : "les paris passés du test";
+    const ecart = t.p - t.g;
+    if (ecart > 1.5) txt += ` Sur ${src} (${t.n.toLocaleString("fr-FR")}), le modèle annonçait en moyenne ${dcV(t.p, 0)} % de réussite pour ${dcV(t.g, 0)} % réalisés : il est <strong>trop optimiste d'environ ${dcV(ecart, 0)} points</strong>.`;
+    else if (ecart < -1.5) txt += ` Sur ${src} (${t.n.toLocaleString("fr-FR")}), le modèle annonçait ${dcV(t.p, 0)} % de réussite pour ${dcV(t.g, 0)} % réalisés : il a plutôt été prudent.`;
+    else txt += ` Sur ${src} (${t.n.toLocaleString("fr-FR")}), le modèle annonçait ${dcV(t.p, 0)} % de réussite pour ${dcV(t.g, 0)} % réalisés : il est bien calibré en moyenne.`;
+    txt += ` Espérance annoncée ${dcS(t.ev)} %, gain réel ${dcS(t.roi)} % par mise.`;
+  }
+  vb.innerHTML = txt; vb.style.display = "";
 }
 function renderValueBets() {
   const stake = parseFloat($("vStake").value) || 0;
-  let rows = vFiltered().slice().sort((a,b) => {
-    let va=a[vSortKey], vb=b[vSortKey];
-    if (va<vb) return -vSortDir; if (va>vb) return vSortDir; return 0;
+  let rows = vFiltered().slice().sort((a, b) => {
+    let va = a[vSortKey], vb = b[vSortKey];
+    if (va < vb) return -vSortDir; if (va > vb) return vSortDir; return 0;
   });
-  const n = rows.length, mise = n*stake;
-  let evTotal=0, edgeSum=0;
-  rows.forEach(v => { evTotal += v.ev*stake; edgeSum += v.edge; });
-  $("vNb").textContent = n;
+  document.querySelectorAll("#vTable th.sortable").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.vk === vSortKey);
+    th.setAttribute("aria-sort", th.dataset.vk === vSortKey ? (vSortDir > 0 ? "ascending" : "descending") : "none");
+  });
+  const n = rows.length, mise = n * stake;
+  let evTotal = 0, edgeSum = 0, nMatchs = new Set();
+  rows.forEach(v => { evTotal += v.ev * stake; edgeSum += v.edge; nMatchs.add(v.match + v.date); });
+  $("vNb").textContent = n.toLocaleString("fr-FR");
+  $("vNbSous").textContent = n ? `sur ${nMatchs.size.toLocaleString("fr-FR")} match${nMatchs.size > 1 ? "s" : ""}` : "";
   $("vMise").textContent = mise.toLocaleString("fr-FR") + " €";
-  const evEl=$("vEv"); evEl.textContent=fmtEur(evTotal); evEl.className="v "+(evTotal>=0?"pos":"neg");
-  $("vEdgeAvg").textContent = n>0 ? fmtPct(edgeSum/n) : "—";
-  $("vBody").innerHTML = rows.slice(0,400).map(v => `
-    <tr>
-      <td data-label="Espérance" class="num ${v.ev>=0?'pos':'neg'}"><strong>${fmtPct(v.ev)}</strong></td>
-      <td data-label="Date">${v.date}</td><td data-label="Match">${v.match}</td><td data-label="Ligue"><span class="pill">${ligueLabel(v.pays, v.ligue)}</span></td>
-      <td data-label="Pari">${v.colonne}</td><td data-label="Cote" class="num">${v.cote.toFixed(2)}</td>
-      <td data-label="Proba modèle" class="num">${(v.p_model*100).toFixed(1)} %</td>
-      <td data-label="Proba cote" class="num muted">${(v.p_implied*100).toFixed(1)} %</td>
+  const evEl = $("vEv"); evEl.textContent = fmtEur(evTotal); evEl.className = "dc-big " + (evTotal >= 0 ? "pos" : "neg");
+  // espérance « corrigée » : ce que les paris passés de même type et même edge ont réellement rapporté
+  const reel = $("vEvReal");
+  if (reel) {
+    let rows2 = [];
+    try { rows2 = BT_ROWS.filter(r => r.gagne != null && (!$("vCat").value || r.categorie === $("vCat").value) && r.edge >= parseFloat($("vEdge").value)); } catch (e) {}
+    const a = rows2.length >= 50 ? dcAgg(rows2) : null;
+    reel.innerHTML = a ? `<br>les paris passés comparables ont rapporté <strong class="${a.roi >= 0 ? "pos" : "neg"}">${dcS(a.roi)} %</strong> par mise` : "";
+  }
+  $("vEdgeAvg").textContent = n > 0 ? fmtPct(edgeSum / n) : "—";
+  $("vBody").innerHTML = rows.slice(0, vLimite).map(v => {
+    const pm = v.p_model * 100, pi = v.p_implied * 100;
+    const lam = `<span class="dc-sub">${ligueLabel(v.pays, v.ligue)}${v.lam_home != null && v.lam_away != null ? ` · buts attendus ${dcV(v.lam_home)} – ${dcV(v.lam_away)}` : ""}</span>`;
+    const irreal = v.ev > 1 ? ` <span class="dc-warn" title="Une espérance de plus de 100 % vient presque toujours d'une cote très haute que le modèle surestime">à prendre avec recul</span>` : "";
+    return `<tr>
+      <td data-label="Espérance" class="num ${v.ev >= 0 ? "pos" : "neg"}"><strong>${fmtPct(v.ev)}</strong>${irreal}</td>
+      <td data-label="Date">${fmtJourComplet ? fmtJourComplet(v.date) : v.date}</td>
+      <td data-label="Match">${v.match}${lam}</td>
+      <td data-label="Pari">${DC_ISSUE[v.colonne] || v.colonne}</td>
+      <td data-label="Cote" class="num">${v.cote.toFixed(2)}</td>
+      <td data-label="Proba modèle"><span class="dc-proba"><span class="dc-proba-piste"><span class="dc-proba-m" style="width:${Math.min(100, pm).toFixed(1)}%"></span><span class="dc-proba-c" style="left:${Math.min(100, pi).toFixed(1)}%"></span></span><span class="dc-proba-txt"><strong>${dcV(pm)} %</strong><small>cote ${dcV(pi)} %</small></span></span></td>
       <td data-label="Edge" class="num pos">${fmtPct(v.edge)}</td>
-    </tr>`).join("") || `<tr><td colspan="9" class="muted">Aucun value bet avec ces filtres${VALUE_BETS.length? "." : " (historique encore insuffisant)."}</td></tr>`;
-  $("vRowInfo").textContent = `${n} value bet(s)` + (n>400?" (400 affichés)":"");
+    </tr>`;
+  }).join("") || `<tr><td colspan="7" class="muted">Aucun value bet avec ces filtres${VALUE_BETS.length ? "." : " (historique encore insuffisant)."}</td></tr>`;
+  $("vRowInfo").textContent = `${n.toLocaleString("fr-FR")} value bet${n > 1 ? "s" : ""}` + (n > vLimite ? ` (${vLimite} affichés)` : "");
+  const bp = $("vPlus");
+  if (bp) { bp.hidden = n <= vLimite; bp.textContent = `Afficher ${Math.min(100, n - vLimite)} de plus`; }
 }
-["vStake","vCat","vEdge","vSearch"].forEach(id => {
-  const el=$(id); el.addEventListener("input", renderValueBets); el.addEventListener("change", renderValueBets);
+["vStake", "vCat", "vEdge", "vSearch", "vQuand"].forEach(id => {
+  const el = $(id); if (!el) return;
+  const f = () => { vLimite = 100; renderValueBets(); };
+  el.addEventListener("input", f); el.addEventListener("change", f);
 });
+if ($("vPlus")) $("vPlus").addEventListener("click", () => { vLimite += 100; renderValueBets(); });
+["dcCalSrc", "dcCalCat"].forEach(id => { const el = $(id); if (el) el.addEventListener("change", renderDcCalibration); });
 document.querySelectorAll("#vTable th.sortable").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.dataset.vk;
-    if (vSortKey===k) vSortDir*=-1; else { vSortKey=k; vSortDir=(k==="ev"||k==="edge"||k==="p_model")?-1:1; }
+    if (vSortKey === k) vSortDir *= -1; else { vSortKey = k; vSortDir = (k === "ev" || k === "edge" || k === "p_model") ? -1 : 1; }
     renderValueBets();
   });
 });
@@ -13050,115 +13155,194 @@ function observerLargeurHisto(C) {
   el.addEventListener("change", maj);
 })();
 
-/* ================= PAGE — MARGES DU BOOKMAKER ================= */
+/* ================= PAGE — MARGES DU BOOKMAKER (refaite le 22/11/2026) ================= */
 const MARGE = WIZARD_DATA.margin_data || {};
-
+// Familles affichées en grand ; les seuils Plus/Moins ont leur propre graphique.
+const MG_FAMILLES = [
+  {cle: "Vainqueur du match", gid: "1x2", desc: "Victoire, nul ou défaite (1X2)."},
+  {cle: "Plus/Moins 2.5 buts", gid: "ou2.5", desc: "Plus ou moins de 2,5 buts, le seuil le plus joué.", nom: "Plus/Moins 2,5 buts"},
+  {cle: "Les 2 équipes marquent", gid: "btts", desc: "Oui ou non."},
+  {cle: "Intervalle de buts", gid: "", desc: "Nombre total de buts par tranche."},
+  {cle: "Score exact", gid: "score", desc: "Le score final exact, une trentaine d'issues."},
+];
 function niveauMarge(m) {
-  // Seuils fondés sur ce qu'un modèle peut réalistement rattraper.
   if (m < 10) return ["abordable", "lvl-ok"];
   if (m < 20) return ["difficile", "lvl-warn"];
   if (m < 30) return ["très difficile", "lvl-bad"];
-  return ["imbattable", "lvl-bad"];
+  return ["très cher", "lvl-bad"];
 }
-
+const mgVirg = (x, d = 1) => x.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const mgPerte = m => m / (100 + m) * 100;        // marge en % -> perte moyenne en % de la mise, sans avantage
+// Écart de marge des autres sites face à Winamax (données de la page Bookmakers) : duel Winamax / site, mêmes
+// matchs, relevés à moins de 6 h d'écart, 30 derniers jours. Renvoie {idGroupe: [{site, d (points), nm}]}.
+// On montre un écart et non la marge brute : le score exact n'y est mesuré que sur 25 cases.
+function mgMargesAutresSites() {
+  const out = {};
+  try {
+    CMPB_AUTRES.forEach(site => {
+      const mode = Object.keys(CMPB_MODES).find(m => CMPB_MODES[m].length === 2 && CMPB_MODES[m][1] === site);
+      if (!mode) return;
+      cmpbMarges({mode, ecart: 360, jours: 30, cat: ""}).forEach(L => {
+        if (L.nm < 20 || L.moy[site] == null || !isFinite(L.moy[site])) return;
+        (out[L.g.id] = out[L.g.id] || []).push({site, d: (L.moy[site] - L.moy.winamax) * 100, nm: L.nm});
+      });
+    });
+  } catch (e) { /* page Bookmakers indisponible : on s'en passe */ }
+  return out;
+}
+let MG_PARIS = null;
+function mgParisFiltres() {
+  try { return btFiltered().filter(r => r.gagne != null); } catch (e) { return []; }
+}
 function renderMarges() {
   const marches = MARGE.par_marche || [];
   const wrap = $("margeMarcheList");
   if (!wrap) return;
-
-  if (!marches.length) {
+  const parNom = new Map(marches.map(m => [m.marche, m]));
+  MG_PARIS = mgParisFiltres();
+  const autres = mgMargesAutresSites();
+  const familles = MG_FAMILLES.map(f => Object.assign({}, f, {m: parNom.get(f.cle)})).filter(f => f.m)
+    .sort((a, b) => a.m.marge - b.m.marge);
+  if (!familles.length) {
     wrap.innerHTML = '<p class="muted">Pas encore de cotes analysables.</p>';
   } else {
-    // Échelle ABSOLUE (0 à 40 %) plutôt que relative au maximum observé :
-    // une barre doit signifier la même chose d'un run à l'autre, sinon le
-    // marché le plus cher paraît toujours "plein" même s'il est raisonnable.
-    const ECHELLE_MAX = 40;
-    wrap.innerHTML = marches.map(m => {
-      const [label, cls] = niveauMarge(m.marge);
-      const pct = Math.max(3, Math.min(100, (m.marge / ECHELLE_MAX) * 100));
-      return `
-        <div class="marge-row">
-          <div class="marge-head">
-            <span class="marge-nom">${m.marche}</span>
-            <span class="marge-val ${cls}">${m.marge.toFixed(1)} %</span>
-          </div>
-          <div class="marge-bar"><span class="${cls}" style="width:${pct.toFixed(0)}%"></span></div>
-          <div class="marge-meta">${m.n} marché(s) · ${m.n_issues} issues · <strong>${label}</strong></div>
-        </div>`;
+    const ECHELLE_MAX = 60;
+    wrap.innerHTML = familles.map(f => {
+      const m = f.m, [label, cls] = niveauMarge(m.marge);
+      const pct = Math.max(2, Math.min(100, m.marge / ECHELLE_MAX * 100));
+      const lst = (autres[f.gid] || []).slice().sort((a, b) => a.d - b.d);
+      const cmp = lst.length ? `<div class="mg-autres"><span class="mg-autres-titre">Marge des autres sites, mêmes matchs</span>` + lst.map(a => {
+          const d = a.d, cl = d < -0.3 ? "pos" : d > 0.3 ? "neg" : "muted";
+          return `<span class="mg-site" title="${a.nm} matchs comparés sur 30 jours">${CMPB_NOMS[a.site] || a.site} `
+            + `<strong class="${cl}">${Math.abs(d) <= 0.3 ? "pareil" : (d > 0 ? "+" : "−") + mgVirg(Math.abs(d)) + " pt"}</strong></span>`;
+        }).join("") + `</div>` : "";
+      return `<article class="mg-marche">
+        <div class="mg-marche-tete"><span class="mg-nom">${f.nom || m.marche}</span><span class="marge-tag ${cls}">${label}</span></div>
+        <p class="mg-desc">${f.desc}</p>
+        <div class="mg-chiffres">
+          <div><span class="mg-big ${cls}">${mgVirg(m.marge)} %</span><span class="mg-lbl">marge Winamax</span></div>
+          <div><span class="mg-big">−${mgVirg(mgPerte(m.marge), 0)} €</span><span class="mg-lbl">pour 100 € misés au hasard</span></div>
+        </div>
+        <div class="marge-bar"><span class="${cls}" style="width:${pct.toFixed(0)}%"></span></div>
+        <div class="mg-meta">${m.n.toLocaleString("fr-FR")} matchs mesurés</div>${cmp}
+      </article>`;
     }).join("");
-
-    const best = marches[0];
     const note = $("margeMarcheNote");
-    if (note) {
-      let txt = `Le marché le plus abordable est <strong>${best.marche}</strong> (${best.marge.toFixed(1)} %).`;
-      if (MARGE.ecart_marches != null && MARGE.ecart_marches > 15) {
-        txt += ` L'écart avec le plus cher atteint ${MARGE.ecart_marches} points : le choix du marché ` +
-               `est de loin la décision qui pèse le plus sur vos chances.`;
-      }
-      note.innerHTML = txt;
+    if (note && familles.length >= 2) {
+      const a = familles[0], b = familles[familles.length - 1];
+      note.innerHTML = `Entre <strong>${a.nom || a.m.marche}</strong> et <strong>${b.nom || b.m.marche}</strong>, la perte moyenne d'un pari `
+        + `sans avantage passe de ${mgVirg(mgPerte(a.m.marge), 0)} € à ${mgVirg(mgPerte(b.m.marge), 0)} € pour 100 €.`;
     }
   }
-
+  mgRenderParis(parNom);
+  mgRenderSeuils(marches);
   renderMargeLigues();
-
-  // Verdict global : marché vs ligue, qu'est-ce qui compte le plus ?
+  // Verdict en tête
   const vb = $("margeVerdict");
-  if (vb && MARGE.ecart_marches != null && MARGE.ecart_ligues != null) {
-    const rapport = MARGE.ecart_ligues > 0 ? (MARGE.ecart_marches / MARGE.ecart_ligues) : null;
-    let txt = `<strong>Ce qui compte le plus.</strong> L'écart de marge entre marchés est de ` +
-      `${MARGE.ecart_marches} points, contre ${MARGE.ecart_ligues} points entre ligues`;
-    if (rapport && rapport > 2) {
-      txt += ` — soit environ ${rapport.toFixed(0)} fois plus. Choisir le bon <em>marché</em> ` +
-             `pèse donc beaucoup plus lourd que choisir la bonne <em>ligue</em>.`;
-    } else {
-      txt += `. Les deux leviers sont d'importance comparable.`;
+  if (vb && familles.length) {
+    const vm = parNom.get("Vainqueur du match"), se = parNom.get("Score exact");
+    let txt = `<strong>L'essentiel.</strong> `;
+    if (vm) txt += `Le Vainqueur du match coûte ${mgVirg(vm.marge)} % de marge (≈ ${mgVirg(mgPerte(vm.marge), 0)} € perdus pour 100 € misés au hasard)`;
+    if (se) txt += `${vm ? ", le Score exact " : "Le Score exact coûte "}${mgVirg(se.marge)} % (≈ ${mgVirg(mgPerte(se.marge), 0)} €) : il faut une très grosse avance sur Winamax pour y gagner`;
+    txt += ".";
+    if (MARGE.ecart_marches != null && MARGE.ecart_ligues != null && MARGE.ecart_ligues > 0) {
+      txt += ` L'écart entre types de pari (${mgVirg(MARGE.ecart_marches)} points) pèse bien plus que l'écart entre ligues (${mgVirg(MARGE.ecart_ligues)} points).`;
     }
     vb.innerHTML = txt;
     vb.style.display = "";
   }
 }
-
+function mgRenderParis(parNom) {
+  const zone = $("mgParis");
+  if (!zone) return;
+  const rows = MG_PARIS || [];
+  const cats = {};
+  rows.forEach(r => {
+    const c = cats[r.categorie] || (cats[r.categorie] = {n: 0, net: 0, mise: 0, mm: 0, nm: 0});
+    const s = btStakeFor(r);
+    c.n++; c.net += r.profit * s; c.mise += s;
+    if (r.marge_marche != null) { c.mm += r.marge_marche * 100; c.nm++; }
+  });
+  const liste = Object.entries(cats).sort((a, b) => b[1].n - a[1].n);
+  if (!liste.length) { zone.innerHTML = '<p class="muted">Aucun pari terminé avec les filtres actuels de DC rétrospectif.</p>'; return; }
+  const span = 60;   // échelle des barres : ±60 % de ROI
+  const barre = v => {
+    const w = Math.min(50, Math.abs(v) / span * 50);
+    return `<span class="mg-roi-piste"><span class="${v >= 0 ? "pos" : "neg"}" style="${v >= 0 ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${Math.max(0.8, w).toFixed(1)}%"></span></span>`;
+  };
+  zone.innerHTML = liste.map(([cat, c]) => {
+    const marge = c.nm ? c.mm / c.nm : null;
+    const hasard = marge != null ? -mgPerte(marge) : null;
+    const roi = c.mise ? c.net / c.mise * 100 : 0;
+    const ecart = hasard != null ? roi - hasard : null;
+    return `<div class="mg-pari">
+      <div class="mg-pari-tete"><strong>${cat}</strong><span class="muted">${c.n} paris${marge != null ? ` · marge moyenne ${mgVirg(marge)} %` : ""}</span></div>
+      <div class="mg-roi-ligne"><span class="mg-roi-lbl">Au hasard</span>${hasard != null ? barre(hasard) : ""}<span class="mg-roi-val neg">${hasard != null ? "−" + mgVirg(-hasard, 0) + " %" : "—"}</span></div>
+      <div class="mg-roi-ligne"><span class="mg-roi-lbl">Ton résultat</span>${barre(roi)}<span class="mg-roi-val ${roi >= 0 ? "pos" : "neg"}">${roi >= 0 ? "+" : "−"}${mgVirg(Math.abs(roi), 0)} %</span></div>
+      <p class="mg-pari-bilan">${fmtEur(c.net)} au total${ecart != null ? ` · <strong class="${ecart >= 0 ? "pos" : "neg"}">${ecart >= 0 ? "+" : "−"}${mgVirg(Math.abs(ecart), 0)} points</strong> par rapport à un pari au hasard` : ""}</p>
+    </div>`;
+  }).join("");
+}
+function mgRenderSeuils(marches) {
+  const zone = $("mgSeuils");
+  if (!zone) return;
+  const seuils = marches.map(m => { const x = /^Plus\/Moins ([\d.]+) buts$/.exec(m.marche); return x && m.n >= 100 ? {s: parseFloat(x[1]), m} : null; })
+    .filter(Boolean).sort((a, b) => a.s - b.s);
+  if (!seuils.length) { $("mgSeuilsPanel").style.display = "none"; return; }
+  $("mgSeuilsPanel").style.display = "";
+  const max = Math.max(20, ...seuils.map(x => x.m.marge));
+  const meilleur = seuils.reduce((a, b) => b.m.marge < a.m.marge ? b : a);
+  zone.innerHTML = `<div class="mg-seuils" role="list">` + seuils.map(x => {
+    const [label, cls] = niveauMarge(x.m.marge);
+    const h = Math.max(4, x.m.marge / max * 100);
+    return `<div class="mg-seuil${x === meilleur ? " best" : ""}" role="listitem" title="Plus/Moins ${mgVirg(x.s, x.s % 1 ? 1 : 0)} buts : ${mgVirg(x.m.marge)} % de marge (${label}), ${x.m.n.toLocaleString("fr-FR")} matchs">
+      <span class="mg-seuil-val">${mgVirg(x.m.marge)}</span>
+      <span class="mg-seuil-col"><span class="${cls}" style="height:${h.toFixed(0)}%"></span></span>
+      <span class="mg-seuil-lbl">${mgVirg(x.s, x.s % 1 ? 1 : 0)}</span></div>`;
+  }).join("") + `</div><p class="muted" style="margin:.6rem 0 0; font-size:.8rem">Marge en % par seuil de buts. Le moins cher :
+    <strong>${mgVirg(meilleur.s, meilleur.s % 1 ? 1 : 0)} buts</strong> (${mgVirg(meilleur.m.marge)} %).</p>`;
+}
 function renderMargeLigues() {
   const ligues = MARGE.par_ligue || [];
   const body = $("margeLigueBody");
   if (!body) return;
-
   if (!ligues.length) {
-    body.innerHTML = `<tr><td colspan="5" class="muted">Pas encore assez de matchs par ligue ` +
-      `(minimum ${MARGE.min_matchs_ligue ?? 8}). Ce classement se remplira au fil de la collecte.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="muted">Pas encore assez de matchs par ligue (minimum ${MARGE.min_matchs_ligue ?? 8}).</td></tr>`;
     $("margeLigueInfo").textContent = "";
     return;
   }
-
+  const parLigue = new Map();
+  (MG_PARIS || []).forEach(r => {
+    const k = ligueKey(r.pays, r.ligue), c = parLigue.get(k) || {n: 0, net: 0, mise: 0};
+    const s = btStakeFor(r); c.n++; c.net += r.profit * s; c.mise += s; parLigue.set(k, c);
+  });
   const q = ($("margeSearch").value || "").trim().toLowerCase();
+  const vue = $("margeVue") ? $("margeVue").value : "toutes";
   const limit = parseInt($("margeLimit").value);
-  let rows = ligues.filter(l =>
-    !q || l.ligue.toLowerCase().includes(q) || (l.pays || "").toLowerCase().includes(q));
+  let rows = ligues.map((l, rang) => Object.assign({rang: rang + 1}, l)).filter(l =>
+    (!q || l.ligue.toLowerCase().includes(q) || (l.pays || "").toLowerCase().includes(q)) &&
+    (vue !== "paris" || parLigue.has(ligueKey(l.pays, l.ligue))));
   const total = rows.length;
   if (limit > 0) rows = rows.slice(0, limit);
-
-  body.innerHTML = rows.map((l, i) => {
-    const [label, cls] = niveauMarge(l.marge);
+  else if (limit < 0) rows = rows.slice(limit).reverse();
+  const max = Math.max(20, ...ligues.map(l => l.marge));
+  body.innerHTML = rows.map(l => {
+    const [label, cls] = niveauMarge(l.marge), p = parLigue.get(ligueKey(l.pays, l.ligue));
     return `<tr>
-      <td data-label="#" class="num muted">${i + 1}</td>
+      <td data-label="#" class="num muted">${l.rang}</td>
       <td data-label="Ligue"><strong>${ligueLabel(l.pays, l.ligue)}</strong></td>
-      <td data-label="Marge" class="num ${cls}"><strong>${l.marge.toFixed(1)} %</strong></td>
+      <td data-label="Marge 1X2"><span class="mg-lig-marge"><span class="mg-lig-bar"><span class="${cls}" style="width:${Math.max(3, l.marge / max * 100).toFixed(0)}%"></span></span>
+        <strong class="${cls}">${mgVirg(l.marge)} %</strong></span></td>
       <td data-label="Matchs" class="num muted">${l.n}</td>
-      <td data-label="Niveau"><span class="marge-tag ${cls}">${label}</span></td>
+      <td data-label="Tes paris" class="num">${p ? `<strong class="${p.net >= 0 ? "pos" : "neg"}">${fmtEur(p.net)}</strong><span class="eq-sub">${p.n} pari${p.n > 1 ? "s" : ""}</span>` : '<span class="muted">—</span>'}</td>
     </tr>`;
   }).join("") || `<tr><td colspan="5" class="muted">Aucune ligue ne correspond.</td></tr>`;
-
-  let info = `${rows.length} ligue(s) affichée(s) sur ${total}`;
-  if (MARGE.mediane_ligues != null) info += ` · médiane ${MARGE.mediane_ligues.toFixed(1)} %`;
-  // Avertissement sur la fiabilité quand les échantillons sont petits
-  const petits = ligues.filter(l => l.n < 20).length;
-  if (petits > ligues.length / 2) {
-    info += " · ⚠ échantillons encore réduits, ce classement peut bouger";
-  }
+  let info = `${rows.length} ligue${rows.length > 1 ? "s" : ""} affichée${rows.length > 1 ? "s" : ""} sur ${total}`;
+  if (MARGE.mediane_ligues != null) info += ` · marge médiane ${mgVirg(MARGE.mediane_ligues)} %`;
+  if (ligues.filter(l => l.n < 20).length > ligues.length / 2) info += " · échantillons encore réduits, ce classement peut bouger";
   $("margeLigueInfo").textContent = info;
 }
-
-["margeSearch", "margeLimit"].forEach(id => {
+["margeSearch", "margeLimit", "margeVue"].forEach(id => {
   const el = $(id);
   if (el) { el.addEventListener("input", renderMargeLigues); el.addEventListener("change", renderMargeLigues); }
 });
@@ -16094,6 +16278,8 @@ function initMobile() {
 /* ---------- Init ---------- */
 refresh();
 renderValueBets();
+// Fiabilité du modèle : à l'ouverture de l'onglet (relit les paris filtrés) ; au démarrage si la page est affichée.
+if ($("page-dc") && $("page-dc").classList.contains("active")) { try { renderDcCalibration(); } catch (e) { console.error("Page Dixon-Coles :", e); } }
 renderUpcoming();
 renderBankroll();
 // Même raison pour l'onglet Simulation (Monte Carlo) : sans cet appel il
@@ -16104,120 +16290,224 @@ if (typeof runMonteCarlo === "function") runMonteCarlo();
 if ($("page-teams") && $("page-teams").classList.contains("active")) renderTeams();
 renderOverview();
 try { initMobile(); } catch (e) { console.error("initMobile", e); }
-/* ================= PAGE — TIRS CADRÉS (récap) ================= */
-
-let tiSortKey = "n", tiSortDir = -1;
-
-function tirsCell(val, isDefense) {
-  if (val == null) return '<td class="num muted">—</td>';
-  const good = isDefense ? val < 1 : val > 1;
-  const cls = good ? "pos" : (val === 1 ? "" : "neg");
-  return `<td class="num ${cls}">${val.toFixed(2)}</td>`;
+/* ================= PAGE — TIRS CADRÉS (refaite le 22/11/2026) ================= */
+const TIRS = WIZARD_DATA.shots_coverage || {};
+let tiSortKey = "n", tiSortDir = -1, tiLigTout = false, TI_PARIS = null, tiEqLimite = 100;
+const tiV = (x, d = 2) => x == null || !isFinite(x) ? "—" : x.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const tiSigne = (x, d = 2) => x == null ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + tiV(Math.abs(x), d);
+function tiParisFiltres() {
+  try { return btFiltered().filter(r => r.gagne != null); } catch (e) { return []; }
 }
-
+// Ligues de tes paris. Les noms API et Winamax diffèrent souvent (« La Liga » / « LaLiga », « Ligue 1 » /
+// « Ligue 1 McDonald's® », « Etats-Unis » / « États-Unis ») : comparaison sans accents ni ponctuation, même pays,
+// avec un nom contenu dans l'autre ; pour une compétition internationale (pays vide), le nom seul.
+const tiNorm = x => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function tiLiguesParis() {
+  const parPays = new Map(), noms = new Set();
+  (TI_PARIS || []).forEach(r => {
+    const p = tiNorm(r.pays), n = tiNorm(r.ligue);
+    if (!parPays.has(p)) parPays.set(p, new Set());
+    parPays.get(p).add(n); noms.add(n);
+  });
+  const proche = (a, b) => a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)));
+  return l => {
+    const n = tiNorm(l.ligue);
+    if (!l.pays) return noms.has(n);
+    const set = parPays.get(tiNorm(l.pays));
+    return !!set && [...set].some(x => proche(x, n));
+  };
+}
 function renderTirsPage() {
-  const c = WIZARD_DATA.shots_coverage || {};
-  const board = $("tirsScoreboard");
-  const repartWrap = $("tirsRepartWrap");
+  const c = TIRS;
+  const board = $("tirsScoreboard"), repartWrap = $("tirsRepartWrap");
   if (!board || !repartWrap) return;
-
+  TI_PARIS = tiParisFiltres();
   if (!c.n_matchs) {
-    board.innerHTML = '<p class="muted">Aucune donnée de tirs cadrés collectée pour l\'instant — '
-      + 'lancez api_football_collect.py, puis relancez wina_wizard.py.</p>';
+    board.innerHTML = '<p class="muted">Aucune donnée de tirs cadrés collectée pour l\'instant. Lance api_football_collect.py, puis wina_wizard.py.</p>';
     repartWrap.innerHTML = "";
-    $("tirsBody").innerHTML = '<tr><td colspan="5" class="muted">En attente de données.</td></tr>';
+    ["tiParisPanel", "tiLiguesPanel", "tiFinPanel"].forEach(id => { if ($(id)) $(id).style.display = "none"; });
+    $("tirsBody").innerHTML = '<tr><td colspan="6" class="muted">En attente de données.</td></tr>';
     $("tirsCount").textContent = "";
     return;
   }
-
-  const seuil = c.seuil || 6;
-  const periode = c.periode ? `du ${c.periode[0]} au ${c.periode[1]}` : "période inconnue";
-  const pret = c.equipes_pretes || 0;
-  const pct = c.n_equipes ? (pret / c.n_equipes * 100) : 0;
-
-  board.innerHTML = `
-    <div class="scoreboard">
-      <div class="score-tile">
-        <div class="st-label">Matchs avec tirs cadrés</div>
-        <div class="st-value">${c.n_matchs}</div>
-        <div class="st-sub">${periode}</div>
-      </div>
-      <div class="score-tile">
-        <div class="st-label">Équipes couvertes</div>
-        <div class="st-value">${c.n_equipes}</div>
-        <div class="st-sub">${c.moyenne_ligue != null ? c.moyenne_ligue + " tirs cadrés / équipe / match" : "—"}</div>
-      </div>
-      <div class="score-tile">
-        <div class="st-label">Équipes exploitables</div>
-        <div class="st-value ${pret ? 'pos' : 'neg'}">${pret}</div>
-        <div class="st-sub">au moins ${seuil} rencontres (${pct.toFixed(0)} %)</div>
-      </div>
+  const seuil = c.seuil || 6, pret = c.equipes_pretes || 0;
+  const pct = c.n_equipes ? pret / c.n_equipes * 100 : 0;
+  const fmtD = d => { try { return new Date(d + "T12:00:00").toLocaleDateString("fr-FR", {month: "short", year: "numeric"}); } catch (e) { return d; } };
+  const tcMatch = c.moyenne_ligue != null ? c.moyenne_ligue * 2 : null;
+  board.innerHTML = `<div class="ti-tuiles">
+      <div class="ti-tuile"><span class="ti-big">${c.n_matchs.toLocaleString("fr-FR")}</span><span class="ti-lbl">matchs avec tirs cadrés${c.periode ? `<br>${fmtD(c.periode[0])} → ${fmtD(c.periode[1])}` : ""}</span></div>
+      <div class="ti-tuile"><span class="ti-big">${pret.toLocaleString("fr-FR")}<small> / ${c.n_equipes.toLocaleString("fr-FR")}</small></span><span class="ti-lbl">équipes exploitables (${seuil} matchs ou plus)</span>
+        <span class="ti-jauge"><span style="width:${pct.toFixed(0)}%"></span></span></div>
+      <div class="ti-tuile"><span class="ti-big">${tiV(tcMatch, 1)}</span><span class="ti-lbl">tirs cadrés par match<br>(${tiV(c.moyenne_ligue, 1)} par équipe)</span></div>
+      ${c.conversion != null ? `<div class="ti-tuile"><span class="ti-big">${tiV(c.conversion, 0)} %</span><span class="ti-lbl">des tirs cadrés finissent au fond<br>(1 sur ${tiV(100 / c.conversion, 1)})</span></div>` : ""}
     </div>`;
-
-  // Répartition : combien d'équipes à 1, 2, 3... rencontres.
-  const rep = c.repartition || {};
-  const ordre = ["1", "2", "3", "4", "5", "6+"];
-  const maxEq = Math.max(1, ...ordre.map(k => rep[k] || 0));
-  repartWrap.innerHTML = `<div class="cote-rows">` + ordre.filter(k => rep[k]).map(k => {
-    const n = rep[k];
-    const okSeuil = k === "6+";
-    return `
-      <div class="cote-row">
-        <div class="cote-label">${k} match${k === "1" ? "" : "s"}</div>
-        <div class="cote-track">
-          <div class="cote-axis" style="left:0"></div>
-          <div class="cote-fill ${okSeuil ? 'pos' : 'neg'}"
-               style="left:0; width:${(n / maxEq * 92).toFixed(1)}%"></div>
-        </div>
-        <div class="cote-val ${okSeuil ? 'pos' : ''}">${n}</div>
-        <div class="cote-meta"><span class="muted">équipe${n > 1 ? "s" : ""}${okSeuil ? " — exploitables" : ""}</span></div>
-      </div>`;
-  }).join("") + `</div>`;
-
+  // Répartition des équipes selon le nombre de matchs collectés : une barre empilée
+  const rep = c.repartition || {}, ordre = ["1", "2", "3", "4", "5", "6+"];
+  const tot = ordre.reduce((t, k) => t + (rep[k] || 0), 0) || 1;
+  repartWrap.innerHTML = `<p class="ti-sous">Équipes selon le nombre de matchs collectés</p>
+    <div class="ti-pile" role="img" aria-label="Répartition des équipes selon le nombre de matchs collectés">` + ordre.filter(k => rep[k]).map((k, i) =>
+      `<span class="ti-pile-seg ${k === "6+" ? "ok" : "n" + i}" style="flex:${rep[k]}" title="${k} match${k === "1" ? "" : "s"} : ${rep[k]} équipes"></span>`).join("") + `</div>
+    <div class="ti-pile-leg">` + ordre.filter(k => rep[k]).map((k, i) =>
+      `<span><i class="ti-pile-seg ${k === "6+" ? "ok" : "n" + i}"></i>${k} match${k === "1" ? "" : "s"} <strong>${rep[k]}</strong></span>`).join("") + `</div>`;
+  tiRenderParis();
+  tiRenderLigues();
+  tiRenderFinition();
   renderTirsTable();
+  tiRenderVerdict();
 }
-
+function tiRenderVerdict() {
+  const c = TIRS, vb = $("tirsVerdict");
+  if (!vb) return;
+  const lig = (c.ligues || []).filter(l => l.conv != null && l.n >= 60);
+  let txt = `<strong>L'essentiel.</strong> ${(c.equipes_pretes || 0).toLocaleString("fr-FR")} équipes ont assez de matchs pour des forces fiables.`;
+  if (c.conversion != null) txt += ` Un tir cadré sur ${tiV(100 / c.conversion, 0)} finit au fond (${tiV(c.conversion, 0)} %).`;
+  if (lig.length >= 4) {
+    const hi = lig.reduce((a, b) => b.conv > a.conv ? b : a), lo = lig.reduce((a, b) => b.conv < a.conv ? b : a);
+    txt += ` Selon la ligue, cela va de ${tiV(lo.conv, 0)} % (${ligueLabel(lo.pays, lo.ligue)}) à ${tiV(hi.conv, 0)} % (${ligueLabel(hi.pays, hi.ligue)}).`;
+  }
+  const p = TI_PARIS ? TI_PARIS.filter(r => r.ecart_finition != null) : [];
+  const roiDe = sub => { let n = 0, m = 0; sub.forEach(r => { const st = btStakeFor(r); n += r.profit * st; m += st; }); return m ? n / m * 100 : null; };
+  const bas = p.filter(r => r.ecart_finition < -0.5), haut = p.filter(r => r.ecart_finition > 0.5);
+  if (bas.length >= 8 && haut.length >= 8) {
+    const rb = roiDe(bas), rh = roiDe(haut);
+    if (rb - rh > 30) txt += ` Tes paris gagnent surtout dans les matchs où il y a eu moins de buts que les tirs ne le laissaient prévoir (${tiSigne(rb, 0)} %) et perdent quand il y en a eu plus (${tiSigne(rh, 0)} %) : ils misent en pratique sur des matchs peu prolifiques.`;
+    else if (rh - rb > 30) txt += ` Tes paris gagnent surtout dans les matchs où il y a eu plus de buts que les tirs ne le laissaient prévoir (${tiSigne(rh, 0)} %) et perdent dans les matchs maladroits (${tiSigne(rb, 0)} %) : ils ont besoin de réussite offensive.`;
+    else txt += ` La réussite devant le but pèse peu sur tes paris : ROI ${tiSigne(rb, 0)} % dans les matchs maladroits, ${tiSigne(rh, 0)} % dans les matchs prolifiques.`;
+  }
+  vb.innerHTML = txt; vb.style.display = "";
+}
+function tiRenderParis() {
+  const zone = $("tiParis");
+  if (!zone) return;
+  const tous = TI_PARIS || [], src = tous.filter(r => r.ecart_finition != null);
+  if (src.length < 5) {
+    zone.innerHTML = `<p class="muted">${src.length ? `Seulement ${src.length} de tes paris ont` : "Aucun de tes paris n'a"} les tirs cadrés du match.
+      La collecte quotidienne en ajoute à chaque passage ; il en faut au moins 5 pour afficher ce bilan.</p>`;
+    return;
+  }
+  const groupes = [
+    {t: "Moins de buts que les tirs", d: "le match a manqué de réussite (au moins ½ but sous ce que valaient les tirs)", f: r => r.ecart_finition < -0.5, cl: "neg"},
+    {t: "Buts conformes aux tirs", d: "à ½ but près", f: r => r.ecart_finition >= -0.5 && r.ecart_finition <= 0.5, cl: ""},
+    {t: "Plus de buts que les tirs", d: "réussite au-dessus de la normale", f: r => r.ecart_finition > 0.5, cl: "pos"},
+  ];
+  const data = groupes.map(g => {
+    const sub = src.filter(g.f);
+    let net = 0, mise = 0, gagnes = 0, att = 0;
+    sub.forEach(r => { const st = btStakeFor(r); net += r.profit * st; mise += st; if (r.gagne) gagnes++; att += r.p_model || 0; });
+    return Object.assign({n: sub.length, net, roi: mise ? net / mise * 100 : 0, taux: sub.length ? gagnes / sub.length * 100 : 0,
+      attendu: sub.length ? att / sub.length * 100 : 0}, g);
+  });
+  const span = Math.max(40, ...data.map(d => Math.abs(d.roi)));
+  zone.innerHTML = `<div class="ti-groupes">` + data.map(d => {
+    const w = Math.min(50, Math.abs(d.roi) / span * 50);
+    return `<div class="ti-groupe${d.n ? "" : " vide"}">
+      <div class="ti-groupe-tete"><strong>${d.t}</strong><span class="muted">${d.n} pari${d.n > 1 ? "s" : ""}${d.n && d.n < 20 ? " · peu de paris" : ""}</span></div>
+      <p class="ti-groupe-desc">${d.d}</p>
+      ${d.n ? `<div class="ti-roi"><span class="mg-roi-piste"><span class="${d.roi >= 0 ? "pos" : "neg"}" style="${d.roi >= 0 ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${Math.max(0.8, w).toFixed(1)}%"></span></span>
+        <strong class="${d.roi >= 0 ? "pos" : "neg"}">${tiSigne(d.roi, 0)} %</strong></div>
+      <p class="ti-groupe-bilan">${fmtEur(d.net)} · ${tiV(d.taux, 0)} % gagnés pour ${tiV(d.attendu, 0)} % attendus</p>` : `<p class="muted" style="font-size:.78rem">Aucun pari.</p>`}
+    </div>`;
+  }).join("") + `</div>
+    <p class="muted" style="margin:.8rem 0 0; font-size:.8rem">Mesuré sur ${src.length} de tes ${tous.length} paris (ceux dont le match a ses tirs cadrés).
+    Un pari perdu dans un match « en manque de réussite » n'était pas forcément mal choisi : le jeu allait dans le bon sens, la finition non.
+    Attention, l'effet dépend du pari : un « Moins de buts » profite justement d'un match maladroit.</p>`;
+}
+function tiRenderLigues() {
+  const body = $("tiLigBody");
+  if (!body) return;
+  const ligues = (TIRS.ligues || []).slice();
+  if (!ligues.length) { $("tiLiguesPanel").style.display = "none"; return; }
+  $("tiLiguesPanel").style.display = "";
+  const tri = $("tiLigTri").value, vue = $("tiLigVue").value, estParis = tiLiguesParis();
+  ligues.forEach(l => { l._p = estParis(l); });
+  ligues.sort((a, b) => (vue === "paris" ? (b._p - a._p) : 0) || ((b[tri] ?? -1) - (a[tri] ?? -1)));
+  const maxTc = Math.max(...ligues.map(l => l.tc));
+  const moyConv = TIRS.conversion;
+  const lim = tiLigTout ? ligues.length : 15;
+  body.innerHTML = ligues.slice(0, lim).map(l => `<tr${l._p ? ' class="ti-mien"' : ""}>
+      <td data-label="Ligue"><strong>${ligueLabel(l.pays, l.ligue)}</strong>${l._p ? '<span class="ti-tag">tes paris</span>' : ""}</td>
+      <td data-label="Tirs cadrés / match"><span class="ti-cellbar"><span class="ti-bar"><span style="width:${(l.tc / maxTc * 100).toFixed(0)}%"></span></span><strong>${tiV(l.tc, 1)}</strong></span></td>
+      <td data-label="Conversion" class="num ${moyConv != null && l.conv != null ? (l.conv > moyConv + 2 ? "pos" : l.conv < moyConv - 2 ? "neg" : "") : ""}">${l.conv != null ? tiV(l.conv, 0) + " %" : "—"}</td>
+      <td data-label="Précision" class="num">${l.prec != null ? tiV(l.prec, 0) + " %" : "—"}</td>
+      <td data-label="Buts / match" class="num">${l.buts != null ? "≈ " + tiV(l.buts, 1) : "—"}</td>
+      <td data-label="Matchs" class="num muted">${l.n}</td>
+    </tr>`).join("");
+  const nP = ligues.filter(l => l._p).length;
+  $("tiLigInfo").textContent = `${Math.min(lim, ligues.length)} ligue${ligues.length > 1 ? "s" : ""} sur ${ligues.length}` + (nP ? ` · ${nP} où tu as parié` : "")
+    + (moyConv != null ? ` · conversion moyenne ${tiV(moyConv, 0)} %` : "");
+  const btn = $("tiLigPlus");
+  btn.hidden = ligues.length <= 15;
+  btn.textContent = tiLigTout ? "N'afficher que 15 ligues" : `Tout afficher (${ligues.length})`;
+}
+function tiRenderFinition() {
+  const zone = $("tiFinition");
+  if (!zone) return;
+  const fin = (TIRS.periode || [])[1] || "";
+  const limite = fin ? new Date(new Date(fin + "T12:00:00").getTime() - 150 * 86400000).toISOString().slice(0, 10) : "";
+  const eq = (TIRS.equipes || []).filter(e => e.fin != null && (e.nb || 0) >= 15 && (!limite || (e.dm || "") >= limite));
+  if (eq.length < 6) { $("tiFinPanel").style.display = "none"; return; }
+  $("tiFinPanel").style.display = "";
+  const haut = eq.slice().sort((a, b) => b.fin - a.fin).slice(0, 8);
+  const bas = eq.slice().sort((a, b) => a.fin - b.fin).slice(0, 8);
+  const max = Math.max(...haut.concat(bas).map(e => Math.abs(e.fin)), 0.3);
+  const ligne = e => {
+    const xg = e.xgp != null && (e.nx || 0) >= 8 ? e.bp - e.xgp : null;
+    return `<li class="ti-fin-ligne">
+      <div class="ti-fin-nom"><strong>${e.equipe}</strong><span>${ligueLabel(e.pays, e.ligue) || "—"}</span></div>
+      <div class="ti-fin-val"><span class="ti-fin-bar"><span class="${e.fin >= 0 ? "pos" : "neg"}" style="width:${(Math.abs(e.fin) / max * 100).toFixed(0)}%"></span></span>
+        <strong class="${e.fin >= 0 ? "pos" : "neg"}">${tiSigne(e.fin)}</strong></div>
+      <div class="ti-fin-det">≈ ${tiV(e.bp, 1)} but${e.bp >= 2 ? "s" : ""} pour ${tiV(e.tcp, 1)} tirs cadrés par match${xg != null ? ` · ${tiSigne(xg)} face aux xG` : ""} · ${e.nb} matchs</div>
+    </li>`;
+  };
+  zone.innerHTML = `<div class="ti-fin-col"><h3 class="ti-fin-titre pos">Marquent plus que leurs tirs</h3><ol>${haut.map(ligne).join("")}</ol></div>
+    <div class="ti-fin-col"><h3 class="ti-fin-titre neg">Marquent moins que leurs tirs</h3><ol>${bas.map(ligne).join("")}</ol></div>`;
+}
+function tiCellForce(val, tpm, isDef) {
+  if (val == null) return '<td class="muted">—</td>';
+  const bon = isDef ? val < 1 : val > 1, ecart = Math.max(-0.6, Math.min(0.6, val - 1));
+  const w = Math.abs(ecart) / 0.6 * 50;
+  const cls = Math.abs(val - 1) < 0.03 ? "" : bon ? "pos" : "neg";
+  return `<td data-label="${isDef ? "Défense" : "Attaque"}"><span class="ti-force"><span class="ti-force-piste"><span class="${cls || "neutre"}" style="${ecart >= 0 ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${Math.max(1, w).toFixed(1)}%"></span></span>
+    <strong class="${cls}">${tiV(val)}</strong></span><span class="eq-sub">${tiV(tpm, 1)} ${isDef ? "concédés" : "cadrés"} / match</span></td>`;
+}
 function renderTirsTable() {
-  const c = WIZARD_DATA.shots_coverage || {};
-  const equipes = c.equipes || [];
+  const equipes = TIRS.equipes || [];
   const ligue = $("tiLigue").value;
   const search = $("tiSearch").value.trim().toLowerCase();
   const minM = parseInt($("tiMinMatches").value) || 0;
-
-  // ligueKey(pays, ligue) plutôt que le seul nom de ligue : "Serie A",
-  // "Primera División" ou "Super League" existent dans plusieurs pays sans
-  // aucun rapport entre eux (voir _index_pays_equipes côté Python) — filtrer
-  // sur le nom seul mélangerait ces championnats homonymes.
+  // ligueKey(pays, ligue) plutôt que le seul nom : "Serie A" ou "Super League" existent dans plusieurs pays.
   let rows = equipes.filter(e =>
     (!ligue || ligueKey(e.pays, e.ligue) === ligue) &&
     (!search || e.equipe.toLowerCase().includes(search)) &&
-    e.n >= minM
-  );
+    e.n >= minM);
   rows.sort((a, b) => {
     let va = a[tiSortKey], vb = b[tiSortKey];
     if (va == null) va = -Infinity; if (vb == null) vb = -Infinity;
     if (typeof va === "string") return tiSortDir * va.localeCompare(vb);
     return tiSortDir * (va - vb);
   });
-
-  $("tirsBody").innerHTML = rows.slice(0, 500).map(e => `
+  document.querySelectorAll("#tirsTable th.sortable").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.tik === tiSortKey);
+    th.setAttribute("aria-sort", th.dataset.tik === tiSortKey ? (tiSortDir > 0 ? "ascending" : "descending") : "none");
+  });
+  $("tirsBody").innerHTML = rows.slice(0, tiEqLimite).map(e => `
     <tr>
       <td><strong>${e.equipe}</strong></td>
       <td><span class="pill">${ligueLabel(e.pays, e.ligue) || e.ligue || "—"}</span></td>
-      ${tirsCell(e.attaque, false)}
-      ${tirsCell(e.defense, true)}
+      ${tiCellForce(e.attaque, e.tcp != null ? e.tcp : e.attaque * (TIRS.moyenne_ligue || 0), false)}
+      ${tiCellForce(e.defense, e.tcc != null ? e.tcc : e.defense * (TIRS.moyenne_ligue || 0), true)}
+      <td class="num ${e.fin == null ? "muted" : e.fin > 0.1 ? "pos" : e.fin < -0.1 ? "neg" : ""}">${e.fin == null ? "—" : tiSigne(e.fin)}${e.fin != null ? '<span class="eq-sub">but / match</span>' : ""}</td>
       <td class="num muted">${e.n}</td>
-    </tr>`).join("") || `<tr><td colspan="5" class="muted">Aucune équipe ne correspond à ces filtres.</td></tr>`;
-  $("tirsRowInfo").textContent = `${rows.length} équipe(s)` + (rows.length > 500 ? " (500 affichées)" : "");
-  $("tirsCount").textContent = `— ${equipes.length} équipe(s) au total`;
+    </tr>`).join("") || `<tr><td colspan="6" class="muted">Aucune équipe ne correspond à ces filtres.</td></tr>`;
+  $("tirsRowInfo").textContent = `${rows.length.toLocaleString("fr-FR")} équipe${rows.length > 1 ? "s" : ""}` + (rows.length > tiEqLimite ? ` (${tiEqLimite} affichées)` : "");
+  const bp = $("tiEqPlus");
+  if (bp) { bp.hidden = rows.length <= tiEqLimite; bp.textContent = `Afficher ${Math.min(100, rows.length - tiEqLimite)} de plus`; }
+  $("tirsCount").textContent = `— ${equipes.length.toLocaleString("fr-FR")} équipes au total`;
 }
-
 (function initTirsFilters() {
-  const c = WIZARD_DATA.shots_coverage || {};
-  // Une entrée par (pays, ligue) — pas par seul nom de ligue — pour ne pas
-  // fusionner deux championnats homonymes de pays différents dans le menu.
+  // Une entrée par (pays, ligue) — pas par seul nom de ligue — pour ne pas fusionner deux championnats homonymes.
   const parKey = new Map();
-  (c.equipes || []).forEach(e => {
+  (TIRS.equipes || []).forEach(e => {
     if (!e.ligue) return;
     const k = ligueKey(e.pays, e.ligue);
     if (!parKey.has(k)) parKey.set(k, e);
@@ -16233,13 +16523,16 @@ function renderTirsTable() {
 })();
 ["tiLigue", "tiSearch", "tiMinMatches"].forEach(id => {
   const el = $(id);
-  el.addEventListener("input", renderTirsTable);
-  el.addEventListener("change", renderTirsTable);
+  el.addEventListener("input", () => { tiEqLimite = 100; renderTirsTable(); });
+  el.addEventListener("change", () => { tiEqLimite = 100; renderTirsTable(); });
 });
+if ($("tiEqPlus")) $("tiEqPlus").addEventListener("click", () => { tiEqLimite += 100; renderTirsTable(); });
+["tiLigTri", "tiLigVue"].forEach(id => { const el = $(id); if (el) el.addEventListener("change", tiRenderLigues); });
+if ($("tiLigPlus")) $("tiLigPlus").addEventListener("click", () => { tiLigTout = !tiLigTout; tiRenderLigues(); });
 document.querySelectorAll("#tirsTable th.sortable").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.dataset.tik;
-    if (tiSortKey === k) tiSortDir *= -1; else { tiSortKey = k; tiSortDir = (k === "equipe" || k === "ligue") ? 1 : -1; }
+    if (tiSortKey === k) tiSortDir *= -1; else { tiSortKey = k; tiSortDir = (k === "equipe" || k === "ligue" || k === "defense") ? 1 : -1; }
     renderTirsTable();
   });
 });
@@ -16247,9 +16540,11 @@ document.querySelectorAll("#tirsTable th.sortable").forEach(th => {
 initBacktestSectionNav();
 renderBacktest();
 drawShotsCoverage();
-renderTirsPage();
-renderMarges();
+// Tirs cadrés : rendu à l'ouverture de l'onglet (relit les paris filtrés) ; au démarrage seulement si la page est affichée.
+if ($("page-tirs") && $("page-tirs").classList.contains("active")) { try { renderTirsPage(); } catch (e) { console.error("Page Tirs :", e); } }
 try { renderBookmakers(); } catch (e) { console.error("Page Bookmakers :", e); }
+// Marges : après Bookmakers (comparaison aux autres sites) ; sinon rendue à l'ouverture de l'onglet.
+if ($("page-marges") && $("page-marges").classList.contains("active")) { try { renderMarges(); } catch (e) { console.error("Page Marges :", e); } }
 
 /* ================= SYNCHRONISATION DES PARIS JOUÉS (GitHub) =================
    Ajoutée le 24/10/2026. Avant : « Marquer comme joué » ne gardait la coche que
