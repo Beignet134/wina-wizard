@@ -1858,6 +1858,7 @@ function activerOnglet(tab) {
   if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
   if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
   if (tab.dataset.page === "dc" && typeof renderDcCalibration === "function") renderDcCalibration();
+  if (tab.dataset.page === "bilan" && typeof renderBilan === "function") { try { renderBilan(); } catch (e) { console.error("Bilan :", e); } }
   if (tab.dataset.page === "bookmakers" && typeof cmpbRenderTesParis === "function") { try { cmpbRenderTesParis(); } catch (e) { /* rien */ } }
 }
 tabs.forEach((tab, index) => {
@@ -16796,6 +16797,7 @@ function initMobile() {
       if (typeof drawCalibration === "function") drawCalibration();
     },
     bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
+    bilan: () => { if (typeof blDessiner === "function") blDessiner(); },
     // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
     montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
   };
@@ -16834,13 +16836,330 @@ function initMobile() {
   window.majNavMobile();
 }
 
+
+/* ================= PAGE — BILAN DES FILTRES (23/11/2026) =================
+   Refonte de DC rétrospectif sur une page à part : mêmes paris (btFiltered, mêmes mises btStakeFor), avec le
+   gain cumulé en vedette et ce qu'on peut en croire. Rien n'est recalculé côté modèle. */
+let BL_VUE = "euros", BL_DATA = null;
+const blE = x => (x < 0 ? "−" : x > 0 ? "+" : "") + Math.abs(x).toLocaleString("fr-FR", {maximumFractionDigits: 1, minimumFractionDigits: Math.abs(x) < 100 ? 1 : 0}) + " €";
+const blP = (x, d = 1) => x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d}) + " %";
+const blD = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "";
+const BL_MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+function blMarge(r) { const m = r.marge_marche; return m != null && isFinite(m) && m > -0.5 ? m : 0.13; }
+function blQuantile(a, q) { const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.floor(q * s.length)))]; }
+function blCalculer() {
+  const rows = btFiltered().slice().sort((a, b) => String(a.date + (a.kickoff || "")).localeCompare(String(b.date + (b.kickoff || ""))));
+  const n = rows.length;
+  if (!n) return {n: 0, rows};
+  let cum = 0, att = 0, mz = 0, vz = 0, mise = 0, gagnes = 0, attendus = 0, coteS = 0;
+  const pts = rows.map(r => {
+    const st = btStakeFor(r), q = (1 / r.cote) / (1 + blMarge(r));
+    cum += r.profit * st; att += (r.ev || 0) * st; mise += st;
+    mz += st * (q * r.cote - 1); vz += st * st * r.cote * r.cote * q * (1 - q);
+    gagnes += r.gagne ? 1 : 0; attendus += r.p_model || 0; coteS += r.cote;
+    return {d: r.date, c: cum, a: att, lo: mz - 1.2816 * Math.sqrt(vz), hi: mz + 1.2816 * Math.sqrt(vz), r, st};
+  });
+  // plus haut et plus forte baisse
+  let pk = 0, pkI = -1, dd = 0, ddA = -1, ddB = -1, mxI = 0;
+  pts.forEach((p, i) => {
+    if (p.c > pk) { pk = p.c; pkI = i; }
+    if (pk - p.c > dd) { dd = pk - p.c; ddA = pkI; ddB = i; }
+    if (p.c > pts[mxI].c) mxI = i;
+  });
+  // coupe apprentissage / test : la même que « Le réglage tient-il hors échantillon ? »
+  const coupe = Math.floor(n / 2);
+  const roiDe = sub => { let a = 0, b = 0; sub.forEach(r => { const st = btStakeFor(r); a += r.profit * st; b += st; }); return b ? a / b : null; };
+  // mois
+  const mois = new Map();
+  rows.forEach(r => { const k = r.date.slice(0, 7); const o = mois.get(k) || {k, n: 0, net: 0, mise: 0}; const st = btStakeFor(r); o.n++; o.net += r.profit * st; o.mise += st; mois.set(k, o); });
+  // tirages : sans avantage (cotes sans marge) et si le modèle est juste
+  const N = Math.max(2000, Math.min(20000, Math.floor(4e6 / n)));
+  const sansAv = new Float64Array(N), modele = new Float64Array(N);
+  const qs = rows.map(r => (1 / r.cote) / (1 + blMarge(r))), sts = rows.map(r => btStakeFor(r));
+  for (let k = 0; k < N; k++) {
+    let a = 0, b = 0;
+    for (let i = 0; i < n; i++) {
+      const gain = sts[i] * (rows[i].cote - 1), perte = -sts[i];
+      a += Math.random() < qs[i] ? gain : perte;
+      b += Math.random() < (rows[i].p_model || 0) ? gain : perte;
+    }
+    sansAv[k] = a; modele[k] = b;
+  }
+  const sa = Array.from(sansAv), mo = Array.from(modele);
+  const pctSans = sa.filter(x => x < cum).length / N, pctMod = mo.filter(x => x < cum).length / N;
+  // séries
+  let serie = 0, maxSerie = 0;
+  rows.forEach(r => { serie = r.gagne ? 0 : serie + 1; maxSerie = Math.max(maxSerie, serie); });
+  const series = [];
+  for (let k = 0; k < 1500; k++) { let c = 0, m = 0; rows.forEach(r => { c = Math.random() < (r.p_model || 0) ? 0 : c + 1; if (c > m) m = c; }); series.push(m); }
+  return {
+    n, rows, pts, net: cum, mise, roi: mise ? cum / mise : null, gagnes, attendus, coteMoy: coteS / n,
+    matchs: new Set(rows.map(r => r.date + "|" + r.match)).size, att,
+    dd, ddA, ddB, mxI, coupe, roiApp: roiDe(rows.slice(0, coupe)), roiTest: roiDe(rows.slice(coupe)),
+    mois: [...mois.values()].sort((a, b) => a.k.localeCompare(b.k)),
+    N, sansAv: [blQuantile(sa, .1), blQuantile(sa, .5), blQuantile(sa, .9)], modele: [blQuantile(mo, .1), blQuantile(mo, .5), blQuantile(mo, .9)],
+    pctSans, pctMod, maxSerie, serieAttendue: blQuantile(series, .5), serieHaute: blQuantile(series, .9),
+    roiRecent: n >= 60 ? roiDe(rows.slice(-50)) : null, debutRecent: n >= 60 ? rows[n - 50].date : null,
+  };
+}
+function renderBilan() {
+  if (!$("page-bilan")) return;
+  let D;
+  try { D = blCalculer(); } catch (e) { console.error("Bilan :", e); return; }
+  BL_DATA = D;
+  blRenderFiltresActifs(D);
+  if (!D.n) {
+    $("blKpis").innerHTML = ""; $("blChartWrap").innerHTML = '<p class="muted">Aucun pari avec les filtres actuels de DC rétrospectif.</p>';
+    ["blMois", "blChance", "blForme", "blSeries", "blFiltres", "blEns", "blOu"].forEach(id => { if ($(id)) $(id).innerHTML = ""; });
+    $("blSub").textContent = ""; return;
+  }
+  // sous-titre : test + tendance
+  const derM = D.mois[D.mois.length - 1];
+  const roiDer = derM && derM.mise ? derM.net / derM.mise : null;
+  let sub = D.roiTest != null && D.roiApp != null
+    ? (D.roiTest > 0 ? `L'avantage tient sur la période de test (${blP(D.roiTest)} sur des paris jamais utilisés pour régler).` : `L'avantage ne tient pas sur la période de test (${blP(D.roiTest)}) : surapprentissage probable.`) : "";
+  if (roiDer != null && D.roi > 0 && roiDer < D.roi * 0.3 && D.mois.length >= 2)
+    sub += ` <strong>Il ralentit nettement</strong> : ${blP(roiDer)} en ${BL_MOIS[+derM.k.slice(5, 7) - 1]}${D.roiRecent != null ? `, ${blP(D.roiRecent)} sur les 50 derniers paris` : ""}.`;
+  $("blSub").innerHTML = sub;
+  // KPI
+  const clv = $("btClv"), clvSub = $("btClvSub");
+  $("blKpis").innerHTML = `
+    <div class="bl-k bl-k-main"><div class="l">Résultat net</div><div class="v ${D.net >= 0 ? "pos" : "neg"}">${blE(D.net)}</div><div class="s">${D.n} paris · ${Math.round(D.mise).toLocaleString("fr-FR")} € misés</div></div>
+    <div class="bl-k"><div class="l">ROI</div><div class="v ${D.roi >= 0 ? "pos" : "neg"}">${blP(D.roi)}</div><div class="s" id="blRoiRef"></div></div>
+    <div class="bl-k"><div class="l">Réussite</div><div class="v">${(D.gagnes / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</div><div class="s">${(D.attendus / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} % attendus</div></div>
+    <div class="bl-k"><div class="l">Cote moyenne</div><div class="v">${D.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}</div><div class="s">${D.matchs} matchs</div></div>
+    <div class="bl-k"><div class="l">Plus forte baisse</div><div class="v ${D.dd > 0 ? "neg" : ""}">${D.dd > 0 ? blE(-D.dd) : "aucune"}</div><div class="s">${D.dd > 0 ? `${blD(D.pts[Math.max(0, D.ddA)].d)} → ${blD(D.pts[D.ddB].d)}` : ""}</div></div>
+    <div class="bl-k"><div class="l">CLV moyen</div><div class="v">${clv ? clv.textContent : "—"}</div><div class="s">${clvSub ? clvSub.textContent : ""}</div></div>`;
+  try { const ref = btRoiAvecMise(btFiltered({referenceComplete: true})); if (ref != null) $("blRoiRef").textContent = `sans filtres ${blP(ref)}`; } catch (e) { /* rien */ }
+  blDessiner();
+  // mois
+  const maxRoi = Math.max(0.01, ...D.mois.map(m => Math.abs(m.mise ? m.net / m.mise : 0)));
+  $("blMois").innerHTML = D.mois.map((m, i) => {
+    const roi = m.mise ? m.net / m.mise : 0;
+    const etat = roi < 0 ? "neg" : (D.roi > 0 && roi < D.roi * 0.3 && i === D.mois.length - 1) ? "warn" : "";
+    return `<div class="bl-mo${etat ? " bl-mo-" + etat : ""}"><div class="l"><span>${BL_MOIS[+m.k.slice(5, 7) - 1]} ${m.k.slice(0, 4)}</span><span>${m.n} paris</span></div>
+      <div class="v ${m.net >= 0 ? (etat === "warn" ? "gold" : "pos") : "neg"}">${blE(m.net)}</div>
+      <div class="s">ROI ${blP(roi)}${etat === "warn" ? " · à surveiller" : ""}</div>
+      <div class="b"><i style="width:${(Math.abs(roi) / maxRoi * 100).toFixed(0)}%"></i></div></div>`;
+  }).join("");
+  blRenderChance(D); blRenderForme(D); blRenderSeries(D);
+  setTimeout(() => { try { blRenderContribution(D); blRenderOu(D); } catch (e) { console.error("Bilan (filtres) :", e); } }, 30);
+}
+function blRenderFiltresActifs(D) {
+  const src = $("btActiveFilters");
+  const chips = src ? [...src.querySelectorAll(".active-filter-chip")] : [];
+  $("blChips").innerHTML = chips.length ? chips.slice(0, 9).map(c => c.outerHTML).join("") + (chips.length > 9 ? `<span class="active-filter-chip"><strong>+${chips.length - 9}</strong></span>` : "")
+    : '<span class="muted">aucun filtre particulier</span>';
+  $("blFbarLbl").textContent = chips.length ? `Filtres actifs (${chips.length})` : "Filtres actifs";
+  const d = $("btImpactDelta");
+  $("blCmp").innerHTML = d && d.textContent.trim() && d.textContent.trim() !== "—" ? `vs tous les paris <strong>${d.textContent.trim()}</strong>` : "";
+}
+function blDessiner() {
+  const D = BL_DATA, wrap = $("blChartWrap");
+  if (!D || !D.n || !wrap) return;
+  const W = chartW(), petit = W < 700, H = petit ? 250 : 340, L = petit ? 46 : 64, R = petit ? 52 : 80, T = 22, B = 30;
+  const reperes = $("blReperes") ? $("blReperes").checked : true;
+  $("blLeg").style.display = BL_VUE === "euros" ? "" : "none";
+  const fmtY = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v)).toLocaleString("fr-FR") + (petit ? "" : " €");
+  const ticks = (lo, hi) => { const span = hi - lo, pas = [50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000].find(p => span / p <= 6) || 20000; const t = []; for (let v = Math.ceil(lo / pas) * pas; v <= hi; v += pas) t.push(v); return t; };
+  if (BL_VUE !== "euros") {
+    // barres par jour ou par mois
+    const g = new Map();
+    D.rows.forEach(r => { const k = BL_VUE === "jour" ? r.date : r.date.slice(0, 7); const o = g.get(k) || {k, net: 0, n: 0}; o.net += r.profit * btStakeFor(r); o.n++; g.set(k, o); });
+    const arr = [...g.values()].sort((a, b) => a.k.localeCompare(b.k));
+    const lo = Math.min(0, ...arr.map(a => a.net)), hi = Math.max(0, ...arr.map(a => a.net));
+    const pad = (hi - lo) * 0.08 || 10, y0 = lo - pad, y1 = hi + pad;
+    const Y = v => T + (H - T - B) * (y1 - v) / (y1 - y0), bw = (W - L - R) / arr.length;
+    let svg = ticks(y0, y1).map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--chart-grid)"/><text x="${L - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="bl-ax">${fmtY(v)}</text>`).join("");
+    svg += arr.map((a, i) => { const x = L + i * bw + bw * 0.15, w = Math.max(1, bw * 0.7), ya = Y(Math.max(0, a.net)), yb = Y(Math.min(0, a.net));
+      return `<rect x="${x.toFixed(1)}" y="${ya.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, yb - ya).toFixed(1)}" rx="${Math.min(3, w / 3)}" fill="${a.net >= 0 ? "var(--lime)" : "var(--coral)"}" opacity=".85"><title>${BL_VUE === "jour" ? blD(a.k) : BL_MOIS[+a.k.slice(5, 7) - 1] + " " + a.k.slice(0, 4)} : ${blE(a.net)} (${a.n} paris)</title></rect>`; }).join("");
+    if (BL_VUE === "mois") svg += arr.map((a, i) => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${(a.net >= 0 ? Y(a.net) - 7 : Y(a.net) + 15).toFixed(1)}" text-anchor="middle" class="bl-fin" style="fill:${a.net >= 0 ? "var(--up)" : "var(--down)"}">${fmtY(a.net)}</text>`).join("");
+    const etiq = BL_VUE === "mois" ? arr.map((a, i) => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="bl-ax">${BL_MOIS[+a.k.slice(5, 7) - 1]}</text>`).join("")
+      : [0, Math.floor(arr.length / 2), arr.length - 1].map(i => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="bl-ax">${blD(arr[i].k)}</text>`).join("");
+    wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" class="bl-svg" role="img" aria-label="Gain ${BL_VUE === "jour" ? "par jour" : "par mois"}">${svg}${etiq}<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/></svg>`;
+    return;
+  }
+  const P = D.pts, n = P.length;
+  const vals = P.flatMap(p => reperes ? [p.c, p.a, p.lo, p.hi] : [p.c]).concat([0]);
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.06 || 10, y0 = lo - pad, y1 = hi + pad;
+  const X = i => L + (W - L - R) * (n > 1 ? i / (n - 1) : 0.5), Y = v => T + (H - T - B) * (y1 - v) / (y1 - y0);
+  const ligne = k => P.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(p[k]).toFixed(1)}`).join(" ");
+  let svg = `<defs><linearGradient id="blGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#37d99b" stop-opacity=".30"/><stop offset="1" stop-color="#37d99b" stop-opacity="0"/></linearGradient></defs>`;
+  if (reperes && D.coupe > 0 && D.coupe < n) svg += `<rect x="${X(D.coupe).toFixed(1)}" y="${T}" width="${(X(n - 1) - X(D.coupe)).toFixed(1)}" height="${H - T - B}" fill="rgba(128,175,255,.045)"/>`;
+  svg += ticks(y0, y1).map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="${v === 0 ? "var(--line)" : "var(--chart-grid)"}"/><text x="${L - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="bl-ax">${fmtY(v)}</text>`).join("");
+  if (reperes) {
+    svg += `<path d="${P.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(p.hi).toFixed(1)}`).join(" ")} ${P.slice().reverse().map((p, j) => `L${X(n - 1 - j).toFixed(1)} ${Y(p.lo).toFixed(1)}`).join(" ")} Z" fill="rgba(119,134,154,.2)"/>`;
+    svg += `<path d="${ligne("a")}" fill="none" stroke="var(--violet)" stroke-width="1.8" stroke-dasharray="5 4"/>`;
+  }
+  svg += `<path d="${ligne("c")} L${X(n - 1).toFixed(1)} ${Y(0).toFixed(1)} L${X(0).toFixed(1)} ${Y(0).toFixed(1)} Z" fill="url(#blGrad)"/>`;
+  svg += `<path d="${ligne("c")}" fill="none" stroke="var(--lime)" stroke-width="2.6" stroke-linejoin="round"/>`;
+  if (reperes && D.dd > 0 && D.ddA >= 0) svg += `<path d="${P.slice(D.ddA, D.ddB + 1).map((p, j) => `${j ? "L" : "M"}${X(D.ddA + j).toFixed(1)} ${Y(p.c).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--coral)" stroke-width="3.2"/>`;
+  if (reperes && D.coupe > 0 && D.coupe < n) {
+    const xc = X(D.coupe);
+    svg += `<line x1="${xc.toFixed(1)}" x2="${xc.toFixed(1)}" y1="${T}" y2="${H - B}" stroke="var(--violet)" stroke-dasharray="3 3"/>`
+      + (petit ? `<text x="${(xc + 5).toFixed(1)}" y="${T + 12}" class="bl-ax" fill="var(--violet)">test →</text>`
+        : `<text x="${(xc - 8).toFixed(1)}" y="${T + 13}" text-anchor="end" class="bl-ax">← période de réglage</text><text x="${(xc + 8).toFixed(1)}" y="${T + 13}" class="bl-ax" style="fill:var(--violet)">période de test : jamais utilisée pour régler →</text>`);
+  }
+  const pm = P[D.mxI];
+  svg += `<circle cx="${X(D.mxI).toFixed(1)}" cy="${Y(pm.c).toFixed(1)}" r="4.5" fill="var(--lime)" stroke="var(--night)" stroke-width="2"/>`;
+  if (!petit) svg += `<text x="${X(D.mxI).toFixed(1)}" y="${(Y(pm.c) - 10).toFixed(1)}" text-anchor="middle" class="bl-ax" style="fill:var(--lime)">plus haut ${blE(pm.c)}</text>`;
+  const fin = P[n - 1];
+  const fFin = v => petit ? fmtY(v) : blE(v);
+  const etq = [[fin.c, "var(--lime)", fFin(fin.c)]];
+  if (reperes) etq.push([fin.a, "var(--violet)", fFin(fin.a)], [(fin.lo + fin.hi) / 2, "var(--ink-dim)", fFin((fin.lo + fin.hi) / 2)]);
+  etq.sort((a, b) => Y(a[0]) - Y(b[0]));
+  let yPrev = -99;
+  etq.forEach(([v, c, t]) => { let y = Y(v) + 4; if (y - yPrev < 14) y = yPrev + 14; yPrev = y; svg += `<text x="${(X(n - 1) + 8).toFixed(1)}" y="${y.toFixed(1)}" class="bl-fin" style="fill:${c}">${t}</text>`; });
+  const idxDates = [0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1];
+  svg += idxDates.map(i => `<text x="${X(i).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="bl-ax">${blD(P[i].d)}</text>`).join("");
+  svg += `<line id="blCurseur" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--ink-faint)" stroke-dasharray="2 3" visibility="hidden"/><circle id="blPoint" r="4" fill="var(--lime)" visibility="hidden"/>`;
+  wrap.innerHTML = `<div class="bl-svg-zone"><svg viewBox="0 0 ${W} ${H}" width="100%" class="bl-svg" role="img" aria-label="Gain cumulé : ${blE(fin.c)} sur ${n} paris">${svg}</svg><div class="dc-tooltip bl-tip" id="blTip" hidden></div></div>`;
+  // survol / toucher : valeur au pari le plus proche
+  const svgEl = wrap.querySelector("svg"), tip = $("blTip");
+  const montrer = ev => {
+    const rect = svgEl.getBoundingClientRect(), x = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left) * W / rect.width;
+    const i = Math.max(0, Math.min(n - 1, Math.round((x - L) / ((W - L - R) / Math.max(1, n - 1)))));
+    const p = P[i], cx = X(i), cy = Y(p.c);
+    const cur = $("blCurseur"), pt = $("blPoint");
+    cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cur.setAttribute("visibility", "visible");
+    pt.setAttribute("cx", cx); pt.setAttribute("cy", cy); pt.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div class="dc-tip-head">${blD(p.d)} · pari ${i + 1} sur ${n}</div>
+      <div class="dc-tip-row"><span>${p.r.match}</span></div>
+      <div class="dc-tip-row"><span>${p.r.categorie === "Score exact" ? "Score exact " : ""}${p.r.colonne} à ${Number(p.r.cote).toFixed(2).replace(".", ",")}</span><strong class="${p.r.gagne ? "pos" : "neg"}">${p.r.gagne ? "gagné" : "perdu"}</strong></div>
+      <div class="dc-tip-row"><span>Gain cumulé</span><strong>${blE(p.c)}</strong></div>
+      ${reperes ? `<div class="dc-tip-row"><span>Attendu par le modèle</span><strong>${blE(p.a)}</strong></div>` : ""}`;
+    tip.hidden = false;
+    const px = cx * rect.width / W, py = cy * rect.height / H;
+    tip.style.left = Math.min(rect.width - tip.offsetWidth - 4, Math.max(4, px + 12)) + "px";
+    tip.style.top = Math.max(4, py - tip.offsetHeight - 10) + "px";
+  };
+  const cacher = () => { tip.hidden = true; ["blCurseur", "blPoint"].forEach(id => $(id) && $(id).setAttribute("visibility", "hidden")); };
+  svgEl.addEventListener("mousemove", montrer); svgEl.addEventListener("mouseleave", cacher);
+  svgEl.addEventListener("touchstart", montrer, {passive: true}); svgEl.addEventListener("touchmove", montrer, {passive: true});
+}
+function blRenderChance(D) {
+  const [s10, , s90] = D.sansAv, [m10, m50, m90] = D.modele;
+  const lo = Math.min(s10, m10, D.net, 0), hi = Math.max(s90, m90, D.net, 0), sp = (hi - lo) || 1;
+  const pc = v => ((v - lo) / sp * 92 + 4).toFixed(1);
+  let verdict;
+  if (D.pctSans >= 0.99) verdict = `Sans aucun avantage, <strong>moins d'un tirage sur 100</strong> atteint ton résultat : ce n'est pas que de la chance.`;
+  else if (D.pctSans >= 0.9) verdict = `Sans avantage, seulement <strong>${Math.round((1 - D.pctSans) * 100)} tirages sur 100</strong> font aussi bien : un avantage est probable, sans être certain.`;
+  else verdict = `<strong>${Math.round((1 - D.pctSans) * 100)} tirages sur 100</strong> font aussi bien sans aucun avantage : ce résultat peut s'expliquer par la chance.`;
+  if (D.net > m90) verdict += ` Tu dépasses aussi ce que le modèle lui-même attendait (${blE(m50)} en médiane) : <strong>une part de réussite</strong> s'y ajoute.`;
+  else if (D.net < m10) verdict += ` Mais tu fais moins bien que ce que le modèle attendait (${blE(m50)}) : il surestime ses chances.`;
+  $("blChance").innerHTML = `<div class="bl-rg">
+      <div class="bl-rg-ax"></div>
+      <div class="bl-rg-z sans" style="left:${pc(s10)}%;width:${(pc(s90) - pc(s10)).toFixed(1)}%"></div>
+      <div class="bl-rg-z mod" style="left:${pc(m10)}%;width:${(pc(m90) - pc(m10)).toFixed(1)}%"></div>
+      <div class="bl-rg-pt" style="left:${pc(D.net)}%" title="Ton résultat : ${blE(D.net)}"></div>
+    </div>
+    <div class="bl-rg-leg"><span><i class="sans"></i>sans avantage ${blE(s10)} à ${blE(s90)}</span><span><i class="mod"></i>si le modèle est juste ${blE(m10)} à ${blE(m90)}</span><span><i class="toi"></i>toi ${blE(D.net)}</span></div>
+    <p>${verdict}</p>
+    <p class="bl-note">${D.N.toLocaleString("fr-FR")} tirages de ces mêmes paris, aux probabilités des cotes sans marge (« sans avantage ») ou du modèle. Fourchettes : 8 chances sur 10.</p>`;
+}
+function blRenderForme(D) {
+  const z = $("blForme");
+  const roiM = D.mois.map(m => m.mise ? m.net / m.mise : 0);
+  const baisse = roiM.length >= 3 && roiM[roiM.length - 1] < roiM[roiM.length - 2] && roiM[roiM.length - 2] < roiM[roiM.length - 3];
+  const creux = roiM.slice(-2).filter(r => r <= 0.02).length;
+  let txt;
+  if (creux >= 2) txt = `<strong class="neg">Deux mois creux d'affilée</strong> : le moment de revoir les filtres, ou au moins de baisser la mise.`;
+  else if (baisse) txt = `Le ROI baisse mois après mois (${roiM.slice(-3).map(r => blP(r, 0)).join(", ")}). Un mois creux est normal avec ces cotes ; <strong>deux de suite</strong> mériteraient de revoir les filtres.`;
+  else txt = `Pas de dégradation nette d'un mois à l'autre.`;
+  z.innerHTML = `<div class="bl-duo"><div><div class="l">Tous les paris</div><div class="v ${D.roi >= 0 ? "pos" : "neg"}">${blP(D.roi, 0)}</div></div>
+      <div><div class="l">${D.roiRecent != null ? `50 derniers (depuis le ${blD(D.debutRecent)})` : "Derniers paris"}</div><div class="v ${D.roiRecent == null ? "" : D.roiRecent < D.roi * 0.3 ? "gold" : D.roiRecent >= 0 ? "pos" : "neg"}">${D.roiRecent != null ? blP(D.roiRecent, 0) : "—"}</div></div></div>
+    <p>${txt}</p>`;
+}
+function blRenderSeries(D) {
+  $("blSeries").innerHTML = `<div class="bl-duo"><div><div class="l">Plus longue série perdue</div><div class="v">${D.maxSerie} paris</div></div>
+      <div><div class="l">Normal avec ces cotes</div><div class="v">≈ ${D.serieAttendue}</div></div></div>
+    <p>${D.maxSerie <= D.serieHaute ? `Des séries de ${D.serieAttendue} paris perdus d'affilée sont <strong>attendues</strong> avec ce profil (jusqu'à ${D.serieHaute} une fois sur dix) : pas de quoi changer de filtres sur un coup de stress.`
+      : `Cette série dépasse ce qu'on attend 9 fois sur 10 (${D.serieHaute}) : <strong>le modèle est peut-être trop optimiste</strong> sur ces paris.`}
+    Prévois une bankroll qui encaisse au moins ${D.serieHaute} mises perdues de suite.</p>`;
+}
+function blRenderContribution(D) {
+  const z = $("blFiltres");
+  if (!z) return;
+  const roiFull = D.roi;
+  const variantes = [
+    ["sansCategories", "Types de pari"], ["sansHist", "Historique minimum"], ["sansMvt", "Mouvement de cote"],
+    ["sansCote", "Plage de cotes"], ["sansEv", "Espérance"], ["sansCbk", "Winamax face aux autres sites"],
+  ];
+  const lignes = [];
+  variantes.forEach(([opt, lib]) => {
+    let rows;
+    try { rows = btFiltered({[opt]: true}); } catch (e) { return; }
+    if (!rows || rows.length === D.n) return;   // filtre inactif : rien à retirer
+    lignes.push({lib: `Sans « ${lib} »`, n: rows.length, roi: btRoiAvecMise(rows)});
+  });
+  let ref = null;
+  try { const rr = btFiltered({referenceComplete: true}); ref = {lib: "Aucun filtre (tous les paris du modèle)", ref: true, n: rr.length, roi: btRoiAvecMise(rr)}; } catch (e) { /* rien */ }
+  const tout = [{lib: "Tes filtres", n: D.n, roi: roiFull, moi: true}, ...lignes.sort((a, b) => (a.roi ?? 0) - (b.roi ?? 0)), ...(ref ? [ref] : [])];
+  const span = Math.max(0.3, ...tout.map(t => Math.abs(t.roi || 0)));
+  z.innerHTML = `<div class="bl-wf">` + tout.map(t => {
+    const w = Math.abs(t.roi || 0) / span * 50, pos = (t.roi || 0) >= 0;
+    const apport = !t.moi && t.roi != null && roiFull != null ? roiFull - t.roi : null;
+    const qui = t.ref ? "tes filtres apportent" : "ce filtre apporte";
+    return `<div class="bl-wr${t.moi ? " moi" : ""}"><span class="bl-wr-lib">${t.lib}<small>${t.n.toLocaleString("fr-FR")} paris${apport != null ? ` · ${qui} ${apport >= 0 ? "+" : "−"}${Math.abs(apport * 100).toFixed(0)} pt` : ""}</small></span>
+      <span class="mg-roi-piste"><span class="${pos ? "pos" : "neg"}" style="${pos ? "left:50%" : `left:${(50 - w).toFixed(1)}%`};width:${Math.max(0.8, w).toFixed(1)}%"></span></span>
+      <b class="${pos ? "pos" : "neg"}">${blP(t.roi, 1)}</b></div>`;
+  }).join("") + `</div><p class="bl-note">Un filtre qui fait beaucoup gagner en écartant très peu de paris est suspect : il colle peut-être au hasard du passé.</p>`;
+}
+function blRenderOu(D) {
+  const grp = (cle, ordre) => {
+    const m = new Map();
+    D.rows.forEach(r => { const k = cle(r); if (k == null) return; const o = m.get(k) || {k, n: 0, net: 0, mise: 0}; const st = btStakeFor(r); o.n++; o.net += r.profit * st; o.mise += st; m.set(k, o); });
+    const a = [...m.values()];
+    return ordre ? a.sort((x, y) => ordre.indexOf(x.k) - ordre.indexOf(y.k)) : a.sort((x, y) => y.n - x.n);
+  };
+  const TR = [[1, 2, "moins de 2"], [2, 3, "2 à 3"], [3, 5, "3 à 5"], [5, 10, "5 à 10"], [10, 1e9, "10 et plus"]];
+  const cats = grp(r => r.categorie);
+  const cotes = grp(r => { const t = TR.find(x => r.cote >= x[0] && r.cote < x[1]); return t ? t[2] : null; }, TR.map(x => x[2]));
+  const ligues = grp(r => ligueLabel(r.pays, r.ligue)).filter(o => o.n >= 5).slice(0, 6);
+  const bloc = (t, arr) => { const maxR = Math.max(0.2, ...arr.map(o => Math.abs(o.mise ? o.net / o.mise : 0)));
+    return `<div class="bl-ou-bloc"><h3>${t}</h3>` + arr.map(o => { const roi = o.mise ? o.net / o.mise : 0;
+    return `<div class="bl-ou-l"><span>${o.k}<small>${o.n} paris</small></span><span class="bl-ou-bar"><i class="${roi >= 0 ? "pos" : "neg"}" style="width:${(Math.abs(roi) / maxR * 100).toFixed(0)}%"></i></span><b class="${roi >= 0 ? "pos" : "neg"}">${blP(roi, 0)}</b></div>`; }).join("") + `</div>`; };
+  $("blOu").innerHTML = bloc("Par type de pari", cats) + bloc("Par cote", cotes) + bloc("Par ligue (5 paris ou plus)", ligues);
+  // Enseignements
+  const ens = [];
+  const meilleure = cats.slice().sort((a, b) => b.net - a.net)[0];
+  if (meilleure && D.net > 0) {
+    const part = meilleure.net / D.net;
+    ens.push(["↑", "pos", `Le type <strong>${meilleure.k}</strong> porte le résultat : <strong>${blE(meilleure.net)}</strong> sur ${meilleure.n} paris (${blP(meilleure.mise ? meilleure.net / meilleure.mise : 0, 0)})${part > 0.6 && cats.length > 1 ? `, soit ${Math.round(part * 100)} % du gain` : ""}.`]);
+  }
+  const faibles = cotes.filter(o => o.n >= 10 && o.mise && o.net / o.mise < 0.05), fortes = cotes.filter(o => o.n >= 10 && o.mise && o.net / o.mise > Math.max(0.3, D.roi));
+  if (faibles.length) ens.push(["≈", "gold", `Cotes <strong>${faibles.map(o => o.k).join(", ")}</strong> : presque rien ou des pertes (${faibles.map(o => blP(o.net / o.mise, 0)).join(", ")}).${fortes.length ? ` Le gain vient des cotes <strong>${fortes.map(o => o.k).join(", ")}</strong>.` : ""}`]);
+  try {
+    let net = 0, best = 0, n = 0;
+    D.rows.forEach(r => { const a = cbkAnalyserRetro(r); if (!a) return; const autres = a.tous.filter(q => q !== a.ref && q.retenue && !q.plafond); if (!autres.length) return;
+      const st = btStakeFor(r), b = Math.max(a.ref.cote, ...autres.map(q => q.cote)); n++; net += r.gagne ? st * (a.ref.cote - 1) : -st; best += r.gagne ? st * (b - 1) : -st; });
+    if (n) ens.push(["€", "violet", `Jouer au <strong>meilleur prix</strong> entre sites aurait changé ${blE(best - net)} sur les ${n} paris cotés ailleurs.`]);
+  } catch (e) { /* rien */ }
+  if (D.roiTest != null) ens.push([D.roiTest > 0 ? "✓" : "!", D.roiTest > 0 ? "pos" : "neg", `Période de réglage ${blP(D.roiApp, 0)}, période de test ${blP(D.roiTest, 0)} : ${D.roiTest > 0 ? "l'avantage <strong>tient</strong> hors échantillon" : "<strong>ne tient pas</strong> hors échantillon"}.`]);
+  $("blEns").innerHTML = `<div class="bl-ens">` + ens.slice(0, 4).map(([ic, c, t]) => `<div class="bl-e"><span class="bl-e-ic ${c}">${ic}</span><div>${t}</div></div>`).join("") + `</div>`;
+}
+(function initBilan() {
+  document.querySelectorAll("[data-bl-vue]").forEach(b => b.addEventListener("click", () => {
+    BL_VUE = b.dataset.blVue;
+    document.querySelectorAll("[data-bl-vue]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    blDessiner();
+  }));
+  if ($("blReperes")) $("blReperes").addEventListener("change", blDessiner);
+  const aller = () => {
+    const t = $("tab-backtest"); if (t) t.click();
+    setTimeout(() => { const p = $("btFilterSettings"); if (p) { p.open = true; p.scrollIntoView({behavior: "smooth", block: "start"}); } }, 120);
+  };
+  if ($("blModifier")) $("blModifier").addEventListener("click", aller);
+  document.querySelectorAll("[data-bl-aller]").forEach(b => b.addEventListener("click", () => { const t = $("tab-" + b.dataset.blAller); if (t) t.click(); window.scrollTo({top: 0}); }));
+})();
+
 /* ---------- Graphiques agrandis sur téléphone (22/11/2026) ----------
    Sur un écran étroit, chaque grand graphique reçoit un bouton « Agrandir » : le graphique passe en plein écran
    et, sur Android, l'écran bascule en paysage ; il est redessiné à la nouvelle largeur (jours au lieu de semaines
    pour les histogrammes, plus de dates lisibles). Sans plein écran possible (iPhone), une vue agrandie fixe
    prend toute la page : tourner le téléphone suffit alors. */
 function initAgrandirGraphiques() {
-  const IDS = ["chartWrap", "btEvoWrap", "btJourWrap", "btMbkChartWrap", "btCalibWrap", "mcFanWrap", "bkEvoWrap", "bkJourWrap"];
+  const IDS = ["blChartWrap", "chartWrap", "btEvoWrap", "btJourWrap", "btMbkChartWrap", "btCalibWrap", "mcFanWrap", "bkEvoWrap", "bkJourWrap"];
   const redessiner = () => setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 120);
   // La vue agrandie est déplacée sous <body> le temps de l'affichage : un parent animé (transform) ferait
   // sinon de « position: fixed » un cadre relatif à lui, plus large que l'écran.
