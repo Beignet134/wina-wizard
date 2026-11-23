@@ -1858,7 +1858,12 @@ function activerOnglet(tab) {
   if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
   if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
   if (tab.dataset.page === "dc" && typeof renderDcCalibration === "function") renderDcCalibration();
+  if (typeof dvRendre === "function" && tab.dataset.page !== "dcv2") dvRendre();
   if (typeof blRendre === "function" && tab.dataset.page !== "bilan") blRendre();
+  if (tab.dataset.page === "dcv2" && typeof dvEmprunter === "function") {
+    try { dvEmprunter(); if (typeof renderBilan === "function") renderBilan(); dvMaj(); dvMontrer(); }
+    catch (e) { console.error("DC v2 :", e); }
+  }
   if (tab.dataset.page === "bilan" && typeof renderBilan === "function") {
     try { blEmprunter(); const p = $("btFilterSettings"), b = $("blModifier"); if (p && b) { b.textContent = p.open ? "Masquer les filtres" : "Modifier les filtres"; b.setAttribute("aria-expanded", String(p.open)); } renderBilan(); }
     catch (e) { console.error("Bilan :", e); }
@@ -16803,6 +16808,7 @@ function initMobile() {
     },
     bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
     bilan: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); },
+    dcv2: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); },
     // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
     montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
   };
@@ -16848,10 +16854,14 @@ function initMobile() {
 let BL_VUE = "euros", BL_DATA = null, BL_MINUTEUR = 0;
 // Recalcul après un changement de filtre (renderBacktest), seulement si la page est affichée.
 function blPlanifier() {
-  const pg = $("page-bilan");
-  if (!pg || !pg.classList.contains("active")) return;
+  const pg = $("page-bilan"), dv = $("page-dcv2");
+  const surBilan = pg && pg.classList.contains("active"), surDv = dv && dv.classList.contains("active");
+  if (!surBilan && !surDv) return;
   clearTimeout(BL_MINUTEUR);
-  BL_MINUTEUR = setTimeout(() => { try { renderBilan(); } catch (e) { console.error("Bilan :", e); } }, 250);
+  BL_MINUTEUR = setTimeout(() => {
+    try { if (surBilan || DV_SEC === "synthese") renderBilan(); } catch (e) { console.error("Bilan :", e); }
+    if (surDv && typeof dvMaj === "function") { dvMaj(); dvMontrer(); }
+  }, 250);
 }
 /* Panneaux de DC rétrospectif « empruntés » : déplacés dans cette page à son ouverture, remis à leur place dès qu'on
    la quitte. Les champs, tris, clics de matrice et exports restent ceux de DC rétrospectif, sans copie. */
@@ -17232,6 +17242,105 @@ function blRenderOu(D) {
     if (ex && ex.getBoundingClientRect().top < 0) window.scrollTo({top: window.scrollY + ex.getBoundingClientRect().top - nav.offsetHeight, behavior: "smooth"});
   }));
   document.querySelectorAll("[data-bl-aller]").forEach(b => b.addEventListener("click", () => { const t = $("tab-" + b.dataset.blAller); if (t) t.click(); window.scrollTo({top: 0}); }));
+})();
+
+
+/* ================= PAGE — DC RÉTROSPECTIF v2 (23/11/2026) =================
+   Même contenu que DC rétrospectif, rangé autrement : bandeau fixe, sommaire, une section à la fois. Les panneaux
+   sont déplacés ici à l'ouverture de l'onglet et remis à leur place en le quittant (comme « Bilan des filtres »). */
+const DV_SECTIONS = {
+  synthese: () => [$("blHero")],
+  types: () => [$("btCatPanel")], ligues: () => [$("btLeaguePanel")], paris: () => [$("btDetailPanel")],
+  "m-score": () => [$("btScorePanel")], "m-result": () => [$("btResultPanel")], "m-hist": () => [$("btHistPanel")],
+  "m-cote": () => [$("btCoteMatPanel")], "m-ev": () => [$("btEvMatPanel")], "m-mvt": () => [$("btMvtMatPanel")],
+  "m-mvtbk": () => [$("btMvtBkMatPanel")], "m-force": () => [$("btForceMatPanel")], "m-api": () => [$("btApiMatPanel")],
+  "m-libre": () => [$("btLibreMatPanel")],
+  clv: () => [$("btMvtFiltrePanel")], bk: () => [$("btMeilleurBkPanel")],
+  calib: () => [$("btCalibWrap") && $("btCalibWrap").closest("details")], oos: () => [$("btOos") && $("btOos").closest("details")],
+  gamme: () => [$("btCoteWrap") && $("btCoteWrap").closest("details")], nb: () => [$("btNbValid") && $("btNbValid").closest("details")],
+  lect: () => [$("panelLecturesForces")],
+};
+let DV_SEC = "synthese", DV_EMPRUNTES = [];
+try { DV_SEC = localStorage.getItem("ww_dv_sec") || "synthese"; } catch (e) { /* rien */ }
+function dvEmprunterUn(el, dest) {
+  if (!el || !dest || el._dvIci) return;
+  if (!el._dvRepere) { el._dvRepere = document.createComment("emprunt DC v2"); el.parentNode.insertBefore(el._dvRepere, el); }
+  el._dvDisplay = el.style.display; el._dvOpen = el.tagName === "DETAILS" ? el.open : undefined;
+  dest.appendChild(el); el._dvIci = true; DV_EMPRUNTES.push(el);
+}
+function dvEmprunter() {
+  dvEmprunterUn($("btFilterSettings"), $("dvSlotFiltres"));
+  Object.entries(DV_SECTIONS).forEach(([cle, f]) => f().forEach(el => {
+    if (!el) return;
+    dvEmprunterUn(el, $("dvSlot"));
+    el.dataset.dvSec = cle;
+    if (el.tagName === "DETAILS") el.open = true;
+  }));
+  dvMontrer();
+}
+function dvRendre() {
+  while (DV_EMPRUNTES.length) {
+    const el = DV_EMPRUNTES.pop();
+    if (el._dvRepere && el._dvRepere.parentNode) el._dvRepere.parentNode.insertBefore(el, el._dvRepere);
+    el._dvIci = false; el.classList.remove("dv-off");
+    el.style.display = el._dvDisplay || "";
+    if (el._dvOpen !== undefined) el.open = el._dvOpen;
+  }
+}
+function dvDispo(cle) {
+  if (cle === "bk") { const el = $("btMeilleurBkPanel"); return !!el && el._dvDisplay !== "none"; }
+  return DV_SECTIONS[cle] && DV_SECTIONS[cle]().some(Boolean);
+}
+function dvMontrer() {
+  if (!dvDispo(DV_SEC)) DV_SEC = "synthese";
+  document.querySelectorAll("#page-dcv2 [data-dv]").forEach(b => {
+    b.hidden = !dvDispo(b.dataset.dv);
+    const actif = b.dataset.dv === DV_SEC;
+    b.classList.toggle("is-on", actif);
+    if (actif) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+  });
+  DV_EMPRUNTES.forEach(el => {
+    if (!el.dataset.dvSec) return;
+    const on = el.dataset.dvSec === DV_SEC;
+    el.classList.toggle("dv-off", !on);
+    if (on) el.style.display = "";      // les matrices masquées par leur sous-menu d'origine
+  });
+  setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 60);
+}
+function dvMaj() {
+  if (!$("page-dcv2")) return;
+  const txt = id => ($(id) ? $(id).textContent.trim() : "—");
+  $("dvN").textContent = txt("btNb");
+  ["btNet", "btRoi"].forEach((id, i) => {
+    const el = $(["dvNet", "dvRoi"][i]), src = $(id);
+    el.textContent = txt(id);
+    el.className = src && src.classList.contains("neg") ? "neg" : src && src.classList.contains("pos") ? "pos" : "";
+  });
+  $("dvWin").textContent = txt("btWin");
+  $("dvPer").textContent = `${txt("btRangeLabel")} · ${txt("btStakeLabel")} €`;
+  const n = document.querySelectorAll("#btActiveFilters .active-filter-chip").length;
+  $("dvFiltresN").hidden = !n; $("dvFiltresN").textContent = n;
+  const p = $("btFilterSettings"), b = $("dvFiltresBtn");
+  if (p && b) b.setAttribute("aria-expanded", String(p.open && p._dvIci));
+  const nb = $("dvSlot") && $("dvSlot").querySelector('[data-dv-n="paris"]');
+  document.querySelectorAll('#page-dcv2 [data-dv-n="paris"]').forEach(x => { x.textContent = txt("btNb"); });
+  document.querySelectorAll('#page-dcv2 [data-dv-n="types"]').forEach(x => { x.textContent = $("btCatBody") ? $("btCatBody").querySelectorAll("tr").length || "" : ""; });
+}
+(function initDcV2() {
+  document.querySelectorAll("#page-dcv2 [data-dv]").forEach(b => b.addEventListener("click", () => {
+    DV_SEC = b.dataset.dv;
+    try { localStorage.setItem("ww_dv_sec", DV_SEC); } catch (e) { /* rien */ }
+    dvMontrer();
+    if (DV_SEC === "synthese" && typeof renderBilan === "function") { try { renderBilan(); } catch (e) { /* rien */ } }
+    const main = $("dvSlot");
+    if (main && main.getBoundingClientRect().top < 0) window.scrollTo({top: window.scrollY + main.getBoundingClientRect().top - 150, behavior: "smooth"});
+  }));
+  if ($("dvFiltresBtn")) $("dvFiltresBtn").addEventListener("click", () => {
+    const p = $("btFilterSettings"); if (!p) return;
+    p.open = !p.open; dvMaj();
+    if (p.open) p.scrollIntoView({behavior: "smooth", block: "start"});
+  });
+  if ($("dvExport")) $("dvExport").addEventListener("click", () => { const b = $("btExportCsv"); if (b) b.click(); });
 })();
 
 /* ---------- Graphiques agrandis sur téléphone (22/11/2026) ----------
