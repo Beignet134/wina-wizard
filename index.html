@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123204147">
+<link rel="stylesheet" href="style.css?v=20261123210524">
 </head>
 <body>
 <div class="topbar">
@@ -1108,7 +1108,7 @@
 
     <h3 class="section-divider">Résultats détaillés</h3>
 
-<details class="panel panel-foldable" open>
+<details class="panel panel-foldable" id="btCatPanel" open>
       <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 8h14M8.5 8v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Par catégorie de pari</h2>
       <span class="panel-fold-label" aria-hidden="true"></span>
       <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
@@ -1750,8 +1750,12 @@
       <span class="bl-fbar-lbl" id="blFbarLbl">Filtres actifs</span>
       <div class="bl-chips" id="blChips"></div>
       <span class="bl-fbar-cmp" id="blCmp"></span>
-      <button type="button" class="rp-btn" id="blModifier">Modifier les filtres</button>
+      <button type="button" class="rp-btn" id="blModifier" aria-expanded="false" aria-controls="btFilterSettings">Modifier les filtres</button>
     </div>
+    <!-- Le panneau de réglage de DC rétrospectif est « emprunté » ici tant que la page est affichée (blEmprunter) :
+         mêmes champs, mêmes réglages, rien n'est dupliqué. -->
+    <div id="blSlotFiltres" class="bl-slot-filtres"></div>
+    <details class="bl-notes" id="blNotes" hidden><summary id="blNotesTitre">Réglages du modèle actifs</summary><div id="blNotesCorps"></div></details>
 
     <div class="bl-hero" id="blHero">
       <div class="bl-hero-tete">
@@ -1760,6 +1764,7 @@
           <button type="button" data-bl-vue="euros" aria-pressed="true">En euros</button>
           <button type="button" data-bl-vue="jour" aria-pressed="false">Par jour</button>
           <button type="button" data-bl-vue="mois" aria-pressed="false">Par mois</button>
+          <button type="button" data-bl-vue="volume" aria-pressed="false">Nombre de paris</button>
         </div>
       </div>
       <div class="bl-kpis" id="blKpis"></div>
@@ -1788,8 +1793,23 @@
     <div class="panel">
       <h2>Où ça gagne <span class="hint">— ROI par type de pari, par cote et par ligue</span></h2>
       <div class="bl-ou" id="blOu"></div>
-      <p class="muted" style="margin:.8rem 0 0;font-size:.8rem">Toutes les matrices, le détail des paris et les analyses avancées restent sur
-      <button type="button" class="bl-lien" data-bl-aller="backtest">DC rétrospectif</button>.</p>
+    </div>
+
+    <div class="bl-explorer" id="blExplorer">
+      <div class="bl-exp-tete">
+        <h2>Explorer en détail</h2>
+        <p>Les tableaux, matrices et analyses de DC rétrospectif, sur les mêmes paris. Un clic dans une matrice filtre toute la page.</p>
+      </div>
+      <div class="bl-exp-nav" role="tablist" aria-label="Analyse affichée">
+        <button type="button" role="tab" data-bl-exp="cat">Par type de pari</button>
+        <button type="button" role="tab" data-bl-exp="mat">Matrices</button>
+        <button type="button" role="tab" data-bl-exp="bk">Bookmakers</button>
+        <button type="button" role="tab" data-bl-exp="clv">Mouvement de cote</button>
+        <button type="button" role="tab" data-bl-exp="ligues">Ligues</button>
+        <button type="button" role="tab" data-bl-exp="paris">Tous les paris</button>
+        <button type="button" role="tab" data-bl-exp="avance">Analyses avancées</button>
+      </div>
+      <div id="blSlotExp" class="bl-slot-exp"></div>
     </div>
   </section>
 
@@ -3179,7 +3199,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123204256", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123204256", APP = "app.js?v=20261123204147";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123210628", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123210628", APP = "app.js?v=20261123210524";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
