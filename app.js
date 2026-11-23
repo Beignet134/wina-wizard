@@ -1943,7 +1943,7 @@ function updateKPIs(rows, stake) {
   const n = rows.length, mise = n*stake;
   let net = 0, wins = 0;
   rows.forEach(b => { net += betGain(b, stake); if (b.won) wins++; });
-  $("kNb").textContent = n;
+  $("kNb").textContent = n.toLocaleString("fr-FR");
   $("kMise").textContent = mise.toLocaleString("fr-FR") + " €";
   const netEl = $("kNet"); netEl.textContent = fmtEur(net); netEl.className = "v " + (net>=0?"pos":"neg");
   const roiEl = $("kRoi"); const roi = mise>0 ? net/mise : null;
@@ -2004,8 +2004,13 @@ function arrMax(a) { return a.reduce((m, x) => x > m ? x : m, a[0]); }
    ensuite mis à l'échelle du conteneur). Sur téléphone, la largeur réelle du conteneur :
    sinon 1180 unités sont écrasées dans ~330 px et les graduations deviennent illisibles. */
 function chartW() {
-  if (!window.matchMedia("(max-width: 720px)").matches) return 1180;
+  // 22/11/2026 : graphique agrandi (bouton « Agrandir » sur téléphone) : la largeur de la zone plein écran.
+  const plein = document.fullscreenElement && document.fullscreenElement.classList.contains("gz-box")
+    ? document.fullscreenElement : document.querySelector(".gz-box.is-plein");
+  if (plein && plein.clientWidth) return Math.max(290, Math.min(1180, plein.clientWidth - 28));
   const vw = document.documentElement.clientWidth || window.innerWidth || 390;
+  // téléphone en paysage ou petite fenêtre : la vraie largeur (avant : 1180 fixes, donc un texte réduit d'un tiers)
+  if (!window.matchMedia("(max-width: 720px)").matches) return Math.max(600, Math.min(1180, vw - 100));
   return Math.max(290, Math.min(1180, vw - 60));
 }
 function chartNTicks(W) { return W < 600 ? 4 : 7; }
@@ -2564,7 +2569,11 @@ function renderUnmatchedItem(t, idx) {
   function rerender() {
     const filtre = select.value;
     indicesVisibles = [];
-    UNMATCHED.forEach((t, i) => { if (filtre === "all" || classifierUnmatched(t) === filtre) indicesVisibles.push(i); });
+    UNMATCHED.forEach((t, i) => {
+      const c = classifierUnmatched(t);
+      if (filtre === "all" || c === filtre || (filtre === "alias" && !!suggestionPourExemple(t))
+          || (filtre === "candidat" && (c === "ligue_ok" || c === "ligue_ko"))) indicesVisibles.push(i);
+    });
     list.innerHTML = indicesVisibles.map(i => renderUnmatchedItem(UNMATCHED[i], i)).join("");
     countEl.textContent = filtre === "all" ? "" : `${indicesVisibles.length} / ${UNMATCHED.length} affiché(s)`;
     majSelection();
@@ -2601,7 +2610,9 @@ function renderUnmatchedItem(t, idx) {
   // chacun rencontrer des matchs de la même ligue non alignée — voir le
   // commentaire de ligues_non_alignees côté Python (wina_wizard.py).
   const compte = new Map();
-  const ajouter = src => (src || []).forEach(([cle, n]) => compte.set(cle, (compte.get(cle) || 0) + n));
+  // 22/11/2026 : le plus grand des deux comptes, pas leur somme (backtest et paris à venir voient souvent les
+  // mêmes matchs : la somme comptait ces matchs deux fois)
+  const ajouter = src => (src || []).forEach(([cle, n]) => compte.set(cle, Math.max(compte.get(cle) || 0, n)));
   ajouter((WIZARD_DATA.dc_stats || {}).ligues_non_alignees);
   ajouter((WIZARD_DATA.poisson_stats || {}).ligues_non_alignees);
   const lignes = [...compte.entries()].sort((a, b) => b[1] - a[1]);
@@ -2676,6 +2687,96 @@ function renderUnmatchedItem(t, idx) {
   });
   copyBtn.addEventListener("click", () => copierTexte(suggestionsSelectionneesLigues(), copyBtn));
   rerender();
+})();
+
+// ===== Bilan du rapprochement cotes / résultats, en tête de la page Rétrospectif (22/11/2026) =====
+// Classe chaque match non rapproché (classifierUnmatched) en ce qui se corrige (alias d'équipe, alias de
+// compétition), ce qui s'explique (match reporté, pas encore joué) et ce qui manque (résultat jamais collecté),
+// et donne pour chaque cas un bouton qui ouvre la liste filtrée correspondante.
+(function renderRapprochement() {
+  const zS = $("rpSante"), zA = $("rpActions"), zL = $("rpLigues");
+  if (!zS) return;
+  const m = WIZARD_DATA.meta || {};
+  const U = Array.isArray(UNMATCHED) ? UNMATCHED : [];
+  const cl = U.map(t => classifierUnmatched(t));
+  const nb = k => cl.filter(c => c === k).length;
+  const nAlias = U.filter((t, i) => (cl[i] === "ligue_ok" || cl[i] === "date_decalee") && suggestionPourExemple(t)).length;
+  const nLigueOk = nb("ligue_ok"), nDecal = nb("date_decalee"), nKo = nb("ligue_ko"), nTrou = nb("none"), nFutur = nb("futur");
+  // compétitions jamais alignées (mêmes sources que initLiguesNonAlignees)
+  const comp = new Map();
+  [(WIZARD_DATA.dc_stats || {}).ligues_non_alignees, (WIZARD_DATA.poisson_stats || {}).ligues_non_alignees]
+    .forEach(src => (src || []).forEach(([cle, n]) => comp.set(cle, Math.max(comp.get(cle) || 0, n))));
+  const nComp = comp.size, nCompMatchs = [...comp.values()].reduce((t, n) => t + n, 0);
+  const matched = m.matched || 0, total = matched + (m.unmatched != null ? m.unmatched : U.length);
+  const joues = Math.max(1, total - nFutur);
+  const pct = matched / joues * 100;
+  const etat = pct >= 97 ? "ok" : pct >= 92 ? "moyen" : "fort";
+  const fr = n => n.toLocaleString("fr-FR");
+  // 7 derniers jours : là où une correction rapporte tout de suite (paris récents, alertes)
+  const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+  const depuis = d7.toISOString().slice(0, 10), auj = new Date().toISOString().slice(0, 10);
+  const recents = U.filter((t, i) => cl[i] !== "futur" && t.date >= depuis && t.date <= auj).length;
+
+  const seg = (n, c, lib) => n ? `<span class="rp-seg ${c}" style="flex:${n}" title="${lib} : ${fr(n)}"></span>` : "";
+  zS.innerHTML = `<div class="rp-sante rp-${etat}">
+      <div class="rp-score"><span class="rp-big">${pct.toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</span>
+        <span class="rp-lbl">des matchs déjà joués ont trouvé leur résultat<br>${fr(matched)} sur ${fr(joues)}</span></div>
+      <div class="rp-detail">
+        <div class="rp-pile">${seg(matched, "ok", "Rapprochés")}${seg(nLigueOk, "alias", "Candidat même ligue (alias probable)")}${seg(nDecal, "decal", "Date décalée")}${seg(nKo + nTrou, "trou", "Résultat introuvable")}</div>
+        <div class="rp-leg"><span><i class="rp-seg ok"></i>rapprochés</span><span><i class="rp-seg alias"></i>alias probable</span><span><i class="rp-seg decal"></i>date décalée</span><span><i class="rp-seg trou"></i>résultat introuvable</span></div>
+        <p class="rp-note">${recents ? `<strong>${fr(recents)}</strong> match${recents > 1 ? "s" : ""} non rapproché${recents > 1 ? "s" : ""} ces 7 derniers jours : ce sont ceux qui comptent pour tes paris récents et les alertes.` : "Aucun match non rapproché ces 7 derniers jours."}
+        ${nFutur ? ` ${fr(nFutur)} matchs pas encore joués sont mis à part (normal).` : ""}</p>
+      </div>
+    </div>`;
+
+  const carte = (cls, titre, n, sous, texte, action) => `<div class="rp-carte ${cls}${n ? "" : " vide"}">
+      <div class="rp-carte-tete"><span class="rp-carte-n">${fr(n)}</span><span class="rp-carte-titre">${titre}</span></div>
+      <p class="rp-carte-sous">${sous}</p><p class="rp-carte-txt">${texte}</p>
+      ${n && action ? `<button type="button" class="rp-btn" data-rp="${action}">Voir la liste</button>` : ""}
+    </div>`;
+  zA.innerHTML =
+    carte("a-faire", "alias d'équipe à ajouter", nAlias, nLigueOk + nDecal > nAlias ? `${fr(nLigueOk)} candidat${nLigueOk > 1 ? "s" : ""} même ligue · ${fr(nDecal)} date décalée` : "candidat de la même ligue",
+      nAlias ? "Une entrée <code>TEAM_ALIASES</code> toute prête à copier dans le script : le match sera compté à la prochaine mise à jour." : "Aucun alias d'équipe évident à ajouter.", "alias") +
+    carte("a-faire", `compétition${nComp > 1 ? "s" : ""} non alignée${nComp > 1 ? "s" : ""}`, nComp, `${fr(nCompMatchs)} matchs perdus d'un coup`,
+      nComp ? "Une entrée <code>LEAGUE_ALIASES_RESULTATS</code> récupère généralement toute la compétition." : "Toutes les compétitions sont alignées.", "ligues") +
+    carte("info", "matchs reportés ou avancés", nDecal, "résultat trouvé à quelques jours d'écart",
+      "Souvent un vrai report : rien à faire, ou un alias si les noms diffèrent aussi.", "date_decalee") +
+    carte("neutre", "résultats introuvables", nKo + nTrou, `${fr(nTrou)} sans aucun candidat · ${fr(nKo)} candidat d'une autre ligue`,
+      "Résultat jamais collecté pour cette compétition : un alias n'y changerait rien.", "none");
+
+  // Compétitions les plus touchées (hors matchs à venir)
+  const parLigue = new Map();
+  U.forEach((t, i) => {
+    if (cl[i] === "futur" || cl[i] === "string") return;
+    const k = `${t.pays} · ${t.ligue}`, o = parLigue.get(k) || {k, n: 0, alias: 0};
+    o.n++; if ((cl[i] === "ligue_ok" || cl[i] === "date_decalee") && suggestionPourExemple(t)) o.alias++;
+    parLigue.set(k, o);
+  });
+  comp.forEach((n, cle) => { const k = cle.replace(" — ", " · "); const o = parLigue.get(k) || {k, n: 0, alias: 0, comp: true}; o.n = Math.max(o.n, n); o.comp = true; parLigue.set(k, o); });
+  const top = [...parLigue.values()].sort((a, b) => b.n - a.n).slice(0, 8);
+  const maxN = Math.max(1, ...top.map(o => o.n));
+  zL.innerHTML = top.length ? `<h3 class="rp-sous-titre">Compétitions les plus touchées</h3><div class="rp-ligues">` + top.map(o => `<div class="rp-ligue">
+      <span class="rp-ligue-nom"><span>${o.k}</span>${o.comp ? '<em class="rp-tag">non alignée</em>' : o.alias ? `<em class="rp-tag alias">${o.alias} alias</em>` : ""}</span>
+      <span class="rp-ligue-bar"><span style="width:${(o.n / maxN * 100).toFixed(0)}%"></span></span>
+      <strong>${fr(o.n)}</strong></div>`).join("") + `</div>` : "";
+
+  // Boutons : ouvrent le panneau voulu avec le bon filtre
+  zA.addEventListener("click", e => {
+    const b = e.target.closest(".rp-btn");
+    if (!b) return;
+    const quoi = b.dataset.rp;
+    let box;
+    if (quoi === "ligues") box = $("unalignedLeaguesBox");
+    else {
+      box = $("unmatchedBox");
+      const sel = $("unmatchedFilter");
+      if (sel) { sel.value = quoi; sel.dispatchEvent(new Event("change")); }
+    }
+    if (box) { box.open = true; box.scrollIntoView({behavior: "smooth", block: "start"}); }
+  });
+  // Les panneaux s'ouvrent d'eux-mêmes s'il y a quelque chose à corriger
+  if (nComp && $("unalignedLeaguesBox")) $("unalignedLeaguesBox").classList.add("rp-a-faire");
+  if (nAlias && $("unmatchedBox")) $("unmatchedBox").classList.add("rp-a-faire");
 })();
 
 /* ================= PAGE 2 — DIXON-COLES (refaite le 22/11/2026) ================= */
@@ -3255,6 +3356,121 @@ function reinitialiserCotesManuelles() {
   sauverCotesManuelles();
   renderUpcoming();
 }
+
+/* ===== Paris à venir : programme par jour et résumé des filtres (23/11/2026) ===== */
+// Libellé lisible du pari : « Victoire Lyon », « Match nul » ; les autres paris gardent leur libellé.
+function upLibellePari(v) {
+  const [dom, ext] = String(v.match || "").split(" - ");
+  if (v.colonne === "homeWin") return `Victoire ${dom || "domicile"}`;
+  if (v.colonne === "awayWin") return `Victoire ${ext || "extérieur"}`;
+  if (v.colonne === "draw") return "Match nul";
+  return String(v.colonne);
+}
+function upJourIso(v) { return String(v.kickoff || v.date || "").slice(0, 10); }
+function upAujourdhui(decalage = 0) {
+  const d = new Date(); d.setDate(d.getDate() + decalage);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function upNomJour(iso) {
+  if (iso === upAujourdhui()) return "Aujourd'hui";
+  if (iso === upAujourdhui(1)) return "Demain";
+  if (iso === upAujourdhui(-1)) return "Hier";
+  if (iso < upAujourdhui()) return "Passé";
+  const [a, m, j] = iso.split("-").map(Number);
+  return new Date(a, m - 1, j).toLocaleDateString("fr-FR", {weekday: "long"}).replace(/^./, c => c.toUpperCase());
+}
+function upDateLongue(iso) {
+  const [a, m, j] = iso.split("-").map(Number);
+  return new Date(a, m - 1, j).toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
+}
+// Rend les cartes ; avec le tri par date, un intertitre par jour (nombre de paris, mise) et les puces de
+// navigation du résumé en haut de page. Les cartes elles-mêmes sont inchangées (même rendu, mêmes écouteurs).
+function upAvecJours(rows, sortBy, rendreCarte) {
+  const parJour = new Map();
+  rows.forEach(v => {
+    const j = upJourIso(v);
+    if (!parJour.has(j)) parJour.set(j, []);
+    parJour.get(j).push(v);
+  });
+  const horsF = v => (typeof estHorsFiltres === "function" ? estHorsFiltres(v) : false);
+  const stake = parseFloat(($("uStake") || {}).value) || 0;
+  const zJ = $("uJours");
+  const jours = [...parJour.keys()].sort();
+  if (zJ) {
+    zJ.innerHTML = jours.map(j => {
+      const n = parJour.get(j).filter(v => !horsF(v)).length;
+      const joue = parJour.get(j).filter(v => PLACED.has(betKey(v))).length;
+      return `<button type="button" class="up-jour-btn${j === upAujourdhui() ? " auj" : ""}" data-jour="${j}">
+        <span class="up-jour-nom">${upNomJour(j)}</span><span class="up-jour-date">${j.slice(8, 10)}/${j.slice(5, 7)}</span>
+        <span class="up-jour-n">${n} pari${n > 1 ? "s" : ""}${joue ? ` · ${joue} joué${joue > 1 ? "s" : ""}` : ""}</span></button>`;
+    }).join("");
+  }
+  // Prochain coup d'envoi (hors paris déjà joués)
+  const zP = $("uProchain");
+  if (zP) {
+    const maintenant = Date.now();
+    const futurs = rows.filter(v => !horsF(v) && !PLACED.has(betKey(v)) && v.kickoff && new Date(v.kickoff).getTime() > maintenant)
+      .sort((a, b) => String(a.kickoff).localeCompare(String(b.kickoff)));
+    if (futurs.length) {
+      const v = futurs[0], min = Math.round((new Date(v.kickoff).getTime() - maintenant) / 60000);
+      const dans = min < 60 ? `dans ${min} min` : min < 24 * 60 ? `dans ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}` : `le ${fmtKickoff(v.kickoff)}`;
+      zP.textContent = `— prochain pari à jouer ${dans} : ${v.match}`;
+    } else zP.textContent = "";
+  }
+  if (sortBy !== "kickoff") return rows.map(rendreCarte).join("");
+  return jours.map(j => {
+    const liste = parJour.get(j), reco = liste.filter(v => !horsF(v));
+    const joue = liste.filter(v => PLACED.has(betKey(v))).length;
+    return `<div class="rec-jour" id="uJour-${j}"><span class="rec-jour-nom">${upNomJour(j)}</span>
+        <span class="rec-jour-date">${upDateLongue(j)}</span>
+        <span class="rec-jour-n">${reco.length} pari${reco.length > 1 ? "s" : ""}${stake ? ` · ${(reco.length * stake).toLocaleString("fr-FR")} € en mise fixe` : ""}${joue ? ` · ${joue} joué${joue > 1 ? "s" : ""}` : ""}</span></div>`
+      + liste.map(rendreCarte).join("");
+  }).join("");
+}
+// Une phrase qui dit quels filtres sont actifs, pour ne pas avoir à ouvrir le panneau.
+function upRenderFiltresResume() {
+  const z = $("uFiltresResume");
+  if (!z) return;
+  const morceaux = [];
+  try {
+    const cats = categoriesCochees("u");
+    const tot = document.querySelectorAll(".uCatChk").length;
+    morceaux.push(`<strong>${cats.length === tot ? "tous les types de pari" : cats.join(", ") || "aucun type de pari"}</strong>`);
+  } catch (e) { /* rien */ }
+  const boitesL = document.querySelectorAll(".uLigueChk"), nL = [...boitesL].filter(b => b.checked).length;
+  if (boitesL.length && nL && nL < boitesL.length) morceaux.push(`${nL} ligue${nL > 1 ? "s" : ""} sur ${boitesL.length}`);
+  const cmin = parseFloat(($("uCoteMinNum") || {}).value), cmax = parseFloat(($("uCoteMaxNum") || {}).value);
+  if ((cmin > 1) || (cmax < 100)) morceaux.push(`cotes ${cmin.toLocaleString("fr-FR")} à ${cmax.toLocaleString("fr-FR")}`);
+  const mmin = parseFloat(($("uMvtMinNum") || {}).value), mmax = parseFloat(($("uMvtMaxNum") || {}).value);
+  if (!(mmin <= -20 && mmax >= 20)) morceaux.push(`mouvement de cote ${mmin.toLocaleString("fr-FR")} à ${mmax.toLocaleString("fr-FR")} %`);
+  const hist = $("uHistMin");
+  if (hist && hist.value && hist.value !== "0") morceaux.push(`historique ${hist.options[hist.selectedIndex].text.toLowerCase()}`);
+  const rang = $("uCbkRang");
+  if (rang && rang.value) morceaux.push(`Winamax : ${rang.options[rang.selectedIndex].text.toLowerCase()}`);
+  if ($("uExclSel") && $("uExclSel").checked) morceaux.push("sans sélections nationales");
+  z.innerHTML = `Filtres actifs : ${morceaux.join(" · ")}.`;
+}
+(function initUpResume() {
+  const zJ = $("uJours");
+  if (zJ) zJ.addEventListener("click", e => {
+    const b = e.target.closest(".up-jour-btn");
+    if (!b) return;
+    const cible = $("uJour-" + b.dataset.jour);
+    if (cible) cible.scrollIntoView({behavior: "smooth", block: "start"});
+    else {   // tri autre que par date : pas d'intertitres, on va à la première carte du jour
+      const carte = [...document.querySelectorAll("#recGrid .rec")].find(c => String(c.dataset.key || "").startsWith(b.dataset.jour));
+      (carte || $("recGrid")).scrollIntoView({behavior: "smooth", block: "start"});
+    }
+  });
+  const bF = $("uVoirFiltres");
+  if (bF) bF.addEventListener("click", () => {
+    const p = $("uFilterPanel");
+    if (!p) return;
+    const tog = p.querySelector(".m-ftog[aria-expanded='false']");
+    if (tog && getComputedStyle(tog).display !== "none") tog.click();
+    p.scrollIntoView({behavior: "smooth", block: "start"});
+  });
+})();
 
 function fmtKickoff(iso) {
   // "2026-03-05T20:00:00" -> "05/03 à 20:00"
@@ -4178,6 +4394,7 @@ function renderUpcoming() {
   const evTotal = rowsReco.reduce((s,v,i) => s+(v.ev_aff ?? v.ev)*miseParPari[i], 0);
   const matches = new Set(rowsReco.map(v=>v.match)).size;
   $("uNb").textContent = n;
+  if ($("uNbSous")) $("uNbSous").textContent = rows.length > n ? `+ ${rows.length - n} hors filtres (cote saisie)` : "";
   // Même chiffre que "uNb" ci-dessus, dupliqué sur le badge de l'onglet :
   // toujours égal au nombre de cartes réellement affichées dans la grille
   // plus bas (rows.map(...) sans aucune pagination), quels que soient les
@@ -4295,8 +4512,11 @@ function renderUpcoming() {
   }
 
   const grid = $("recGrid"), empty = $("uEmpty");
+  try { upRenderFiltresResume(); } catch (e) { /* résumé facultatif */ }
   if (rows.length===0) {
     grid.innerHTML = "";
+    if ($("uJours")) $("uJours").innerHTML = "";
+    if ($("uProchain")) $("uProchain").textContent = "";
     empty.style.display = "block";
     empty.textContent = UPCOMING.length===0
       ? `Aucun match à venir dans les ${UPCOMING_DAYS} prochains jours n'a de value bet (ou l'historique est encore insuffisant). Reviens quand de nouvelles cotes auront été capturées.`
@@ -4307,7 +4527,7 @@ function renderUpcoming() {
   empty.style.display = "none";
 
   CBK_CTX.clear();
-  grid.innerHTML = rows.map(v => {
+  grid.innerHTML = upAvecJours(rows, sortBy, v => {
     const groupeKey = `${v.match}|${v.categorie}`;
     const groupeTaille = (groupes[groupeKey] || []).length;
     // Une carte rouge (cote saisie qui ne passe plus) n'est plus une
@@ -4480,7 +4700,7 @@ function renderUpcoming() {
       <div class="rec-league">${ligueLabel(v.pays, v.ligue)} · <span class="tag-cat">${v.categorie}</span>
         ${catBadgeHtml(v.categorie, CURRENT_UPCOMING_VERDICTS, "filtres communs actifs")}</div>
       <div class="rec-bet">
-        <span class="rec-pill">${v.colonne}</span>
+        <span class="rec-pill" title="${String(v.colonne).replace(/"/g, "&quot;")}">${upLibellePari(v)}</span>
         <span class="muted">à la cote</span>
         <span class="cote-zone"${cbkR ? ' data-cbk="1"' : ""}>${cbkR ? cbkR.zone : coteZone}</span>
       </div>
@@ -4494,7 +4714,9 @@ function renderUpcoming() {
       </div>
       ${miseKelly != null ? `<div class="rec-kelly">Mise conseillée <strong>${miseKelly.toFixed(2)} €</strong>
         <span class="muted">(${(miseKelly/bankrollRef*100).toFixed(1)} % de ${bankrollRef.toFixed(0)} €)</span></div>` : ""}
-      ${cbkR ? cbkR.gain + cbkR.avert : ""}
+      ${cbkR ? cbkR.gain : ""}
+      <div class="rec-signaux">
+      ${cbkR ? cbkR.avert : ""}
       ${injuryBlock}
       ${predBlock}
       ${marcheBlock}
@@ -4509,6 +4731,7 @@ function renderUpcoming() {
           <span><strong>La cote raccourcit</strong> (${v.cote_ouverture} → ${v.cote.toFixed(2)})
           <span class="inj-adj">le marché confirme</span></span>
         </div>` : "")}
+      </div>
       <label class="rec-check" title="Cocher si tu as réellement joué ce pari">
         <input type="checkbox" class="chk placedchk" ${isPlaced ? "checked" : ""}>
         <span>${isPlaced ? "Pari joué" : "Marquer comme joué"}</span>
@@ -4533,7 +4756,7 @@ function renderUpcoming() {
         <span class="jouee-info muted">${texteCoteJouee(coteCaptureeCarte, coteJoueeNum)}</span>
       </div>
     </div>`;
-  }).join("");
+  });
 
   // Écouteurs des cases "Pari joué"
   grid.querySelectorAll(".placedchk").forEach(chk => {
@@ -7697,6 +7920,7 @@ function majBlocAutresBouge(rows) {
 }
 
 function dessinerMeilleurBk(C) {
+  window.DERNIER_MBK = C;   // pour le redessiner à la rotation / en plein écran
   const wrap = $("btMbkChartWrap");
   if (!wrap) return;
   if (!C.tout.nComp) {
@@ -12182,7 +12406,8 @@ function drawCalibration() {
     return;
   }
 
-  const W = 640, H = 380, pad = 52;
+  const petit = window.matchMedia("(max-width: 720px)").matches && !document.fullscreenElement;
+  const W = petit ? 360 : 640, H = petit ? 330 : 380, pad = petit ? 44 : 52;
   const sx = p => pad + p * (W - pad * 1.4);
   const sy = p => H - pad - p * (H - pad * 1.5);
 
@@ -12803,7 +13028,10 @@ function dessinerHistoJour(C, rows) {
   // semaine si la période est très longue. Premier / dernier jour (numéros
   // de jour) de chaque seau, bornés à la période des paris.
   const parMois = mode === "mois";
-  const pas = parMois ? null : (etendue <= 240 ? 1 : 7);
+  // 22/11/2026 : aussi par semaine quand la largeur laisse moins de 5 px par jour (téléphone en portrait) ;
+  // en plein écran ou sur ordinateur, la place revient et les jours aussi (ResizeObserver).
+  const largeurDispoHisto = (wrap && wrap.clientWidth) || 900;
+  const pas = parMois ? null : (etendue <= 240 && largeurDispoHisto / etendue >= 5 ? 1 : 7);
   const unite = parMois ? "mois" : (pas === 1 ? "jour" : "semaine");
   const moisDe = n => { const d = new Date(n * 86400000); return d.getUTCFullYear() * 12 + d.getUTCMonth(); };
   const jourDuMois = m => Math.round(Date.UTC(Math.floor(m / 12), m % 12, 1) / 86400000);
@@ -16364,9 +16592,19 @@ function initMobile() {
   let dernierW = chartW();
   const MAP_GRAPHIQUES = {
     retro: () => { if (typeof updateAllButTable === "function") updateAllButTable(); },
-    backtest: () => { if (typeof drawEvolution === "function") drawEvolution(); },
+    backtest: () => {
+      if (typeof drawEvolution === "function") drawEvolution();
+      if (window.DERNIER_MBK && typeof dessinerMeilleurBk === "function") dessinerMeilleurBk(window.DERNIER_MBK);
+      if (typeof drawCalibration === "function") drawCalibration();
+    },
     bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
-    montecarlo: () => { if (typeof runMonteCarlo === "function") runMonteCarlo(); }
+    // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
+    montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
+  };
+  window.redessinerPageActive = function () {
+    dernierW = chartW();
+    const pg = document.querySelector(".page.active"), id = pg ? pg.id.replace("page-", "") : "";
+    if (MAP_GRAPHIQUES[id]) { try { MAP_GRAPHIQUES[id](); } catch (e) { /* tracé précédent conservé */ } }
   };
   const aRedessiner = new Set();
   window.redessinerGraphiquesMobile = function (page) {
@@ -16397,6 +16635,75 @@ function initMobile() {
 
   window.majNavMobile();
 }
+
+/* ---------- Graphiques agrandis sur téléphone (22/11/2026) ----------
+   Sur un écran étroit, chaque grand graphique reçoit un bouton « Agrandir » : le graphique passe en plein écran
+   et, sur Android, l'écran bascule en paysage ; il est redessiné à la nouvelle largeur (jours au lieu de semaines
+   pour les histogrammes, plus de dates lisibles). Sans plein écran possible (iPhone), une vue agrandie fixe
+   prend toute la page : tourner le téléphone suffit alors. */
+function initAgrandirGraphiques() {
+  const IDS = ["chartWrap", "btEvoWrap", "btJourWrap", "btMbkChartWrap", "btCalibWrap", "mcFanWrap", "bkEvoWrap", "bkJourWrap"];
+  const redessiner = () => setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 120);
+  // La vue agrandie est déplacée sous <body> le temps de l'affichage : un parent animé (transform) ferait
+  // sinon de « position: fixed » un cadre relatif à lui, plus large que l'écran.
+  const repere = new Map();
+  const fermer = box => {
+    box.classList.remove("is-plein");
+    const r = repere.get(box);
+    if (r && r.parentNode) { r.parentNode.insertBefore(box, r); r.remove(); repere.delete(box); }
+    document.body.classList.remove("gz-ouvert");
+    const b = box.querySelector(".gz-btn"); if (b) { b.textContent = "Agrandir"; b.setAttribute("aria-pressed", "false"); }
+    const a = box.querySelector(".gz-astuce"); if (a) a.textContent = "Plus de détail en grand";
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* rien */ }
+    redessiner();
+  };
+  IDS.forEach(id => {
+    const wrap = document.getElementById(id);
+    if (!wrap || wrap.closest(".gz-box")) return;
+    const box = document.createElement("div");
+    box.className = "gz-box";
+    wrap.parentNode.insertBefore(box, wrap);
+    const barre = document.createElement("div");
+    barre.className = "gz-barre";
+    barre.innerHTML = '<span class="gz-astuce">Plus de détail en grand</span>'
+      + '<button type="button" class="gz-btn" aria-pressed="false">Agrandir</button>';
+    box.appendChild(barre);
+    box.appendChild(wrap);
+    barre.querySelector(".gz-btn").addEventListener("click", async () => {
+      const ouvert = box.classList.contains("is-plein") || document.fullscreenElement === box;
+      if (ouvert) {
+        if (document.fullscreenElement === box) { try { await document.exitFullscreen(); } catch (e) { fermer(box); } }
+        else fermer(box);
+        return;
+      }
+      if (!repere.has(box)) {
+        const r = document.createComment("graphique agrandi");
+        box.parentNode.insertBefore(r, box);
+        repere.set(box, r);
+        document.body.appendChild(box);
+      }
+      box.classList.add("is-plein");
+      document.body.classList.add("gz-ouvert");
+      const b = barre.querySelector(".gz-btn"); b.textContent = "Fermer"; b.setAttribute("aria-pressed", "true");
+      barre.querySelector(".gz-astuce").textContent = "Tourne le téléphone pour élargir le graphique";
+      if (box.requestFullscreen) {
+        try {
+          await box.requestFullscreen({navigationUI: "hide"});
+          try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape"); } catch (e) { /* non pris en charge */ }
+        } catch (e) { /* plein écran refusé : la vue agrandie fixe reste */ }
+      }
+      redessiner();
+    });
+  });
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement) document.querySelectorAll(".gz-box.is-plein").forEach(fermer);
+    else redessiner();
+  });
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape") document.querySelectorAll(".gz-box.is-plein").forEach(box => { if (document.fullscreenElement !== box) fermer(box); });
+  });
+}
+try { initAgrandirGraphiques(); } catch (e) { console.error("Agrandir les graphiques :", e); }
 
 /* ---------- Init ---------- */
 refresh();
