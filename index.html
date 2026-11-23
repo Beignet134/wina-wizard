@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123044159">
+<link rel="stylesheet" href="style.css?v=20261123060731">
 </head>
 <body>
 <div class="topbar">
@@ -128,19 +128,88 @@
       <p class="lead">Ce qui <em>aurait</em> été gagné sur les matchs déjà joués — simulateur de mise, filtres et sélection manuelle.</p>
     </div>
 
-    <div class="cards">
-      <div class="card"><div class="k">Fichiers cotes</div><div class="v" id="metaOddsFiles">—</div></div>
-      <div class="card"><div class="k">Fichiers résultats</div><div class="v" id="metaResultsFiles">—</div></div>
-      <div class="card"><div class="k">Cotes après dédup.</div><div class="v"><span id="metaOddsDedup">—</span><span class="sub" id="metaOddsRaw"></span></div></div>
-      <div class="card"><div class="k">Matchs rapprochés</div><div class="v" id="metaMatched">—</div></div>
-      <div class="card"><div class="k">Non rapprochés</div><div class="v" id="metaUnmatched">—</div></div>
-    </div>
+    <!-- Page Rétrospectif refaite le 22/11/2026 : le rapprochement cotes / résultats (les soucis de mapping) passe
+         en tête, avec ce qu'il y a à corriger et comment ; puis le simulateur, la courbe, les catégories et le
+         détail. Tous les id d'origine sont conservés (les deux panneaux de diagnostic ont seulement été déplacés). -->
+    <details class="mc-aide">
+      <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span><strong>Cette page mesure le passé : sur assez de combinaisons, on trouve toujours un gagnant par hasard.</strong></span>
+        <span class="mc-aide-plus">En savoir plus</span></summary>
+      <div class="mc-aide-corps">
+        <p>Le <strong>ROI test</strong> (données récentes jamais utilisées pour repérer l'edge) est le seul juge de
+        fiabilité. Un petit nombre de paris rend tout résultat fragile. Rien ici n'est une consigne de pari.</p>
+        <p>Chaque cote n'est comptée que si son match a été <strong>rapproché</strong> d'un résultat : un match
+        mal rapproché disparaît de toutes les pages (rétrospectif, DC rétrospectif, alertes). D'où le bilan
+        ci-dessous.</p>
+      </div>
+    </details>
 
-    <div class="warn">
-      <strong>À lire avant toute décision.</strong> Cette page mesure le passé. Sur assez de combinaisons,
-      on trouve toujours un gagnant par hasard. Le <strong>ROI test</strong> (données récentes jamais
-      utilisées pour repérer l'edge) est le seul juge de fiabilité. Un nombre de paris (n) faible rend
-      tout résultat fragile. Rien ici n'est une consigne de pari.
+    <div class="panel rp-panel" id="rpPanel">
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 12.5 5.6 14.4a2.6 2.6 0 0 1-3.7-3.7L4.8 7.8a2.6 2.6 0 0 1 3.7 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="m12.5 7.5 1.9-1.9a2.6 2.6 0 0 1 3.7 3.7l-2.9 2.9a2.6 2.6 0 0 1-3.7 0M7.6 12.4l4.8-4.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Rapprochement cotes et résultats <span class="hint">— les matchs qui échappent à toutes les analyses</span></h2>
+      <div id="rpSante"></div>
+      <div id="rpActions" class="rp-actions"></div>
+      <div id="rpLigues"></div>
+      <div class="rp-donnees">
+        <span>Fichiers de cotes <strong id="metaOddsFiles">—</strong></span>
+        <span>Fichiers de résultats <strong id="metaResultsFiles">—</strong></span>
+        <span>Cotes après dédoublonnage <strong><span id="metaOddsDedup">—</span><span class="sub" id="metaOddsRaw"></span></strong></span>
+        <span>Matchs rapprochés <strong id="metaMatched">—</strong></span>
+        <span>Non rapprochés <strong id="metaUnmatched">—</strong></span>
+      </div>
+      <details class="unmatched" id="unmatchedBox">
+        <summary></summary>
+        <details class="mc-mini-aide"><summary>Comment lire les puces</summary>        <p>Ces matchs de cotes n'ont pas trouvé de résultat correspondant. Quand un candidat le plus
+        proche est affiché sous une entrée, un résultat existe bien à cette date mais sous le seuil de similarité
+        — souvent un <code>TEAM_ALIASES</code> manquant, à ajouter dans le script Python en comparant les deux noms.
+        Quand l'entrée indique <span class="match-check warn" style="cursor:default">≠ date</span>, aucun résultat
+        n'existait à la date attendue mais un candidat aux noms très proches a été trouvé à quelques jours d'écart —
+        probablement un match reporté ou avancé plutôt qu'un problème de nom. Sans aucun candidat affiché, aucun
+        résultat n'existe non plus dans les jours voisins : un vrai trou de couverture (un alias n'y changerait
+        rien). Des puces vérifient le candidat AVANT les noms d'équipe : la date et la ligue — <span
+        class="match-check warn" style="cursor:default">⚠ ligue différente</span> signale un candidat pris dans une
+        autre compétition, donc probablement un trou de couverture plutôt qu'un vrai alias manquant ; le bouton
+        "Copier l'entrée Python" n'apparaît alors pas, pour éviter de suivre une suggestion qui casserait plus
+        qu'elle ne corrige. Un match dont la date n'est pas encore arrivée est mis à part (<span class="match-check ok" style="cursor:default">🗓 pas encore joué</span>) : l'absence de résultat y est normale, ce n'est pas un trou de couverture.</p>
+        </details>
+        <div class="field unmatched-filter">
+          <label for="unmatchedFilter">Filtrer</label>
+          <select id="unmatchedFilter">
+            <option value="all">Tous</option>
+            <option value="alias">Avec une entrée d'alias à copier</option>
+            <option value="candidat">Avec candidat (✓ même date)</option>
+            <option value="ligue_ok">✓ même ligue</option>
+            <option value="ligue_ko">⚠ ligue différente</option>
+            <option value="date_decalee">📅 Date décalée (match probablement reporté/avancé)</option>
+            <option value="none">Aucun candidat, déjà joué (trou de couverture)</option>
+            <option value="futur">🗓 Pas encore joué (futur)</option>
+          </select>
+          <span class="muted" id="unmatchedFilterCount"></span>
+        </div>
+        <div class="alias-batch-toolbar" id="unmatchedBatchToolbar">
+          <button type="button" class="msel-action" id="unmatchedCheckAll">Tout cocher (visibles)</button>
+          <button type="button" class="msel-action" id="unmatchedUncheckAll">Tout décocher (visibles)</button>
+          <span class="muted" id="unmatchedSelCount">0 sélectionné(s)</span>
+          <button type="button" class="btn-copy-alias btn-copy-alias-batch" id="unmatchedCopySelection" disabled>Copier les entrées sélectionnées</button>
+        </div>
+        <ul id="unmatchedList"></ul>
+      </details>
+      <details class="unmatched" id="unalignedLeaguesBox">
+        <summary></summary>
+        <details class="mc-mini-aide"><summary>Pourquoi tous leurs matchs sont perdus</summary>        <p>Ces compétitions n'ont jamais pu être alignées entre les cotes et les résultats (nom de
+        pays ou de ligue trop différent d'une source à l'autre) : <strong>tous</strong> leurs matchs sont perdus
+        d'un coup, backtest et paris à venir compris. Quand une ligne indique "côté résultats, cette compétition
+        s'appelle...", c'est le libellé RÉEL retrouvé dans les résultats pour cette compétition (pas une
+        supposition) : une entrée <code>LEAGUE_ALIASES_RESULTATS</code> (ou <code>PAYS_ALIASES_RESULTATS</code>)
+        dans le script Python, avec ce texte exact, récupère généralement toute la ligne d'un coup.</p>
+        </details>
+        <div class="alias-batch-toolbar" id="unalignedBatchToolbar">
+          <button type="button" class="msel-action" id="unalignedCheckAll">Tout cocher</button>
+          <button type="button" class="msel-action" id="unalignedUncheckAll">Tout décocher</button>
+          <span class="muted" id="unalignedSelCount">0 sélectionné(s)</span>
+          <button type="button" class="btn-copy-alias btn-copy-alias-batch" id="unalignedCopySelection" disabled>Copier les entrées sélectionnées</button>
+        </div>
+        <ul id="unalignedLeaguesList"></ul>
+      </details>
     </div>
 
     <div class="panel">
@@ -189,17 +258,17 @@
         </div>
       </div>
 
-      <div class="kpis">
-        <div class="kpi"><div class="k">Paris retenus</div><div class="v" id="kNb">0</div></div>
-        <div class="kpi"><div class="k">Total misé</div><div class="v" id="kMise">0 €</div></div>
-        <div class="kpi"><div class="k">Gain / perte net</div><div class="v" id="kNet">0 €</div></div>
-        <div class="kpi"><div class="k">ROI</div><div class="v" id="kRoi">—</div></div>
-        <div class="kpi"><div class="k">Taux de réussite</div><div class="v" id="kWin">—</div></div>
+      <div class="bk-tuiles">
+        <div class="bk-tuile"><div class="k">Paris retenus</div><div class="v" id="kNb">0</div></div>
+        <div class="bk-tuile"><div class="k">Total misé</div><div class="v" id="kMise">0 €</div></div>
+        <div class="bk-tuile bk-tuile-main"><div class="k">Gain / perte net</div><div class="v" id="kNet">0 €</div></div>
+        <div class="bk-tuile"><div class="k">ROI</div><div class="v" id="kRoi">—</div></div>
+        <div class="bk-tuile"><div class="k">Taux de réussite</div><div class="v" id="kWin">—</div></div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>Évolution du gain cumulé <span class="hint">— ordre chronologique des paris retenus</span></h2>
+      <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 15.5 7.5 10l3 2.5L17 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Évolution du gain cumulé <span class="hint">— ordre chronologique des paris retenus</span></h2>
       <div id="chartWrap"></div>
     </div>
 
@@ -239,57 +308,6 @@
         <span id="rowInfo"></span>
         <span class="muted">Affichage limité aux 400 premières lignes ; KPI et graphique portent sur tout l'ensemble filtré.</span>
       </div>
-      <details class="unmatched" id="unmatchedBox">
-        <summary></summary>
-        <p class="muted">Ces matchs de cotes n'ont pas trouvé de résultat correspondant. Quand un candidat le plus
-        proche est affiché sous une entrée, un résultat existe bien à cette date mais sous le seuil de similarité
-        — souvent un <code>TEAM_ALIASES</code> manquant, à ajouter dans le script Python en comparant les deux noms.
-        Quand l'entrée indique <span class="match-check warn" style="cursor:default">≠ date</span>, aucun résultat
-        n'existait à la date attendue mais un candidat aux noms très proches a été trouvé à quelques jours d'écart —
-        probablement un match reporté ou avancé plutôt qu'un problème de nom. Sans aucun candidat affiché, aucun
-        résultat n'existe non plus dans les jours voisins : un vrai trou de couverture (un alias n'y changerait
-        rien). Des puces vérifient le candidat AVANT les noms d'équipe : la date et la ligue — <span
-        class="match-check warn" style="cursor:default">⚠ ligue différente</span> signale un candidat pris dans une
-        autre compétition, donc probablement un trou de couverture plutôt qu'un vrai alias manquant ; le bouton
-        "Copier l'entrée Python" n'apparaît alors pas, pour éviter de suivre une suggestion qui casserait plus
-        qu'elle ne corrige. Un match dont la date n'est pas encore arrivée est mis à part (<span class="match-check ok" style="cursor:default">🗓 pas encore joué</span>) : l'absence de résultat y est normale, ce n'est pas un trou de couverture.</p>
-        <div class="field unmatched-filter">
-          <label for="unmatchedFilter">Filtrer</label>
-          <select id="unmatchedFilter">
-            <option value="all">Tous</option>
-            <option value="candidat">Avec candidat (✓ même date)</option>
-            <option value="ligue_ok">✓ même ligue</option>
-            <option value="ligue_ko">⚠ ligue différente</option>
-            <option value="date_decalee">📅 Date décalée (match probablement reporté/avancé)</option>
-            <option value="none">Aucun candidat, déjà joué (trou de couverture)</option>
-            <option value="futur">🗓 Pas encore joué (futur)</option>
-          </select>
-          <span class="muted" id="unmatchedFilterCount"></span>
-        </div>
-        <div class="alias-batch-toolbar" id="unmatchedBatchToolbar">
-          <button type="button" class="msel-action" id="unmatchedCheckAll">Tout cocher (visibles)</button>
-          <button type="button" class="msel-action" id="unmatchedUncheckAll">Tout décocher (visibles)</button>
-          <span class="muted" id="unmatchedSelCount">0 sélectionné(s)</span>
-          <button type="button" class="btn-copy-alias btn-copy-alias-batch" id="unmatchedCopySelection" disabled>Copier les entrées sélectionnées</button>
-        </div>
-        <ul id="unmatchedList"></ul>
-      </details>
-      <details class="unmatched" id="unalignedLeaguesBox">
-        <summary></summary>
-        <p class="muted">Ces compétitions n'ont jamais pu être alignées entre les cotes et les résultats (nom de
-        pays ou de ligue trop différent d'une source à l'autre) : <strong>tous</strong> leurs matchs sont perdus
-        d'un coup, backtest et paris à venir compris. Quand une ligne indique "côté résultats, cette compétition
-        s'appelle...", c'est le libellé RÉEL retrouvé dans les résultats pour cette compétition (pas une
-        supposition) : une entrée <code>LEAGUE_ALIASES_RESULTATS</code> (ou <code>PAYS_ALIASES_RESULTATS</code>)
-        dans le script Python, avec ce texte exact, récupère généralement toute la ligne d'un coup.</p>
-        <div class="alias-batch-toolbar" id="unalignedBatchToolbar">
-          <button type="button" class="msel-action" id="unalignedCheckAll">Tout cocher</button>
-          <button type="button" class="msel-action" id="unalignedUncheckAll">Tout décocher</button>
-          <span class="muted" id="unalignedSelCount">0 sélectionné(s)</span>
-          <button type="button" class="btn-copy-alias btn-copy-alias-batch" id="unalignedCopySelection" disabled>Copier les entrées sélectionnées</button>
-        </div>
-        <ul id="unalignedLeaguesList"></ul>
-      </details>
     </div>
   </section>
 
@@ -1942,20 +1960,76 @@
   <section class="page" id="page-upcoming" role="tabpanel" aria-labelledby="heading-upcoming" tabindex="0">
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">PROCHAINES RENCONTRES · 06</p><h2 class="page-title" id="heading-upcoming">Paris à venir</h2></div>
-      <p class="lead">Les value bets du modèle Dixon-Coles sur les matchs <strong>pas encore joués</strong>, dans les <span id="metaUpcomingDays">—</span> prochains jours. Classés par espérance de gain.</p>
+      <p class="lead">Les paris retenus par tes filtres sur les matchs <strong>pas encore joués</strong>, dans les <span id="metaUpcomingDays">—</span> prochains jours, jour par jour.</p>
     </div>
 
-    <div class="warn pred">
-      <strong>Une espérance élevée n'est pas une bonne nouvelle — c'est un signal d'alerte.</strong>
-      Si une ligne affiche « +50 % d'espérance », cela ne veut pas dire que tu vas gagner 50 % : cela
-      veut presque toujours dire que <em>le modèle surestime</em> la probabilité de cette issue. Les
-      bookmakers intègrent les blessures, les compos, la forme, l'argent parié — le modèle, lui, ne
-      connaît que l'historique des buts. Quand une cote paraît « trop belle » selon lui, l'explication
-      la plus probable est que le modèle a tort, pas que le marché offre un cadeau. Un edge réaliste se
-      compte en <strong>quelques pourcents</strong>, pas en dizaines. Les espérances énormes viennent
-      surtout d'équipes avec trop peu d'historique (forces gonflées). Traite ces cartes comme des
-      <em>pistes à vérifier</em> contre le contexte réel, jamais comme des paris sûrs. Joue avec modération.
+
+    <!-- Page Paris à venir refaite le 23/11/2026 : les paris d'abord (résumé du programme, jours, cartes groupées
+         par jour), puis les cotes boostées, les filtres, la synchronisation et l'export. Logique de sélection,
+         filtres, cases « joué », cote obtenue et synchronisation inchangés ; tous les id d'origine conservés. -->
+    <details class="mc-aide">
+      <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span><strong>Ce sont des pistes à vérifier, pas des paris sûrs : une espérance énorme signale surtout une erreur du modèle.</strong></span>
+        <span class="mc-aide-plus">En savoir plus</span></summary>
+      <div class="mc-aide-corps">
+        <p>Si une carte affiche « +50 % d'espérance », cela ne veut pas dire que tu vas gagner 50 % : cela veut presque
+        toujours dire que <em>le modèle surestime</em> la probabilité de cette issue. Les bookmakers intègrent les
+        blessures, les compos, la forme, l'argent parié ; le modèle ne connaît que l'historique des buts. Un edge
+        réaliste se compte en quelques pourcents. Les espérances énormes viennent surtout d'équipes avec trop peu
+        d'historique (forces gonflées). Vérifie le contexte réel avant de jouer, et joue avec modération.</p>
+        <p>La cote a bougé sur Winamax depuis la dernière mise à jour ? Le crayon à côté de la cote d'une carte permet
+        de saisir la cote réelle : edge, espérance et mise conseillée sont recalculés, et la carte passe en rouge si le
+        pari ne respecte plus tes filtres. « Cotes acceptées » indique d'avance entre quelles cotes il les passe encore.</p>
+      </div>
+    </details>
+
+    <div class="panel up-resume" id="uResume">
+      <div class="up-resume-tete">
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Le programme <span class="hint" id="uProchain"></span></h2>
+      </div>
+      <div class="bk-tuiles up-tuiles">
+        <div class="bk-tuile bk-tuile-main"><div class="k">Paris retenus</div><div class="v" id="uNb">0</div><div class="kpi-sub" id="uNbSous"></div></div>
+        <div class="bk-tuile"><div class="k">Total à miser</div><div class="v" id="uMise">0 €</div></div>
+        <div class="bk-tuile"><div class="k">Espérance totale</div><div class="v" id="uEv">—</div><div class="kpi-sub">si le modèle est juste</div></div>
+        <div class="bk-tuile"><div class="k">Matchs concernés</div><div class="v" id="uMatches">0</div></div>
+      </div>
+      <div id="uJours" class="up-jours" role="navigation" aria-label="Aller à un jour"></div>
+      <div class="up-filtres-resume">
+        <p id="uFiltresResume"></p>
+        <button type="button" class="rp-btn" id="uVoirFiltres">Modifier les filtres</button>
+      </div>
+      <p class="muted" id="uCotesNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
     </div>
+
+    <div id="cbkCtl" class="cbk-ctl" style="display:none">
+      <span class="cbk-ctl-lbl">Cote affichée</span>
+      <div class="cbk-seg" role="group" aria-label="Cote affichée sur les cartes">
+        <button type="button" id="cbkModeBest" aria-pressed="true">Meilleure cote</button>
+        <button type="button" id="cbkModeBetclic" aria-pressed="false" title="Cote Betclic affichée et proposée comme cote jouée (portée réglée dans DC rétrospectif : Score exact seulement ou tous les paris)">Betclic</button>
+        <button type="button" id="cbkModeUnibet" aria-pressed="false" title="Cote Unibet affichée et proposée comme cote jouée">Unibet</button>
+        <button type="button" id="cbkModeDaznbet" aria-pressed="false" title="Cote DAZN Bet affichée et proposée comme cote jouée">DAZN Bet</button>
+        <button type="button" id="cbkModeRef" aria-pressed="false">Winamax seule</button>
+      </div>
+      <label>Relevé retenu s'il a moins de
+        <select id="cbkAge" aria-label="Âge maximal d'un relevé de cote retenu">
+          <option value="3">3 h</option>
+          <option value="6">6 h</option>
+          <option value="12">12 h</option>
+          <option value="24">24 h</option>
+        </select>
+      </label>
+      <span class="muted" id="cbkInfo"></span>
+      <details class="cbk-ctl-aide"><summary>Comment est choisie la cote affichée</summary>
+      <p class="cbk-ctl-note">La <strong>sélection</strong> des paris reste faite sur la cote Winamax : edge, espérance, filtres et mise
+        conseillée ne changent pas. La meilleure cote ne sert qu'à choisir <strong>où placer</strong> le pari. Survolez (ou touchez) la cote d'une
+        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés des autres sites (Unibet, Betclic, Bwin, DAZN Bet)
+        viennent de leurs collecteurs (chaîne toutes les 3 h) : plus ils sont anciens, moins la comparaison est fiable.</p>
+      </details>
+    </div>
+
+    <p class="muted" id="uCoteAide" hidden></p>
+    <div id="recGrid" class="rec-grid"></div>
+    <p id="uEmpty" class="muted" style="text-align:center;margin-top:2rem;display:none"></p>
 
     <!-- Cotes boostées Winamax (07/11/2026) : remplies par le bloc JS « COTES BOOSTÉES », masquées sans historique. -->
     <div class="panel bst-panel" id="bstPanel" hidden>
@@ -2312,14 +2386,7 @@
       <p class="muted" id="uAccordNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uMiseNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
       <p class="muted" id="uHistNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
-      <p class="muted" id="uCotesNote" style="display:none; margin:.4rem 0 0; font-size:.82rem"></p>
 
-      <div class="kpis">
-        <div class="kpi"><div class="k">Paris recommandés</div><div class="v" id="uNb">0</div></div>
-        <div class="kpi"><div class="k">Total à miser</div><div class="v" id="uMise">0 €</div></div>
-        <div class="kpi"><div class="k">Espérance totale</div><div class="v" id="uEv">—</div></div>
-        <div class="kpi"><div class="k">Matchs concernés</div><div class="v" id="uMatches">0</div></div>
-      </div>
     </div>
 
     <div id="syncBox" class="panel sync-panel" style="display:none">
@@ -2376,39 +2443,6 @@
       </details>
     </div>
 
-    <div id="cbkCtl" class="cbk-ctl" style="display:none">
-      <span class="cbk-ctl-lbl">Cote affichée</span>
-      <div class="cbk-seg" role="group" aria-label="Cote affichée sur les cartes">
-        <button type="button" id="cbkModeBest" aria-pressed="true">Meilleure cote</button>
-        <button type="button" id="cbkModeBetclic" aria-pressed="false" title="Cote Betclic affichée et proposée comme cote jouée (portée réglée dans DC rétrospectif : Score exact seulement ou tous les paris)">Betclic</button>
-        <button type="button" id="cbkModeUnibet" aria-pressed="false" title="Cote Unibet affichée et proposée comme cote jouée">Unibet</button>
-        <button type="button" id="cbkModeDaznbet" aria-pressed="false" title="Cote DAZN Bet affichée et proposée comme cote jouée">DAZN Bet</button>
-        <button type="button" id="cbkModeRef" aria-pressed="false">Winamax seule</button>
-      </div>
-      <label>Relevé retenu s'il a moins de
-        <select id="cbkAge" aria-label="Âge maximal d'un relevé de cote retenu">
-          <option value="3">3 h</option>
-          <option value="6">6 h</option>
-          <option value="12">12 h</option>
-          <option value="24">24 h</option>
-        </select>
-      </label>
-      <span class="muted" id="cbkInfo"></span>
-      <p class="cbk-ctl-note">La <strong>sélection</strong> des paris reste faite sur la cote Winamax : edge, espérance, filtres et mise
-        conseillée ne changent pas. La meilleure cote ne sert qu'à choisir <strong>où placer</strong> le pari. Survolez (ou touchez) la cote d'une
-        carte pour voir celle de chaque site. Les cotes bougent vite : vérifiez-la sur le site avant de parier. Les relevés des autres sites (Unibet, Betclic, Bwin, DAZN Bet)
-        viennent de leurs collecteurs (chaîne toutes les 3 h) : plus ils sont anciens, moins la comparaison est fiable.</p>
-    </div>
-
-    <p class="muted" id="uCoteAide" style="margin:1rem 0 0; font-size:.82rem">
-      La cote a bougé sur Winamax depuis la dernière mise à jour ? Cliquez sur le crayon à côté de la
-      cote d'une carte et saisissez la cote réelle : l'edge, l'espérance et la mise conseillée sont
-      recalculés, et la carte passe en rouge si le pari ne respecte plus vos filtres. La ligne
-      « Cotes acceptées » indique d'avance entre quelles cotes le pari passe encore vos filtres (elle
-      dépend de vos réglages, notamment de celui du mouvement de la cote).
-    </p>
-    <div id="recGrid" class="rec-grid"></div>
-    <p id="uEmpty" class="muted" style="text-align:center;margin-top:2rem;display:none"></p>
   </section>
 
   <!-- ================================================================= -->
@@ -3063,7 +3097,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123044320", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123044320", APP = "app.js?v=20261123044159";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123060839", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123060839", APP = "app.js?v=20261123060731";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
