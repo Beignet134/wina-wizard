@@ -2907,6 +2907,78 @@ details.panel-foldable[open] > summary::before {
   .bl-wr { grid-template-columns: minmax(0, 1fr) 70px 4rem; }
   .bl-mois { grid-template-columns: repeat(2, 1fr); }
 }
+/* ---- Page DC rétrospectif v2 (23/11/2026) ---- */
+.dv-strip { position: sticky; top: calc(var(--ww-topbar-height, 0px) + .4rem); z-index: 44; display: flex; align-items: stretch; flex-wrap: wrap;
+  border: 1px solid var(--line); border-radius: 14px; background: rgba(21,34,53,.96); backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(0,6,16,.4); margin-bottom: 1rem; }
+.dv-k { display: flex; flex-direction: column; justify-content: center; padding: .5rem 1rem; border-left: 1px solid var(--line-soft); }
+.dv-k:first-child { border-left: 0; }
+.dv-k span { font-size: .68rem; color: var(--ink-faint); }
+.dv-k b { font: 700 1.05rem var(--font-mono); color: var(--ink); white-space: nowrap; }
+.dv-k b.pos { color: var(--up); } .dv-k b.neg { color: var(--down); }
+.dv-k-per b { font-size: .84rem; font-weight: 500; }
+.dv-act { margin-left: auto; display: flex; align-items: center; gap: .45rem; padding: .45rem .7rem; }
+.dv-btn { font: 600 .8rem var(--font-body); color: var(--ink); background: rgba(10,16,26,.6); border: 1px solid var(--line);
+  border-radius: 10px; padding: .4rem .8rem; cursor: pointer; display: inline-flex; align-items: center; gap: .35rem; }
+.dv-btn:hover { border-color: var(--ink-faint); }
+.dv-btn[aria-expanded="true"] { border-color: var(--lime); }
+.dv-badge { background: var(--lime); color: var(--night); border-radius: 999px; font-size: .68rem; padding: 0 .4rem; }
+#dvSlotFiltres > details { margin-bottom: 1rem; }
+.dv-lay { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 1rem; align-items: start; }
+.dv-side { position: sticky; top: calc(var(--ww-topbar-height, 0px) + 5.4rem); max-height: calc(100vh - var(--ww-topbar-height, 0px) - 6.4rem);
+  overflow-y: auto; scrollbar-width: thin; background: var(--night-2, #101a27); border: 1px solid var(--line-soft); border-radius: 14px; padding: .55rem; }
+.dv-g { font-size: .68rem; color: var(--ink-faint); margin: .8rem .5rem .25rem; }
+.dv-g:first-child { margin-top: .2rem; }
+.dv-l { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: .4rem; text-align: left; font: 500 .82rem var(--font-body);
+  color: var(--ink-dim); background: none; border: 0; border-radius: 8px; padding: .34rem .6rem; cursor: pointer; }
+.dv-l:hover { color: var(--ink); background: rgba(255,255,255,.03); }
+.dv-l.is-on { color: var(--ink); background: rgba(55,217,155,.12); box-shadow: inset 2px 0 0 var(--lime); }
+.dv-l small { font: .7rem var(--font-mono); color: var(--ink-faint); }
+.dv-l:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.dv-main { min-width: 0; }
+.dv-main > .dv-off { display: none !important; }
+.dv-main > details, .dv-main > .panel, .dv-main > .bl-hero { margin-top: 0; margin-bottom: 1rem; }
+/* Matrices épurées : cases arrondies espacées, net en grand, « paris · ROI » dessous, totaux sans fond. */
+#page-dcv2 .score-matrix { border-collapse: separate; border-spacing: 5px; min-width: 0; width: 100%; }
+#page-dcv2 .score-matrix th, #page-dcv2 .score-matrix td { border: 0; }
+#page-dcv2 .score-matrix thead th, #page-dcv2 .score-matrix tbody th { background: none; color: var(--ink-faint); font-weight: 500; }
+#page-dcv2 .score-cell { border-radius: 10px; padding: .6rem .45rem; min-width: 5.6rem; height: 3.9rem; }
+#page-dcv2 .score-net { font-size: .98rem; text-shadow: none; }
+#page-dcv2 .score-sub, #page-dcv2 .score-roi { display: inline; font-size: .68rem; font-family: var(--font-mono); text-shadow: none; color: rgba(232,238,247,.72); }
+#page-dcv2 .score-roi::before { content: " · "; }
+#page-dcv2 .score-cell-empty { background: rgba(119,134,154,.045) !important; color: rgba(119,134,154,.35); }
+#page-dcv2 .score-cell-lowdata::before { width: 7px; height: 7px; top: 7px; right: 7px; border: 0; box-shadow: none; background: var(--gold); }
+#page-dcv2 .score-cell-total, #page-dcv2 .score-total-head { background: transparent !important; border-left: 0; }
+#page-dcv2 .score-total-row > th, #page-dcv2 .score-total-row > td { border-top: 0; background: transparent !important; }
+#page-dcv2 .score-cell-total .score-net { font-size: .86rem; }
+#page-dcv2 .tablewrap, #page-dcv2 .table-scroll { border: 0; background: none; }
+#page-dcv2 .score-matrix th, #page-dcv2 .score-matrix td.score-cell { white-space: normal; }
+#page-dcv2 .score-matrix .score-corner { max-width: 6.5rem; min-width: 4.6rem; line-height: 1.3; word-break: normal; overflow-wrap: normal; }
+#page-dcv2 .score-cell { min-width: 0; height: auto; min-height: 3.9rem; }
+#page-dcv2 .score-sub, #page-dcv2 .score-roi { white-space: nowrap; }
+#dvSlotFiltres > details:not([open]) { display: none; }
+#page-dcv2 .bl-kpis { grid-template-columns: 1.35fr repeat(5, 1fr); }
+#page-dcv2 .bl-k-main .v { font-size: 1.6rem; white-space: nowrap; }
+#page-dcv2 .bl-k .v { font-size: 1.1rem; }
+@media (max-width: 900px) {
+  .dv-lay { grid-template-columns: 1fr; }
+  .dv-side { position: static; max-height: none; display: flex; gap: .35rem; overflow-x: auto; flex-wrap: nowrap; padding: .45rem; border-radius: 12px; }
+  .dv-g { display: none; }
+  .dv-l { flex: none; width: auto; border: 1px solid var(--line-soft); border-radius: 999px; padding: .35rem .75rem; }
+  .dv-l small { display: none; }
+  .dv-l.is-on { box-shadow: none; border-color: var(--lime); }
+}
+@media (max-width: 720px) {
+  .dv-strip { position: static; }
+  .dv-k { padding: .4rem .65rem; flex: 1 1 30%; border-left: 0; }
+  .dv-k b { font-size: .9rem; }
+  .dv-k-per { flex-basis: 100%; }
+  .dv-act { margin-left: 0; width: 100%; padding-top: 0; }
+  .dv-btn { flex: 1; justify-content: center; }
+  #page-dcv2 .score-cell { min-width: 4.4rem; height: 3.4rem; padding: .4rem .3rem; }
+  #page-dcv2 .score-net { font-size: .82rem; }
+  #page-dcv2 .score-matrix .score-corner { font-size: .55rem; min-width: 3.6rem; }
+}
 /* ---- Page Bookmakers, refonte du 23/11/2026 ---- */
 .cmpb-sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .7rem; margin: 0 0 1.2rem; }
 .cmpb-sites:empty { display: none; }
