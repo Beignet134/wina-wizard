@@ -2786,6 +2786,41 @@ details.panel-foldable[open] > summary::before {
    habituel du formulaire ; .mc-strat-list est le cadre qui regroupe les
    lignes, comme un mini-groupe de filtres plutôt qu'un simple empilement. */
 .mc-strat-field { margin-top: .9rem; }
+/* ---- Page Bookmakers, refonte du 23/11/2026 ---- */
+.cmpb-sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .7rem; margin: 0 0 1.2rem; }
+.cmpb-sites:empty { display: none; }
+.cmpb-site { border: 1px solid var(--line-soft); border-radius: 14px; padding: .85rem .95rem; background: rgba(10,16,26,.45); display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.cmpb-site.premier { border-color: rgba(55,217,155,.45); background: linear-gradient(150deg, rgba(55,217,155,.10), rgba(10,16,26,.45)); }
+.cmpb-site-tete { display: flex; justify-content: space-between; align-items: center; }
+.cmpb-site-rang { font: 700 .95rem var(--font-mono); color: var(--ink-faint); }
+.cmpb-site-rang sup { font-size: .6rem; }
+.cmpb-site.premier .cmpb-site-rang { color: var(--up); }
+.cmpb-site-chiffres { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.cmpb-site-chiffres > div { display: flex; flex-direction: column; gap: .1rem; }
+.cmpb-site-big { font: 700 1.2rem/1.1 var(--font-mono); color: var(--ink); }
+.cmpb-site-lbl { font-size: .68rem; color: var(--ink-faint); line-height: 1.3; }
+.cmpb-site .cmpb-bar { display: block; }
+.cmpb-site-txt { margin: 0; font-size: .74rem; color: var(--ink-dim); line-height: 1.45; }
+.cmpb-site-txt strong { color: var(--ink); }
+.cmpb-tp-intro { margin: 0 0 .7rem; font-size: .84rem; color: var(--ink-dim); }
+.cmpb-tp-ligne { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, .7fr)); gap: .4rem .9rem; align-items: center;
+  padding: .55rem 0; border-bottom: 1px solid var(--line-soft); }
+.cmpb-tp-nom { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.cmpb-tp-nom small { font-size: .7rem; color: var(--ink-faint); }
+.cmpb-tp-nom .cbk-tag { align-self: flex-start; }
+.cmpb-tp-best { font-weight: 700; color: var(--ink); font-size: .85rem; }
+.cmpb-tp-val { display: flex; flex-direction: column; text-align: right; }
+.cmpb-tp-val small { font-size: .66rem; color: var(--ink-faint); }
+.cmpb-tp-val strong { font: 700 .88rem var(--font-mono); }
+.cmpb-tp-note { margin: .8rem 0 0; font-size: .78rem; }
+@media (max-width: 640px) {
+  .cmpb-sites { grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .cmpb-site { padding: .7rem; }
+  .cmpb-site-chiffres { grid-template-columns: 1fr; gap: .35rem; }
+  .cmpb-tp-ligne { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cmpb-tp-nom { grid-column: 1 / -1; }
+  .cmpb-tp-val { text-align: left; }
+}
 /* ---- Page Paris à venir, refonte du 23/11/2026 ---- */
 .up-resume h2 { margin-bottom: .2rem; }
 .up-resume h2 .hint { color: var(--cyan); }
