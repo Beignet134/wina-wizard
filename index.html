@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123060731">
+<link rel="stylesheet" href="style.css?v=20261123062334">
 </head>
 <body>
 <div class="topbar">
@@ -2802,20 +2802,29 @@
   <section class="page" id="page-bookmakers" role="tabpanel" aria-labelledby="heading-bookmakers" tabindex="0">
     <div class="page-heading">
       <div class="page-heading-title"><p class="page-kicker">MARCHÉS · 10</p><h2 class="page-title" id="heading-bookmakers">Bookmakers</h2></div>
-      <p class="lead">Winamax, Unibet, Betclic, Bwin et DAZN Bet face à face : dans quel cas chaque site offre-t-il la meilleure cote, et combien prélève-t-il sur chaque marché ? De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
+      <p class="lead">Winamax, Unibet, Betclic, Bwin et DAZN Bet face à face : qui paie le mieux, sur quel marché, et
+      ce que ça aurait changé sur tes paris. De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
     </div>
 
     <div id="cmpbVide" class="warn" style="display:none"></div>
 
     <div id="cmpbCorps">
-      <div class="warn">
-        <strong>Comment lire cette page.</strong> Pour chaque match que Winamax et un autre site proposent, on compare
-        les <em>mêmes</em> cotes (1X2, les 2 marquent, Plus/Moins, scores exacts) relevées à des moments proches.
-        <strong>Meilleure cote</strong> : part des cas où le site offre la cote la plus haute (une égalité est partagée).
-        <strong>Écart vs Winamax</strong> : de combien sa cote est plus haute (+) ou plus basse (−) en moyenne.
-        La <strong>marge</strong> est ce que le site prélève sur un marché entier : plus elle est basse, moins vous payez
-        quelle que soit l'issue choisie. Un site peut gagner sur un marché et perdre sur un autre : c'est le détail qui compte.
-      </div>
+      <!-- Page Bookmakers refaite le 23/11/2026 : réglages, l'essentiel (verdict + carte de chaque site), tes paris
+           (ce qu'ils auraient rapporté chez chaque site), tes paris à venir, puis le détail par marché, les marges,
+           le découpage et les gros écarts. Calculs et id d'origine inchangés. -->
+      <details class="mc-aide">
+        <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span><strong>On compare les mêmes cotes, relevées à des moments proches, chez Winamax et chez chaque autre site.</strong></span>
+          <span class="mc-aide-plus">En savoir plus</span></summary>
+        <div class="mc-aide-corps">
+          <p><strong>Meilleure cote</strong> : part des cas où le site offre la cote la plus haute (une égalité est partagée).
+          <strong>Écart vs Winamax</strong> : de combien sa cote est plus haute (+) ou plus basse (−) en moyenne.
+          La <strong>marge</strong> est ce que le site prélève sur un marché entier : plus elle est basse, moins tu paies,
+          quelle que soit l'issue choisie.</p>
+          <p>Un site peut gagner sur un marché et perdre sur un autre : c'est le détail qui compte. La sélection des paris
+          reste faite sur la cote Winamax ; cette page aide seulement à choisir où les jouer.</p>
+        </div>
+      </details>
 
       <div class="panel">
         <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="5" r="1.7" fill="var(--night-2)" stroke="currentColor" stroke-width="1.5"/><circle cx="13" cy="10" r="1.7" fill="var(--night-2)" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="15" r="1.7" fill="var(--night-2)" stroke="currentColor" stroke-width="1.5"/></svg>Réglages</h2>
@@ -2846,6 +2855,17 @@
       </div>
 
       <div id="cmpbVerdict" class="verdict-box neutre" style="display:none"></div>
+      <div id="cmpbSites" class="cmpb-sites"></div>
+
+      <div class="panel" id="cmpbTesParisPanel" style="display:none">
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 15.5V9M8.5 15.5V5M13 15.5v-4.5M17 15.5V7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Tes paris joués ailleurs <span class="hint">— paris retenus par les filtres de DC rétrospectif</span></h2>
+        <div id="cmpbTesParis"></div>
+      </div>
+
+      <div class="panel" id="cmpbAVenirPanel" style="display:none">
+        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Sur tes paris à venir <span class="hint">— où se trouve la meilleure cote en ce moment</span></h2>
+        <div id="cmpbAVenir"></div>
+      </div>
 
       <div id="cmpbSansDonnees" class="warn" style="display:none"></div>
 
@@ -2919,10 +2939,6 @@
         </div>
       </div>
 
-      <div class="panel" id="cmpbAVenirPanel" style="display:none">
-        <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Sur vos paris à venir <span class="hint">— les cotes actuelles</span></h2>
-        <div id="cmpbAVenir"></div>
-      </div>
 
       <details class="panel cmpb-methode">
         <summary>Méthode et limites</summary>
@@ -3097,7 +3113,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123060839", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123060839", APP = "app.js?v=20261123060731";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123062442", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123062442", APP = "app.js?v=20261123062334";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
