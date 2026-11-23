@@ -1858,7 +1858,11 @@ function activerOnglet(tab) {
   if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
   if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
   if (tab.dataset.page === "dc" && typeof renderDcCalibration === "function") renderDcCalibration();
-  if (tab.dataset.page === "bilan" && typeof renderBilan === "function") { try { renderBilan(); } catch (e) { console.error("Bilan :", e); } }
+  if (typeof blRendre === "function" && tab.dataset.page !== "bilan") blRendre();
+  if (tab.dataset.page === "bilan" && typeof renderBilan === "function") {
+    try { blEmprunter(); const p = $("btFilterSettings"), b = $("blModifier"); if (p && b) { b.textContent = p.open ? "Masquer les filtres" : "Modifier les filtres"; b.setAttribute("aria-expanded", String(p.open)); } renderBilan(); }
+    catch (e) { console.error("Bilan :", e); }
+  }
   if (tab.dataset.page === "bookmakers" && typeof cmpbRenderTesParis === "function") { try { cmpbRenderTesParis(); } catch (e) { /* rien */ } }
 }
 tabs.forEach((tab, index) => {
@@ -8188,6 +8192,7 @@ function dessinerMeilleurBk(C) {
 
 function renderBacktest() {
   if (REINIT_FILTRES_EN_COURS) return;
+  if (typeof blPlanifier === "function") blPlanifier();   // page « Bilan des filtres » : se recalcule après
   // Les agrégats sont recalculés sur l'ensemble filtré : la déduplication
   // change n, ROI, réussite... on ne peut donc pas réutiliser les totaux
   // bruts calculés côté Python.
@@ -16797,7 +16802,7 @@ function initMobile() {
       if (typeof drawCalibration === "function") drawCalibration();
     },
     bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
-    bilan: () => { if (typeof blDessiner === "function") blDessiner(); },
+    bilan: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); },
     // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
     montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
   };
@@ -16840,7 +16845,54 @@ function initMobile() {
 /* ================= PAGE — BILAN DES FILTRES (23/11/2026) =================
    Refonte de DC rétrospectif sur une page à part : mêmes paris (btFiltered, mêmes mises btStakeFor), avec le
    gain cumulé en vedette et ce qu'on peut en croire. Rien n'est recalculé côté modèle. */
-let BL_VUE = "euros", BL_DATA = null;
+let BL_VUE = "euros", BL_DATA = null, BL_MINUTEUR = 0;
+// Recalcul après un changement de filtre (renderBacktest), seulement si la page est affichée.
+function blPlanifier() {
+  const pg = $("page-bilan");
+  if (!pg || !pg.classList.contains("active")) return;
+  clearTimeout(BL_MINUTEUR);
+  BL_MINUTEUR = setTimeout(() => { try { renderBilan(); } catch (e) { console.error("Bilan :", e); } }, 250);
+}
+/* Panneaux de DC rétrospectif « empruntés » : déplacés dans cette page à son ouverture, remis à leur place dès qu'on
+   la quitte. Les champs, tris, clics de matrice et exports restent ceux de DC rétrospectif, sans copie. */
+const BL_EMPRUNTS = [
+  ["filtres", "btFilterSettings", "blSlotFiltres"],
+  ["cat", "btCatPanel", "blSlotExp"], ["mat", "btMatricesGroupe", "blSlotExp"], ["bk", "btMeilleurBkPanel", "blSlotExp"],
+  ["clv", "btMvtFiltrePanel", "blSlotExp"], ["ligues", "btLeaguePanel", "blSlotExp"], ["paris", "btDetailPanel", "blSlotExp"],
+  ["avance", "btAnalysesAvancees", "blSlotExp"],
+];
+let BL_EXP = "cat";
+try { BL_EXP = localStorage.getItem("ww_bl_exp") || "cat"; } catch (e) { /* rien */ }
+function blEmprunter() {
+  BL_EMPRUNTS.forEach(([cle, id, slot]) => {
+    const el = $(id), dest = $(slot);
+    if (!el || !dest || el._blIci) return;
+    if (!el._blRepere) { el._blRepere = document.createComment("emprunt bilan : " + id); el.parentNode.insertBefore(el._blRepere, el); }
+    dest.appendChild(el); el._blIci = true;
+    if (cle !== "filtres") { el.dataset.blExp = cle; if (el.tagName === "DETAILS") { el._blOpen = el.open; el.open = true; } }
+  });
+  blMontrerExp();
+}
+function blRendre() {
+  BL_EMPRUNTS.forEach(([, id]) => {
+    const el = $(id);
+    if (!el || !el._blIci || !el._blRepere || !el._blRepere.parentNode) return;
+    el._blRepere.parentNode.insertBefore(el, el._blRepere); el._blIci = false;
+    el.classList.remove("bl-exp-off");
+    if (el._blOpen !== undefined) { el.open = el._blOpen; el._blOpen = undefined; }
+  });
+}
+function blMontrerExp() {
+  const dispo = cle => { const e = BL_EMPRUNTS.find(x => x[0] === cle); const el = e && $(e[1]); return !!el && el.style.display !== "none"; };
+  if (!dispo(BL_EXP)) BL_EXP = "cat";
+  document.querySelectorAll("[data-bl-exp]").forEach(b => {
+    if (b.tagName !== "BUTTON") return;
+    b.hidden = !dispo(b.dataset.blExp);
+    b.setAttribute("aria-selected", String(b.dataset.blExp === BL_EXP));
+  });
+  BL_EMPRUNTS.forEach(([cle, id]) => { const el = $(id); if (el && el._blIci && cle !== "filtres") el.classList.toggle("bl-exp-off", cle !== BL_EXP); });
+  if (BL_EXP === "avance" || BL_EXP === "bk") setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 60);
+}
 const blE = x => (x < 0 ? "−" : x > 0 ? "+" : "") + Math.abs(x).toLocaleString("fr-FR", {maximumFractionDigits: 1, minimumFractionDigits: Math.abs(x) < 100 ? 1 : 0}) + " €";
 const blP = (x, d = 1) => x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d}) + " %";
 const blD = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "";
@@ -16908,6 +16960,8 @@ function renderBilan() {
   try { D = blCalculer(); } catch (e) { console.error("Bilan :", e); return; }
   BL_DATA = D;
   blRenderFiltresActifs(D);
+  blRenderNotes();
+  if (BL_EMPRUNTS.some(([, id]) => $(id) && $(id)._blIci)) blMontrerExp();
   if (!D.n) {
     $("blKpis").innerHTML = ""; $("blChartWrap").innerHTML = '<p class="muted">Aucun pari avec les filtres actuels de DC rétrospectif.</p>';
     ["blMois", "blChance", "blForme", "blSeries", "blFiltres", "blEns", "blOu"].forEach(id => { if ($(id)) $(id).innerHTML = ""; });
@@ -16924,9 +16978,9 @@ function renderBilan() {
   // KPI
   const clv = $("btClv"), clvSub = $("btClvSub");
   $("blKpis").innerHTML = `
-    <div class="bl-k bl-k-main"><div class="l">Résultat net</div><div class="v ${D.net >= 0 ? "pos" : "neg"}">${blE(D.net)}</div><div class="s">${D.n} paris · ${Math.round(D.mise).toLocaleString("fr-FR")} € misés</div></div>
+    <div class="bl-k bl-k-main"><div class="l">Résultat net</div><div class="v ${D.net >= 0 ? "pos" : "neg"}">${blE(D.net)}</div><div class="s">${$("btNetSub") && $("btNetSub").textContent.trim() !== "—" ? $("btNetSub").textContent : `${D.n} paris · ${Math.round(D.mise).toLocaleString("fr-FR")} € misés`}</div></div>
     <div class="bl-k"><div class="l">ROI</div><div class="v ${D.roi >= 0 ? "pos" : "neg"}">${blP(D.roi)}</div><div class="s" id="blRoiRef"></div></div>
-    <div class="bl-k"><div class="l">Réussite</div><div class="v">${(D.gagnes / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</div><div class="s">${(D.attendus / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} % attendus</div></div>
+    <div class="bl-k"><div class="l">Réussite</div><div class="v">${(D.gagnes / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</div><div class="s">${D.gagnes} gagnés · ${D.attendus.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendus (${(D.attendus / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %)</div></div>
     <div class="bl-k"><div class="l">Cote moyenne</div><div class="v">${D.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}</div><div class="s">${D.matchs} matchs</div></div>
     <div class="bl-k"><div class="l">Plus forte baisse</div><div class="v ${D.dd > 0 ? "neg" : ""}">${D.dd > 0 ? blE(-D.dd) : "aucune"}</div><div class="s">${D.dd > 0 ? `${blD(D.pts[Math.max(0, D.ddA)].d)} → ${blD(D.pts[D.ddB].d)}` : ""}</div></div>
     <div class="bl-k"><div class="l">CLV moyen</div><div class="v">${clv ? clv.textContent : "—"}</div><div class="s">${clvSub ? clvSub.textContent : ""}</div></div>`;
@@ -16945,12 +16999,23 @@ function renderBilan() {
   blRenderChance(D); blRenderForme(D); blRenderSeries(D);
   setTimeout(() => { try { blRenderContribution(D); blRenderOu(D); } catch (e) { console.error("Bilan (filtres) :", e); } }, 30);
 }
+function blRenderNotes() {
+  const ids = ["btEnrichiNote", "btLoiNote", "btForcesNote", "btSaisonNote", "btAbsNote", "btRhoNote", "btNiveauNote", "btDefenseNote",
+    "btAccordNote", "btMomentNote", "btMiseNote", "btDevigNote"];
+  const notes = ids.map(id => $(id)).filter(el => el && el.style.display !== "none" && el.textContent.trim());
+  const box = $("blNotes");
+  if (!box) return;
+  box.hidden = !notes.length;
+  $("blNotesTitre").textContent = `Réglages du modèle actifs (${notes.length})`;
+  $("blNotesCorps").innerHTML = notes.map(el => `<p>${el.innerHTML}</p>`).join("");
+}
 function blRenderFiltresActifs(D) {
   const src = $("btActiveFilters");
   const chips = src ? [...src.querySelectorAll(".active-filter-chip")] : [];
   $("blChips").innerHTML = chips.length ? chips.slice(0, 9).map(c => c.outerHTML).join("") + (chips.length > 9 ? `<span class="active-filter-chip"><strong>+${chips.length - 9}</strong></span>` : "")
     : '<span class="muted">aucun filtre particulier</span>';
-  $("blFbarLbl").textContent = chips.length ? `Filtres actifs (${chips.length})` : "Filtres actifs";
+  const per = $("btRangeLabel") ? $("btRangeLabel").textContent.trim() : "";
+  $("blFbarLbl").innerHTML = (chips.length ? `Filtres actifs (${chips.length})` : "Filtres actifs") + (per ? `<small>${per}</small>` : "");
   const d = $("btImpactDelta");
   $("blCmp").innerHTML = d && d.textContent.trim() && d.textContent.trim() !== "—" ? `vs tous les paris <strong>${d.textContent.trim()}</strong>` : "";
 }
@@ -16965,18 +17030,22 @@ function blDessiner() {
   if (BL_VUE !== "euros") {
     // barres par jour ou par mois
     const g = new Map();
-    D.rows.forEach(r => { const k = BL_VUE === "jour" ? r.date : r.date.slice(0, 7); const o = g.get(k) || {k, net: 0, n: 0}; o.net += r.profit * btStakeFor(r); o.n++; g.set(k, o); });
+    const vol = BL_VUE === "volume";
+    D.rows.forEach(r => { const k = BL_VUE === "mois" ? r.date.slice(0, 7) : r.date; const o = g.get(k) || {k, net: 0, n: 0}; o.net += r.profit * btStakeFor(r); o.n++; g.set(k, o); });
     const arr = [...g.values()].sort((a, b) => a.k.localeCompare(b.k));
+    if (vol) arr.forEach(a => { a.gain = a.net; a.net = a.n; });
     const lo = Math.min(0, ...arr.map(a => a.net)), hi = Math.max(0, ...arr.map(a => a.net));
     const pad = (hi - lo) * 0.08 || 10, y0 = lo - pad, y1 = hi + pad;
     const Y = v => T + (H - T - B) * (y1 - v) / (y1 - y0), bw = (W - L - R) / arr.length;
-    let svg = ticks(y0, y1).map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--chart-grid)"/><text x="${L - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="bl-ax">${fmtY(v)}</text>`).join("");
+    const fmtB = v => vol ? String(Math.round(v)) : fmtY(v);
+    const tk = vol ? (() => { const pas = [1, 2, 5, 10, 20, 50].find(p => (y1 - y0) / p <= 6) || 100; const t = []; for (let v = 0; v <= y1; v += pas) t.push(v); return t; })() : ticks(y0, y1);
+    let svg = tk.map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--chart-grid)"/><text x="${L - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="bl-ax">${fmtB(v)}</text>`).join("");
     svg += arr.map((a, i) => { const x = L + i * bw + bw * 0.15, w = Math.max(1, bw * 0.7), ya = Y(Math.max(0, a.net)), yb = Y(Math.min(0, a.net));
-      return `<rect x="${x.toFixed(1)}" y="${ya.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, yb - ya).toFixed(1)}" rx="${Math.min(3, w / 3)}" fill="${a.net >= 0 ? "var(--lime)" : "var(--coral)"}" opacity=".85"><title>${BL_VUE === "jour" ? blD(a.k) : BL_MOIS[+a.k.slice(5, 7) - 1] + " " + a.k.slice(0, 4)} : ${blE(a.net)} (${a.n} paris)</title></rect>`; }).join("");
+      return `<rect x="${x.toFixed(1)}" y="${ya.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, yb - ya).toFixed(1)}" rx="${Math.min(3, w / 3)}" fill="${vol ? "var(--violet)" : a.net >= 0 ? "var(--lime)" : "var(--coral)"}" opacity=".85"><title>${BL_VUE === "mois" ? BL_MOIS[+a.k.slice(5, 7) - 1] + " " + a.k.slice(0, 4) : blD(a.k)} : ${vol ? `${a.n} pari${a.n > 1 ? "s" : ""}, ${blE(a.gain)}` : `${blE(a.net)} (${a.n} paris)`}</title></rect>`; }).join("");
     if (BL_VUE === "mois") svg += arr.map((a, i) => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${(a.net >= 0 ? Y(a.net) - 7 : Y(a.net) + 15).toFixed(1)}" text-anchor="middle" class="bl-fin" style="fill:${a.net >= 0 ? "var(--up)" : "var(--down)"}">${fmtY(a.net)}</text>`).join("");
     const etiq = BL_VUE === "mois" ? arr.map((a, i) => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="bl-ax">${BL_MOIS[+a.k.slice(5, 7) - 1]}</text>`).join("")
       : [0, Math.floor(arr.length / 2), arr.length - 1].map(i => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="bl-ax">${blD(arr[i].k)}</text>`).join("");
-    wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" class="bl-svg" role="img" aria-label="Gain ${BL_VUE === "jour" ? "par jour" : "par mois"}">${svg}${etiq}<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/></svg>`;
+    wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" class="bl-svg" role="img" aria-label="${vol ? "Nombre de paris par jour" : BL_VUE === "jour" ? "Gain par jour" : "Gain par mois"}">${svg}${etiq}<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/></svg>`;
     return;
   }
   const P = D.pts, n = P.length;
@@ -17145,11 +17214,23 @@ function blRenderOu(D) {
     blDessiner();
   }));
   if ($("blReperes")) $("blReperes").addEventListener("change", blDessiner);
-  const aller = () => {
-    const t = $("tab-backtest"); if (t) t.click();
-    setTimeout(() => { const p = $("btFilterSettings"); if (p) { p.open = true; p.scrollIntoView({behavior: "smooth", block: "start"}); } }, 120);
+  const modifier = () => {
+    const p = $("btFilterSettings");
+    if (!p) return;
+    p.open = !p.open;
+    $("blModifier").setAttribute("aria-expanded", String(p.open));
+    $("blModifier").textContent = p.open ? "Masquer les filtres" : "Modifier les filtres";
+    if (p.open) p.scrollIntoView({behavior: "smooth", block: "start"});
   };
-  if ($("blModifier")) $("blModifier").addEventListener("click", aller);
+  if ($("blModifier")) $("blModifier").addEventListener("click", modifier);
+  document.querySelectorAll("button[data-bl-exp]").forEach(b => b.addEventListener("click", () => {
+    BL_EXP = b.dataset.blExp;
+    try { localStorage.setItem("ww_bl_exp", BL_EXP); } catch (e) { /* rien */ }
+    blMontrerExp();
+    b.scrollIntoView({block: "nearest", inline: "center"});
+    const ex = $("blExplorer"), nav = b.parentNode;
+    if (ex && ex.getBoundingClientRect().top < 0) window.scrollTo({top: window.scrollY + ex.getBoundingClientRect().top - nav.offsetHeight, behavior: "smooth"});
+  }));
   document.querySelectorAll("[data-bl-aller]").forEach(b => b.addEventListener("click", () => { const t = $("tab-" + b.dataset.blAller); if (t) t.click(); window.scrollTo({top: 0}); }));
 })();
 
