@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123062334">
+<link rel="stylesheet" href="style.css?v=20261123065304">
 </head>
 <body>
 <div class="topbar">
@@ -1994,6 +1994,13 @@
         <div class="bk-tuile"><div class="k">Matchs concernés</div><div class="v" id="uMatches">0</div></div>
       </div>
       <div id="uJours" class="up-jours" role="navigation" aria-label="Aller à un jour"></div>
+      <div class="up-vue">
+        <span class="up-vue-lbl">Cartes</span>
+        <div class="cbk-seg" role="group" aria-label="Disposition des cartes">
+          <button type="button" id="uVueJours" aria-pressed="true">Par jour</button>
+          <button type="button" id="uVueListe" aria-pressed="false">À la suite</button>
+        </div>
+      </div>
       <div class="up-filtres-resume">
         <p id="uFiltresResume"></p>
         <button type="button" class="rp-btn" id="uVoirFiltres">Modifier les filtres</button>
@@ -3113,7 +3120,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123062442", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123062442", APP = "app.js?v=20261123062334";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123065409", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123065409", APP = "app.js?v=20261123065304";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
