@@ -1853,6 +1853,7 @@ function activerOnglet(tab) {
   if (page) page.classList.add("active");
   window.scrollTo({top:0, behavior:"instant"});
   if (typeof majNavMobile === "function") majNavMobile();
+  if (typeof window.majMenuPrincipal === "function") window.majMenuPrincipal();
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
   if (tab.dataset.page === "teams" && typeof renderTeams === "function") renderTeams();
   if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
@@ -1884,6 +1885,116 @@ tabs.forEach((tab, index) => {
     activerOnglet(tabs[next]);
   });
 });
+
+
+/* ================= MENU PRINCIPAL (23/11/2026) =================
+   Trois pages directes + deux groupes dépliants. Les anciens onglets restent dans le code (masqués) : le menu ne fait
+   que les cliquer, donc activerOnglet et tout ce qui en dépend ne change pas. Sur téléphone, la barre du bas et la
+   feuille « Plus » restent ; la feuille est rangée selon les mêmes groupes. */
+const MENU_GROUPES = [
+  {id: "analyses", titre: "Analyses", pages: [
+    ["bilan", "Gain cumulé et solidité de tes filtres"],
+    ["backtest", "Matrices et analyses détaillées sur les matchs passés"],
+    ["dcv2", "La même chose rangée par sommaire, à comparer"],
+    ["retro", "Simulateur de mise sur les matchs déjà joués"],
+    ["montecarlo", "Entre quoi et quoi peut finir ta bankroll"]]},
+  {id: "modele", titre: "Modèle et marché", pages: [
+    ["dc", "Probabilités du modèle et value bets du moment"],
+    ["teams", "Niveau, forme et prochain match de chaque équipe"],
+    ["tirs", "Occasions créées et concédées, au-delà du score"],
+    ["bookmakers", "Qui paie le mieux, sur quel marché"],
+    ["marges", "Ce que prélève chaque bookmaker"]]},
+];
+const MENU_DIRECTS = ["overview", "upcoming", "bankroll"];
+(function initMenuPrincipal() {
+  const menu = $("menuPrincipal");
+  if (!menu) return;
+  const tabDe = p => $("tab-" + p);
+  const icone = p => { const t = tabDe(p), sv = t && t.querySelector("svg"); return sv ? sv.outerHTML : ""; };
+  const libelle = p => { const t = tabDe(p), l = t && t.querySelector(".label"); return l ? l.textContent.trim() : p; };
+  const marque = p => { const t = tabDe(p), m = t && t.querySelector(".tab-nouveau"); return m ? `<span class="tab-nouveau">${m.textContent}</span>` : ""; };
+  const aller = p => { const t = tabDe(p); if (t) t.click(); };
+  let html = "";
+  MENU_DIRECTS.forEach(p => {
+    if (!tabDe(p)) return;
+    html += `<button type="button" class="mp-item" data-mp="${p}">${icone(p)}<span>${libelle(p)}</span>`
+      + (p === "upcoming" ? '<span class="mp-badge" id="mpUpCount" hidden></span>' : "") + `</button>`;
+  });
+  MENU_GROUPES.forEach(g => {
+    html += `<div class="mp-groupe" data-mp-groupe="${g.id}">
+      <button type="button" class="mp-item mp-deplier" aria-expanded="false" aria-haspopup="true" aria-controls="mpListe-${g.id}">
+        <span class="mp-g-titre">${g.titre}</span><span class="mp-g-page"></span>
+        <svg class="mp-chev" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5.5 8 4.5 4.5L14.5 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="mp-liste" id="mpListe-${g.id}" role="menu" hidden>`
+      + g.pages.filter(([p]) => tabDe(p)).map(([p, d]) => `<button type="button" class="mp-lien" role="menuitem" data-mp="${p}">
+          <span class="mp-ic">${icone(p)}</span><span class="mp-txt"><b>${libelle(p)}${marque(p)}</b><small>${d}</small></span></button>`).join("")
+      + `</div></div>`;
+  });
+  menu.innerHTML = html;
+  const groupes = [...menu.querySelectorAll(".mp-groupe")];
+  const fermer = sauf => groupes.forEach(g => { if (!sauf) menu.classList.remove("mp-ouvert"); if (g === sauf) return; g.querySelector(".mp-liste").hidden = true; g.querySelector(".mp-deplier").setAttribute("aria-expanded", "false"); g.classList.remove("is-open"); });
+  groupes.forEach(g => {
+    const btn = g.querySelector(".mp-deplier"), liste = g.querySelector(".mp-liste");
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const ouvrir = liste.hidden;
+      fermer(g);
+      liste.hidden = !ouvrir; btn.setAttribute("aria-expanded", String(ouvrir)); g.classList.toggle("is-open", ouvrir);
+      menu.classList.toggle("mp-ouvert", ouvrir);
+      if (ouvrir) (liste.querySelector(".is-active") || liste.querySelector(".mp-lien")).focus({preventScroll: true});
+    });
+    liste.addEventListener("keydown", e => {
+      const liens = [...liste.querySelectorAll(".mp-lien")], i = liens.indexOf(document.activeElement);
+      if (e.key === "ArrowDown") { e.preventDefault(); liens[(i + 1) % liens.length].focus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); liens[(i - 1 + liens.length) % liens.length].focus(); }
+      else if (e.key === "Escape") { fermer(); btn.focus(); }
+    });
+  });
+  menu.addEventListener("click", e => {
+    const b = e.target.closest("[data-mp]");
+    if (!b) return;
+    fermer(); aller(b.dataset.mp);
+  });
+  document.addEventListener("click", e => { if (!menu.contains(e.target)) fermer(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") fermer(); });
+  // état actif : suit l'onglet actif, quel que soit le chemin (menu, liens internes, barre du bas)
+  window.majMenuPrincipal = function () {
+    const actif = tabs.find(t => t.classList.contains("active"));
+    const page = actif ? actif.dataset.page : "";
+    menu.querySelectorAll("[data-mp]").forEach(b => {
+      const on = b.dataset.mp === page;
+      b.classList.toggle("is-active", on);
+      if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    groupes.forEach(g => {
+      const def = MENU_GROUPES.find(x => x.id === g.dataset.mpGroupe);
+      const dedans = def.pages.some(([p]) => p === page);
+      g.classList.toggle("is-active", dedans);
+      g.querySelector(".mp-g-page").innerHTML = dedans ? libelle(page) + marque(page) : "";
+      g.querySelector(".mp-deplier").title = dedans ? `${def.titre} : ${libelle(page)}` : def.titre;
+    });
+  };
+  // pastille « paris à venir » recopiée de l'onglet d'origine
+  const src = $("tabUpCount"), dst = $("mpUpCount");
+  const majPastille = () => { if (!src || !dst) return; const n = (src.textContent || "").trim(); dst.textContent = n; dst.hidden = !n || n === "0"; };
+  if (src) new MutationObserver(majPastille).observe(src, {childList: true, characterData: true, subtree: true});
+  majPastille();
+  window.majMenuPrincipal();
+  // Une ligne si tout tient, sinon le menu passe sous la marque (mesuré, pas deviné).
+  const entete = menu.parentElement;
+  const ajuster = () => {
+    if (!entete || getComputedStyle(menu).display === "none") return;
+    entete.classList.remove("mp-2l");
+    const fr = entete.querySelector(".freshness"), mg = $("metaGenerated");
+    if (fr && mg) fr.title = "Données générées le " + mg.textContent.trim();
+    if (menu.scrollWidth > menu.clientWidth + 1) entete.classList.add("mp-2l");
+  };
+  const majOrig = window.majMenuPrincipal;
+  window.majMenuPrincipal = function () { majOrig(); ajuster(); };
+  window.addEventListener("resize", ajuster);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(ajuster);
+  ajuster();
+})();
 
 /* ================= PAGE 1 — RÉTROSPECTIF ================= */
 
@@ -16514,7 +16625,7 @@ function initMobile() {
   feuille.className = "msheet"; feuille.hidden = true;
   feuille.innerHTML = '<div class="msheet-bg" data-m-ferme></div>' +
     '<div class="msheet-panel" role="dialog" aria-modal="true" aria-label="Autres sections">' +
-    '<div class="msheet-grip" aria-hidden="true"></div><h2 class="msheet-title">Autres sections</h2>' +
+    '<div class="msheet-grip" aria-hidden="true"></div><h2 class="msheet-title">Toutes les pages</h2>' +
     '<div class="msheet-grid"></div></div>';
   const grille = feuille.querySelector(".msheet-grid");
   const boutons = {}, items = {};
@@ -16533,12 +16644,30 @@ function initMobile() {
     } else {
       const it = document.createElement("button");
       it.type = "button"; it.className = "msheet-item"; it.dataset.page = page;
-      it.innerHTML = iconeDe(tab) + "<span>" + libelleDe(tab) + "</span>";
+      const marqueTab = tab.querySelector(".tab-nouveau");
+      it.innerHTML = iconeDe(tab) + "<span>" + libelleDe(tab) + (marqueTab ? ` <span class="tab-nouveau">${marqueTab.textContent}</span>` : "") + "</span>";
       it.addEventListener("click", () => { fermerFeuille(); activerOnglet(tab); });
       items[page] = it; grille.appendChild(it);
     }
   });
   MOB_NAV_PRINCIPAUX.forEach(p => { if (boutons[p]) nav.appendChild(boutons[p]); });
+  // 23/11/2026 : feuille « Plus » rangée selon les groupes du menu principal
+  if (typeof MENU_GROUPES !== "undefined") {
+    const vus = new Set();
+    const autres = [...grille.children];
+    grille.innerHTML = "";
+    MENU_GROUPES.forEach(g => {
+      const its = g.pages.map(([p]) => items[p]).filter(Boolean);
+      if (!its.length) return;
+      const h = document.createElement("div"); h.className = "msheet-groupe"; h.textContent = g.titre; grille.appendChild(h);
+      its.forEach(it => { grille.appendChild(it); vus.add(it); });
+    });
+    const reste = autres.filter(it => !vus.has(it));
+    if (reste.length) {
+      const h = document.createElement("div"); h.className = "msheet-groupe"; h.textContent = "Autres"; grille.appendChild(h);
+      reste.forEach(it => grille.appendChild(it));
+    }
+  }
   const btnPlus = document.createElement("button");
   btnPlus.type = "button"; btnPlus.className = "mnav-btn"; btnPlus.dataset.page = "_plus";
   btnPlus.setAttribute("aria-haspopup", "dialog"); btnPlus.setAttribute("aria-expanded", "false");
@@ -17682,6 +17811,298 @@ if ($("page-tirs") && $("page-tirs").classList.contains("active")) { try { rende
 try { renderBookmakers(); } catch (e) { console.error("Page Bookmakers :", e); }
 // Marges : après Bookmakers (comparaison aux autres sites) ; sinon rendue à l'ouverture de l'onglet.
 if ($("page-marges") && $("page-marges").classList.contains("active")) { try { renderMarges(); } catch (e) { console.error("Page Marges :", e); } }
+
+/* ================= PANNEAUX DE FILTRES RANGÉS EN ONGLETS (23/11/2026) =================
+   Demande : « trop de texte, ça prend trop de place, on n'y comprend rien ». Mêmes réglages, mêmes identifiants,
+   mêmes valeurs : les champs existants sont seulement déplacés dans 5 onglets ; les paragraphes d'explication
+   passent dans un « i » à côté de chaque libellé ; un point signale ce qui diffère de l'origine. */
+const FX_ONGLETS = [
+  {id: "ess", titre: "Essentiel", ids: ["Cat", "Stake", "DateDebut", "DateFin", "Filter", "LigueMsel", "ExclSel", "HistMin", "Sort"]},
+  {id: "cotes", titre: "Cotes", ids: ["CoteMin", "MvtMin", "Moment", "CoteJouee", "CoteJoueePortee", "CoteJoueeManque"]},
+  {id: "types", titre: "Par type de pari"},
+  {id: "sites", titre: "Autres sites"},
+  {id: "modele", titre: "Modèle (avancé)", ids: ["Alpha", "Forces", "Defense", "Accord", "Abs", "Rho", "Niveau", "Saison", "Mise", "Mise2", "Devig", "Enrichi", "Loi", "Dedup", "Calib", "Pred"]},
+];
+// Réglages partagés entre les deux pages (d'après les notes d'origine des panneaux).
+const FX_PARTAGES = ["Cat", "LigueMsel", "CoteMin", "MvtMin", "Alpha", "Mise", "Mise2"];
+const FX_PARTAGES_CAT = /^(Edge|EvPos|EvMax|FiltreQueue|EdgeDevigMax)_/;
+const FX_NOTES = {Enrichi: "Enrichi", Loi: "Loi", Forces: "Forces", Saison: "Saison", Abs: "Abs", Rho: "Rho", Niveau: "Niveau",
+  Defense: "Defense", Accord: "Accord", Moment: "Moment", Mise: "Mise", Hist: "HistMin", Devig: "Devig"};
+const FX_ETAT = {};
+function fxEsc(t) { return String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"})[c]); }
+function fxInitPanneau(cfg) {
+  const panneau = $(cfg.panneau);
+  if (!panneau || panneau._fx) return;
+  panneau._fx = true;
+  const pref = cfg.pref, autre = pref === "bt" ? "Paris à venir" : "DC rétrospectif";
+  const corps = cfg.details ? panneau.querySelector(".panel-fold-body") : panneau;
+  const origine = new Map((FILTRES_ORIGINE[pref] || []).map(o => [o.el, o]));
+  panneau.classList.add("fx-panel");
+  // --- 1. barre (fermée : une ligne) ---
+  const barre = document.createElement("div");
+  barre.className = "fx-barre";
+  barre.innerHTML = `<span class="fx-titre"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 5h13M6.5 10h7M8.5 15h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Filtres</span>
+    <span class="fx-compte"></span><span class="fx-sep" aria-hidden="true"></span>
+    <span class="fx-resume"></span><span class="fx-ecart"></span>
+    <button type="button" class="fx-btn fx-reinit" title="Remettre tous les réglages à leur valeur d'origine"><span aria-hidden="true">↺</span><span class="fx-reinit-t"> Réinitialiser</span></button>
+    <button type="button" class="fx-btn fx-ouvrir" aria-expanded="false">Régler <span aria-hidden="true">▾</span></button>`;
+  // --- 2. corps à onglets ---
+  const zone = document.createElement("div");
+  zone.className = "fx-zone";
+  zone.innerHTML = `<div class="fx-onglets" role="tablist" aria-label="Catégories de réglages">${FX_ONGLETS.map(o =>
+      `<button type="button" role="tab" class="fx-onglet" data-fx="${o.id}" aria-selected="false">${o.titre}<i class="fx-nb" hidden></i></button>`).join("")}</div>
+    ${FX_ONGLETS.map(o => `<div class="fx-page" data-fx-page="${o.id}" role="tabpanel" hidden><p class="fx-intro"></p><div class="fx-grille"></div></div>`).join("")}
+    <div class="fx-pied"><span><i class="fx-pt" aria-hidden="true"></i> différent de l'origine</span><span>⇄ partagé avec ${autre}</span>
+      <span class="fx-direct"></span><button type="button" class="fx-btn fx-reinit-onglet">Réinitialiser cet onglet</button></div>
+    <div class="fx-stock" hidden></div>`;
+  const page = id => zone.querySelector(`[data-fx-page="${id}"]`), grille = id => page(id).querySelector(".fx-grille");
+  const stock = zone.querySelector(".fx-stock");
+  // champs à ranger
+  const champs = [];
+  const ranger = (field, onglet, cle) => {
+    if (!field || field._fxRange) return;
+    field._fxRange = true; field.dataset.fxCle = cle || "";
+    grille(onglet).appendChild(field); champs.push({field, onglet});
+  };
+  FX_ONGLETS.forEach(o => (o.ids || []).forEach(k => { const el = $(pref + k); if (el) ranger(el.closest(".field"), o.id, k); }));
+  // le reste des champs du bloc principal, sans en perdre aucun
+  corps.querySelectorAll(".controls > .field, .slider-pair-row > .field").forEach(fd => {
+    if (fd.closest(".cat-filter-block") || fd.closest(".cbk-filtres")) return;
+    ranger(fd, "modele", "");
+  });
+  // autres sites
+  const cbk = $(cfg.cbk);
+  if (cbk) {
+    const intro = cbk.querySelector(":scope > p.muted:not([id])");
+    page("sites").querySelector(".fx-intro").innerHTML = `Comparaison avec Unibet, Betclic, Bwin et DAZN Bet. Ces filtres restreignent la liste, ils n'ajoutent aucun pari.`
+      + (intro ? ` <button type="button" class="fx-i" data-fx-aide="${fxEsc(intro.innerHTML)}" aria-label="En savoir plus">i</button>` : "");
+    cbk.querySelectorAll(".controls > .field").forEach(fd => { const c = fd.querySelector("select,input"); ranger(fd, "sites", c ? c.id.replace(pref, "") : ""); });
+    [cbk.querySelector("[id$='CbkNote']"), cbk.querySelector("[id$='CbkAlerte']")].forEach(n => { if (n) { n.classList.add("fx-note-vis"); page("sites").appendChild(n); } });
+    cbk.classList.add("fx-vide");
+  }
+  // par type de pari : un sous-onglet par catégorie
+  const blocs = $(cfg.blocs);
+  if (blocs) {
+    page("types").querySelector(".fx-intro").innerHTML = `Chaque type de pari coché a ses propres seuils.`;
+    const nav = document.createElement("div"); nav.className = "fx-sous"; page("types").insertBefore(nav, grille("types"));
+    grille("types").replaceWith(blocs); blocs.classList.add("fx-blocs");
+    [...blocs.querySelectorAll(".cat-filter-block")].forEach(b => {
+      b.open = true;
+      b.querySelectorAll(".field").forEach(fd => { const c = fd.querySelector("select,input"); fd.dataset.fxCle = c ? c.id.replace(pref, "") : ""; champs.push({field: fd, onglet: "types", bloc: b}); });
+    });
+  }
+  // paragraphes : aides de champ et notes dynamiques -> bouton « i »
+  const ajouterI = (field, aide, note) => {
+    const lab = field.querySelector(":scope > label");
+    if (!lab) return;
+    let tete = field.querySelector(":scope > .fx-tete");
+    if (!tete) { tete = document.createElement("div"); tete.className = "fx-tete"; lab.replaceWith(tete); tete.appendChild(lab); }
+    let i = tete.querySelector(".fx-i");
+    if (!i) { i = document.createElement("button"); i.type = "button"; i.className = "fx-i"; i.textContent = "i"; i.setAttribute("aria-label", "Explication : " + lab.textContent.trim()); lab.after(i); }
+    if (aide) i.dataset.fxAide = (i.dataset.fxAide ? i.dataset.fxAide + "<br>" : "") + aide;
+    if (note) { i._fxNotes = (i._fxNotes || []).concat(note); }
+  };
+  champs.forEach(({field}) => {
+    // l'explication longue du menu (attribut title) passe aussi dans le « i »
+    field.querySelectorAll(":scope > select[title], :scope > input[title]").forEach(c => {
+      const t = c.getAttribute("title") || "";
+      if (t.length > 30) { ajouterI(field, fxEsc(t), null); c.removeAttribute("title"); }
+    });
+    field.querySelectorAll(":scope > p.muted").forEach(p => {
+      if (p.id) { stock.appendChild(p); ajouterI(field, "", p); }
+      else { ajouterI(field, p.innerHTML, null); p.remove(); }
+    });
+    // marquage partagé
+    const cle = field.dataset.fxCle || "";
+    const partage = FX_PARTAGES.includes(cle) || FX_PARTAGES_CAT.test(cle) || field.closest(".fx-page[data-fx-page='sites']");
+    const lab = field.querySelector(":scope > label, :scope > .fx-tete");
+    if (lab && partage && cfg.pref) {
+      const t = document.createElement("span"); t.className = "fx-sync"; t.textContent = "⇄"; t.title = "Réglage partagé avec " + autre;
+      (field.querySelector(":scope > .fx-tete") || (() => { const lb = field.querySelector(":scope > label"); const te = document.createElement("div"); te.className = "fx-tete"; lb.replaceWith(te); te.appendChild(lb); return te; })()).appendChild(t);
+    }
+  });
+  Object.entries(FX_NOTES).forEach(([n, k]) => {
+    const trouve = id => document.getElementById(id) || zone.querySelector("#" + CSS.escape(id));
+    const note = trouve(pref + n + "Note"), el = trouve(pref + k);
+    const field = el && el.closest(".field");
+    if (!note || !field || !field._fxRange) return;
+    stock.appendChild(note); ajouterI(field, "", note);
+  });
+  // segmentés : menus courts (≤ 4 choix courts) -> boutons ; le <select> reste, caché, et reste la référence
+  champs.forEach(({field}) => {
+    const sels = field.querySelectorAll("select"), autres = field.querySelectorAll("input:not([type=hidden])");
+    if (sels.length !== 1 || autres.length) return;
+    const sel = sels[0], opts = [...sel.options];
+    if (opts.length < 2 || opts.length > 4 || opts.some(o => o.text.trim().length > 14) || opts.reduce((n, o) => n + o.text.trim().length, 0) > 32) return;
+    const seg = document.createElement("div"); seg.className = "fx-seg"; seg.setAttribute("role", "group");
+    seg.innerHTML = opts.map(o => `<button type="button" data-v="${fxEsc(o.value)}">${fxEsc(o.text.trim())}</button>`).join("");
+    seg.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b || sel.disabled || sel.value === b.dataset.v) return;
+      sel.value = b.dataset.v; sel.dispatchEvent(new Event("input", {bubbles: true})); sel.dispatchEvent(new Event("change", {bubbles: true}));
+    });
+    sel.classList.add("fx-sr"); sel.after(seg); sel._fxSeg = seg;
+  });
+  // ce qui reste d'origine et n'a plus d'usage visuel : titres, paragraphes, rangées vides
+  corps.querySelectorAll(":scope > h3, :scope > p.muted:not([id]), :scope > .m-more, :scope > .filter-reset-row, :scope > .controls, :scope > .slider-pair-row").forEach(el => el.classList.add("fx-vide"));
+  // remplacement
+  if (cfg.details) {
+    const sum = panneau.querySelector(":scope > summary");
+    [...sum.children].forEach(c => c.classList.add("fx-vide"));
+    sum.appendChild(barre); sum.classList.add("fx-sum");
+    corps.prepend(zone);
+  } else {
+    const h2 = panneau.querySelector(":scope > h2"); if (h2) h2.classList.add("fx-vide");
+    panneau.prepend(barre); barre.after(zone); zone.hidden = true;
+    panneau.querySelectorAll(".m-fc").forEach(el => el.classList.remove("m-fc")); panneau.classList.remove("m-folded");
+    [...panneau.children].forEach(c => { if (c !== barre && c !== zone && !c.classList.contains("fx-vide")) c.classList.add("fx-vide"); });
+  }
+  if (cfg.recap) { const r = document.querySelector(cfg.recap); if (r) r.classList.add("fx-vide"); }
+  const st = FX_ETAT[pref] = {cfg, panneau, barre, zone, champs, origine, onglet: "ess", sous: null};
+  try { st.onglet = localStorage.getItem("ww_fx_" + pref) || "ess"; } catch (e) { /* rien */ }
+  // ouverture / fermeture
+  const estOuvert = () => cfg.details ? panneau.open : !zone.hidden;
+  const basculer = ouvrir => {
+    if (cfg.details) panneau.open = ouvrir; else zone.hidden = !ouvrir;
+    fxMaj(pref);
+  };
+  barre.querySelector(".fx-ouvrir").addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); basculer(!estOuvert()); });
+  if (cfg.details) panneau.addEventListener("toggle", () => fxMaj(pref));
+  barre.querySelector(".fx-reinit").addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    const b = document.querySelector(`[data-reset-filtres="${pref}"]`); if (b) b.click();
+    setTimeout(() => fxMaj(pref), 50);
+  });
+  zone.querySelector(".fx-reinit-onglet").addEventListener("click", () => {
+    const cibles = st.champs.filter(c => c.onglet === st.onglet && (!c.bloc || c.bloc === st.sous)).map(c => c.field);
+    REINIT_FILTRES_EN_COURS = true;
+    try {
+      cibles.forEach(fd => fd.querySelectorAll("input, select").forEach(el => {
+        const o = origine.get(el); if (!o || el.disabled) return;
+        if (el.type === "checkbox" || el.type === "radio") { if (el.checked === o.checked) return; el.checked = o.checked; }
+        else { if (el.value === o.value) return; el.value = o.value; el.dispatchEvent(new Event("input")); }
+        el.dispatchEvent(new Event("change"));
+      }));
+    } finally { REINIT_FILTRES_EN_COURS = false; }
+    try { renderBacktest(); renderUpcoming(); } catch (e) { /* rien */ }
+    fxMaj(pref);
+  });
+  zone.querySelector(".fx-onglets").addEventListener("click", e => {
+    const b = e.target.closest("[data-fx]"); if (!b) return;
+    st.onglet = b.dataset.fx; try { localStorage.setItem("ww_fx_" + pref, st.onglet); } catch (er) { /* rien */ }
+    fxMaj(pref);
+  });
+  page("types").querySelector(".fx-sous").addEventListener("click", e => {
+    const b = e.target.closest("[data-fx-sous]"); if (!b) return; st.sous = blocs.querySelector(`.cat-filter-block[data-fx-bloc="${b.dataset.fxSous}"]`); fxMaj(pref);
+  });
+  if (blocs) [...blocs.querySelectorAll(".cat-filter-block")].forEach((b, i) => { b.dataset.fxBloc = String(i); });
+  if (cfg.ouvreurs) cfg.ouvreurs.forEach(id => { const b = $(id); if (b) b.addEventListener("click", () => basculer(true)); });
+  fxMaj(pref);
+}
+function fxDiffere(st, field) {
+  return [...field.querySelectorAll("input, select")].some(el => {
+    const o = st.origine.get(el); if (!o) return false;
+    return (el.type === "checkbox" || el.type === "radio") ? el.checked !== o.checked : el.value !== o.value;
+  });
+}
+function fxMaj(pref) {
+  const st = FX_ETAT[pref]; if (!st) return;
+  const {cfg, panneau, barre, zone} = st;
+  const ouvert = cfg.details ? panneau.open : !zone.hidden;
+  const bo = barre.querySelector(".fx-ouvrir");
+  bo.innerHTML = ouvert ? 'Fermer <span aria-hidden="true">▴</span>' : 'Régler <span aria-hidden="true">▾</span>';
+  bo.setAttribute("aria-expanded", String(ouvert)); bo.classList.toggle("is-on", ouvert);
+  // compte, résumé, écart
+  try { barre.querySelector(".fx-compte").innerHTML = cfg.compte(); } catch (e) { /* rien */ }
+  try { barre.querySelector(".fx-resume").innerHTML = cfg.resume(); } catch (e) { /* rien */ }
+  try { barre.querySelector(".fx-ecart").innerHTML = cfg.ecart ? cfg.ecart() : ""; } catch (e) { /* rien */ }
+  try { zone.querySelector(".fx-direct").innerHTML = cfg.direct(); } catch (e) { /* rien */ }
+  // sous-onglets visibles (catégories cochées)
+  const blocs = zone.querySelector(".fx-blocs");
+  if (blocs) {
+    const vis = [...blocs.querySelectorAll(".cat-filter-block")].filter(b => b.style.display !== "none");
+    if (!st.sous || !vis.includes(st.sous)) st.sous = vis[0] || null;
+    zone.querySelector(".fx-sous").innerHTML = vis.map(b => {
+      const nb = st.champs.filter(c => c.bloc === b && fxDiffere(st, c.field)).length;
+      return `<button type="button" data-fx-sous="${b.dataset.fxBloc}" class="${b === st.sous ? "is-on" : ""}">${fxEsc(b.querySelector("summary").textContent.trim())}${nb ? `<i class="fx-nb">${nb}</i>` : ""}</button>`;
+    }).join("") || '<span class="fx-vide-txt">Aucun type de pari coché dans « Essentiel ».</span>';
+    blocs.querySelectorAll(".cat-filter-block").forEach(b => b.classList.toggle("fx-off", b !== st.sous));
+  }
+  // champs modifiés, compteurs d'onglets, segmentés
+  const parOnglet = {};
+  st.champs.forEach(({field, onglet}) => {
+    const d = fxDiffere(st, field);
+    field.classList.toggle("fx-mod", d);
+    if (d) parOnglet[onglet] = (parOnglet[onglet] || 0) + 1;
+    const sel = field.querySelector("select.fx-sr");
+    if (sel && sel._fxSeg) sel._fxSeg.querySelectorAll("button").forEach(b => { b.classList.toggle("is-on", b.dataset.v === sel.value); b.disabled = sel.disabled; });
+  });
+  const sitesVides = !st.champs.some(c => c.onglet === "sites") || (cfg.cbk && $(cfg.cbk) && $(cfg.cbk).style.display === "none");
+  zone.querySelectorAll("[data-fx]").forEach(b => {
+    const id = b.dataset.fx, nb = parOnglet[id] || 0, i = b.querySelector(".fx-nb");
+    i.hidden = !nb; i.textContent = nb;
+    b.hidden = id === "sites" && sitesVides;
+    if (b.hidden && st.onglet === id) st.onglet = "ess";
+  });
+  zone.querySelectorAll("[data-fx]").forEach(b => { const on = b.dataset.fx === st.onglet; b.classList.toggle("is-on", on); b.setAttribute("aria-selected", String(on)); });
+  zone.querySelectorAll("[data-fx-page]").forEach(p => { p.hidden = p.dataset.fxPage !== st.onglet; });
+}
+// info-bulle commune des « i »
+(function fxInfoBulle() {
+  const tip = document.createElement("div"); tip.className = "fx-tip"; tip.hidden = true; tip.setAttribute("role", "tooltip");
+  document.body.appendChild(tip);
+  let cible = null;
+  const montrer = b => {
+    const notes = (b._fxNotes || []).filter(n => n.style.display !== "none" && n.textContent.trim()).map(n => n.innerHTML);
+    const aide = b.dataset.fxAide || "";
+    if (!aide && !notes.length) { tip.hidden = true; return; }
+    tip.innerHTML = [aide, ...notes].filter(Boolean).map(t => `<p>${t}</p>`).join("");
+    tip.hidden = false; cible = b;
+    const r = b.getBoundingClientRect(), w = Math.min(360, window.innerWidth - 24);
+    tip.style.width = w + "px";
+    const x = Math.max(12, Math.min(window.innerWidth - w - 12, r.left - 20));
+    let y = r.bottom + 8;
+    if (y + tip.offsetHeight > window.innerHeight - 8) y = Math.max(8, r.top - tip.offsetHeight - 8);
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  };
+  const cacher = () => { tip.hidden = true; cible = null; };
+  document.addEventListener("mouseover", e => { const b = e.target.closest(".fx-i"); if (b) montrer(b); });
+  document.addEventListener("mouseout", e => { if (e.target.closest(".fx-i") && !e.relatedTarget?.closest?.(".fx-tip")) cacher(); });
+  document.addEventListener("click", e => {
+    const b = e.target.closest(".fx-i");
+    if (b) { e.preventDefault(); e.stopPropagation(); if (cible === b && !tip.hidden) cacher(); else montrer(b); return; }
+    if (!e.target.closest(".fx-tip")) cacher();
+  }, true);
+  document.addEventListener("focusin", e => { const b = e.target.closest(".fx-i"); if (b && b.matches(":focus-visible")) montrer(b); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") cacher(); });
+  window.addEventListener("scroll", cacher, {passive: true});
+})();
+(function initFiltresOnglets() {
+  const txt = id => ($(id) ? $(id).textContent.trim() : "");
+  const puces = sel => {
+    const ps = [...document.querySelectorAll(sel + " .active-filter-chip")];
+    return ps.slice(0, 6).map(p => `<span class="fx-puce" title="${fxEsc(p.textContent.replace(/\s+/g, " ").trim())}">${p.innerHTML}</span>`).join("")
+      + (ps.length > 6 ? `<span class="fx-puce">+${ps.length - 6}</span>` : "");
+  };
+  const cfgs = [
+    {pref: "bt", panneau: "btFilterSettings", details: true, recap: "#page-backtest .filter-recap-panel", cbk: "btCbkFiltres", blocs: "btCatFilterBlocks",
+     compte: () => `<b>${txt("btNb") || "—"}</b> paris retenus`,
+     resume: () => puces("#btActiveFilters"),
+     ecart: () => { const d = txt("btImpactDelta"); return d && d !== "—" ? `<span title="Écart de ROI avec tous les paris du modèle">vs tous les paris <b>${fxEsc(d)}</b></span>` : ""; },
+     direct: () => `Résultat en direct : <b>${txt("btNb") || "—"} paris · ROI ${txt("btRoi") || "—"}</b>`},
+    {pref: "u", panneau: "uFilterPanel", details: false, cbk: "cbkFiltres", blocs: "uCatFilterBlocks", ouvreurs: ["uVoirFiltres"],
+     compte: () => `<b>${txt("tabUpCount") || "0"}</b> paris à venir`,
+     resume: () => { const z = $("uFiltresResume"); return z ? `<span class="fx-phrase">${z.innerHTML}</span>` : ""; },
+     direct: () => `Résultat en direct : <b>${txt("tabUpCount") || "0"} paris à venir</b>`},
+  ];
+  cfgs.forEach(c => { try { fxInitPanneau(c); } catch (e) { console.error("Filtres en onglets (" + c.pref + ") :", e); } });
+  let t = 0;
+  const majTout = () => { clearTimeout(t); t = setTimeout(() => Object.keys(FX_ETAT).forEach(fxMaj), 120); };
+  document.addEventListener("change", majTout, true);
+  document.addEventListener("input", majTout, true);
+  ["btActiveFilters", "uFiltresResume", "tabUpCount", "btImpactDelta", "btNb"].forEach(id => {
+    const el = $(id); if (el) new MutationObserver(majTout).observe(el, {childList: true, characterData: true, subtree: true});
+  });
+})();
 
 /* ================= SYNCHRONISATION DES PARIS JOUÉS (GitHub) =================
    Ajoutée le 24/10/2026. Avant : « Marquer comme joué » ne gardait la coche que
