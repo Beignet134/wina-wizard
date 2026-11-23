@@ -1858,6 +1858,7 @@ function activerOnglet(tab) {
   if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
   if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
   if (tab.dataset.page === "dc" && typeof renderDcCalibration === "function") renderDcCalibration();
+  if (tab.dataset.page === "bookmakers" && typeof cmpbRenderTesParis === "function") { try { cmpbRenderTesParis(); } catch (e) { /* rien */ } }
 }
 tabs.forEach((tab, index) => {
   tab.addEventListener("click", () => activerOnglet(tab));
@@ -14141,18 +14142,107 @@ function renderBookmakers() {
       (mini != null && mini < 1e9 ? ` Le plus petit écart disponible entre deux relevés est de ${cmpbDuree(mini)} : élargissez l'« écart maximal ».` : " Essayez un autre choix de sites ou de type de pari.");
     sans.style.display = ""; res.style.display = "none";
     $("cmpbVerdict").style.display = "none";
+    if ($("cmpbSites")) $("cmpbSites").innerHTML = "";
     cmpbRenderAVenir();
+    try { cmpbRenderTesParis(); } catch (e) { console.error("Bookmakers (tes paris) :", e); }
     return;
   }
   sans.style.display = "none"; res.style.display = "";
   const a = cmpbAgreger(cells, sites);
   const lignesMarche = cmpbRenderMarche(cells, sites);
   cmpbVerdictGlobal(cells, sites, a, lignesMarche);
+  try { cmpbRenderSites(sites, a, lignesMarche); } catch (e) { console.error("Bookmakers (cartes des sites) :", e); }
   cmpbRenderMarges(sites);
   cmpbRenderDim(cells, sites);
   cmpbRenderEcarts(cells, sites);
   cmpbRenderAVenir();
+  try { cmpbRenderTesParis(); } catch (e) { console.error("Bookmakers (tes paris) :", e); }
 }
+
+/* ---------- Refonte du 23/11/2026 : une carte par site, et tes paris joués ailleurs ---------- */
+// Une carte par site comparé : part de meilleure cote, écart moyen face à Winamax, marge sur le 1X2 et marchés
+// où il ressort nettement devant. Classées de la cote moyenne la plus haute à la plus basse.
+function cmpbRenderSites(sites, a, lignesMarche) {
+  const z = $("cmpbSites");
+  if (!z) return;
+  let marges = [];
+  try { marges = cmpbMarges(CMPB_ETAT); } catch (e) { marges = []; }
+  const m1x2 = marges.find(L => L.g && L.g.id === "1x2");
+  const gagnes = {};
+  lignesMarche.forEach(L => { if (L.v && L.v.net) (gagnes[L.v.gagnant] = gagnes[L.v.gagnant] || []).push(L.nom); });
+  const ordre = sites.slice().sort((x, y) => a.lnd[y] - a.lnd[x]);
+  z.innerHTML = ordre.map((s, rang) => {
+    const ecart = Math.exp(a.lnd[s]) - 1;
+    const marge = m1x2 && m1x2.moy[s] != null ? m1x2.moy[s] : null;
+    const g = gagnes[s] || [];
+    return `<article class="cmpb-site cbk-${s}${rang === 0 && g.length ? " premier" : ""}">
+      <div class="cmpb-site-tete">${cmpbTag(s)}<span class="cmpb-site-rang">${rang + 1}<sup>${rang ? "e" : "er"}</sup></span></div>
+      <div class="cmpb-site-chiffres">
+        <div><span class="cmpb-site-big">${cmpbPc(a.best[s], 0)}</span><span class="cmpb-site-lbl">des cotes les plus hautes</span></div>
+        <div><span class="cmpb-site-big ${s === "winamax" ? "" : ecart > 0.002 ? "pos" : ecart < -0.002 ? "neg" : ""}">${s === "winamax" ? "réf." : cmpbPcS(ecart)}</span><span class="cmpb-site-lbl">${s === "winamax" ? "cote de référence" : "de cote face à Winamax"}</span></div>
+      </div>
+      <span class="cmpb-bar" aria-hidden="true"><i style="width:${(a.best[s] * 100).toFixed(0)}%"></i></span>
+      <p class="cmpb-site-txt">${marge != null ? `Marge 1X2 : <strong>${cmpbPc(marge, 1)}</strong>. ` : ""}${g.length ? `Devant nettement sur : <strong>${cbkEsc(g.join(", "))}</strong>.` : "Devant nulle part de façon nette."}</p>
+    </article>`;
+  }).join("");
+}
+// Si chacun de tes paris (filtres de DC rétrospectif) avait été joué chez un autre site, à la cote relevée là-bas.
+// Même sélection (sur la cote Winamax) ; seuls changent la cote et donc le gain. Gain chez Winamax recalculé
+// sans la garantie 2 buts pour comparer à armes égales (elle est propre à Winamax, signalée à part).
+function cmpbRenderTesParis() {
+  const panel = $("cmpbTesParisPanel"), z = $("cmpbTesParis");
+  if (!panel || !z) return;
+  let rows = [];
+  try { rows = btFiltered().filter(r => r.gagne != null); } catch (e) { rows = []; }
+  const sites = {};
+  let nCompares = 0, bestNet = 0, refNetBest = 0, nWinaSeul = 0;
+  const gainA = (r, cote, st) => r.gagne ? st * (cote - 1) : -st;
+  rows.forEach(r => {
+    let a = null;
+    try { a = cbkAnalyserRetro(r); } catch (e) { a = null; }
+    if (!a) return;
+    const autres = a.tous.filter(q => q !== a.ref && q.retenue && !q.plafond);
+    if (!autres.length) return;
+    nCompares++;
+    const st = btStakeFor(r);
+    const coteW = a.ref.cote;
+    if (autres.every(q => coteW > q.cote * (1 + CBK_EGALITE))) nWinaSeul++;
+    autres.forEach(q => {
+      const o = sites[q.bk] || (sites[q.bk] = {n: 0, plus: 0, moins: 0, netW: 0, netS: 0, mise: 0});
+      o.n++; o.mise += st;
+      if (q.cote > coteW * (1 + CBK_EGALITE)) o.plus++; else if (coteW > q.cote * (1 + CBK_EGALITE)) o.moins++;
+      o.netW += gainA(r, coteW, st); o.netS += gainA(r, q.cote, st);
+    });
+    const best = Math.max(coteW, ...autres.map(q => q.cote));
+    bestNet += gainA(r, best, st); refNetBest += gainA(r, coteW, st);
+  });
+  if (!rows.length || !nCompares) {
+    panel.style.display = rows.length ? "" : "none";
+    z.innerHTML = rows.length ? `<p class="muted">Aucun de tes ${rows.length} paris terminés n'a de cote relevée chez un autre site à moins de ${cbkEcartMaxH()} h du relevé Winamax.</p>` : "";
+    return;
+  }
+  panel.style.display = "";
+  const liste = Object.entries(sites).sort((x, y) => y[1].n - x[1].n);
+  const fmt = x => fmtEur(x);
+  const ligne = (nom, o, tag) => {
+    const d = o.netS - o.netW;
+    return `<div class="cmpb-tp-ligne">
+      <span class="cmpb-tp-nom">${tag}<small>${o.n} pari${o.n > 1 ? "s" : ""} comparé${o.n > 1 ? "s" : ""}${o.plus != null ? ` · paie plus que Winamax ${o.plus} fois, moins ${o.moins} fois` : ""}</small></span>
+      <span class="cmpb-tp-val"><small>Winamax</small><strong class="${o.netW >= 0 ? "pos" : "neg"}">${fmt(o.netW)}</strong></span>
+      <span class="cmpb-tp-val"><small>${nom}</small><strong class="${o.netS >= 0 ? "pos" : "neg"}">${fmt(o.netS)}</strong></span>
+      <span class="cmpb-tp-val"><small>différence</small><strong class="${d > 0.005 ? "pos" : d < -0.005 ? "neg" : ""}">${d > 0 ? "+" : d < 0 ? "−" : ""}${fmtEur(Math.abs(d)).replace(/^[+−-]/, "")}</strong></span>
+    </div>`;
+  };
+  const dB = bestNet - refNetBest;
+  z.innerHTML = `<p class="cmpb-tp-intro">${nCompares} de tes ${rows.length} paris terminés avaient une cote chez au moins un autre site
+      (relevé à moins de ${cbkEcartMaxH()} h). Winamax y payait seul le plus ${nWinaSeul} fois sur ${nCompares}.</p>`
+    + liste.map(([s, o]) => ligne(CMPB_NOMS[s] || s, o, cmpbTag(s))).join("")
+    + ligne("meilleure cote", {n: nCompares, plus: null, netW: refNetBest, netS: bestNet}, `<span class="cmpb-tp-best">Toujours au meilleur prix</span>`)
+    + `<p class="muted cmpb-tp-note">Chaque ligne compare, sur les seuls paris que ce site cotait, ton gain à la cote Winamax et à la cote du site
+      (mise de tes réglages, sans la garantie 2 buts propre à Winamax). Sur peu de paris, quelques résultats décident de tout :
+      un site plus généreux peut perdre ici s'il payait mieux justement sur des paris perdus.${dB > 0.005 ? "" : " Jouer toujours au meilleur prix n'aurait rien rapporté de plus sur ces paris."}</p>`;
+}
+
 
 (function brancherBookmakers() {
   cmpbChargerEtat();
@@ -16287,7 +16377,7 @@ const MOB_PLIABLES = [
   {ref: "bkDepart", titre: "Bankroll de départ et dates", cibles: ":scope > .controls"},
   {ref: "tPays", titre: "Filtrer les équipes", cibles: ":scope > .controls"},
   {ref: "margeSearch", titre: "Filtrer les ligues", cibles: ":scope > .controls"},
-  {ref: "cmpbMode", titre: "Réglages", cibles: ":scope > .controls, :scope > p.muted"},
+  {ref: "cmpbMode", titre: "Réglages", masqueH2: true, cibles: ":scope > .controls, :scope > p.muted"},
   {ref: "tiLigue", titre: "Filtrer les équipes", cibles: ":scope > .controls"},
   {ref: "syncBox", panneau: true, titre: "Synchronisation des paris joués", masqueH2: true, sansBadge: true,
    cibles: ":scope > :not(h2):not(.m-ftog)"},
