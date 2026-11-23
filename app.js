@@ -3367,6 +3367,8 @@ function upLibellePari(v) {
   if (v.colonne === "draw") return "Match nul";
   return String(v.colonne);
 }
+// Vue des cartes : par jour (intertitres) ou liste continue ; retenue sur cet appareil.
+function upVue() { try { return localStorage.getItem("ww_up_vue") === "liste" ? "liste" : "jours"; } catch (e) { return "jours"; } }
 function upJourIso(v) { return String(v.kickoff || v.date || "").slice(0, 10); }
 function upAujourdhui(decalage = 0) {
   const d = new Date(); d.setDate(d.getDate() + decalage);
@@ -3418,7 +3420,7 @@ function upAvecJours(rows, sortBy, rendreCarte) {
       zP.textContent = `— prochain pari à jouer ${dans} : ${v.match}`;
     } else zP.textContent = "";
   }
-  if (sortBy !== "kickoff") return rows.map(rendreCarte).join("");
+  if (sortBy !== "kickoff" || upVue() !== "jours") return rows.map(rendreCarte).join("");
   return jours.map(j => {
     const liste = parJour.get(j), reco = liste.filter(v => !horsF(v));
     const joue = liste.filter(v => PLACED.has(betKey(v))).length;
@@ -3428,6 +3430,112 @@ function upAvecJours(rows, sortBy, rendreCarte) {
       + liste.map(rendreCarte).join("");
   }).join("");
 }
+// ---- Carte épurée (23/11/2026) : l'essentiel visible, le détail dans des infobulles ----
+// Chaque signal devient une pastille courte ; son texte complet (celui qu'affichait la carte avant) s'ouvre au
+// survol sur ordinateur, au toucher sur téléphone. Aucun calcul ne change : mêmes données, autre présentation.
+function upTip(html) { return encodeURIComponent(String(html || "").trim()); }
+function upChip(cls, libelle, tipHtml, extra = "") {
+  return `<button type="button" class="rec-chip ${cls}" data-tip="${upTip(tipHtml)}"${extra}>${libelle}</button>`;
+}
+// Signaux de la carte : une ligne courte et lisible par signal (icône + l'essentiel), le texte complet
+// (celui de l'ancienne carte) en infobulle au survol ou au toucher.
+function upLigne(cls, icone, html, tipHtml) {
+  return `<button type="button" class="rec-sig ${cls}" data-tip="${upTip(tipHtml)}">`
+    + `<span class="rec-sig-ic" aria-hidden="true">${icone}</span><span class="rec-sig-t">${html}</span></button>`;
+}
+function upSignauxCarte(v, cbk, cbkR, injuryBlock) {
+  const L = [];
+  const fr = x => String(x).replace(".", ",");
+  // Meilleure cote entre sites (infobulle : référence, gain, probabilités sans marge, sites non comparés)
+  if (cbk && cbkR) {
+    const tip = cbkR.ligneRef + cbkR.gain + cbkR.avert;
+    const autres = cbk.tous.some(x => x !== cbk.ref && x.retenue);
+    if (cbk.best !== cbk.ref && cbk.gain > 0)
+      L.push(upLigne("pos", "€", `Meilleure cote : <strong>${cbkEsc(cbk.best.nom)} ${fr(cbkCote(cbk.best.cote))}</strong> (${cbkPct(cbk.gain)})`, tip));
+    else if (!autres)
+      L.push(upLigne("neutre", "€", `Autres sites : <strong>pas de relevé récent</strong>`, tip));
+    else
+      L.push(upLigne("ok", "€", `<strong>${cbkEsc(cbk.ref.nom)}</strong> a la meilleure cote`, tip));
+    if (cbk.inhabituel)
+      L.push(upLigne("alerte", "!", `<strong>Écart inhabituel</strong> : vérifier chez ${cbkEsc(cbk.best.nom)}`, cbkR.avert));
+    else if (cbk.refPerimee && !cbk.ref.saisie)
+      L.push(upLigne("alerte", "!", `<strong>Cote ancienne</strong> : relevé ${cbkFmtAge(cbk.ref.age)}`, cbkR.avert));
+  }
+  // Absences
+  if (v.n_absences !== undefined) {
+    const n = v.n_absences_match || 0;
+    if (n > 0) {
+      const noms = (v.absences || []).filter(a => String(a.type || "").toLowerCase().includes("missing") && a.joueur)
+        .sort((a, b) => (b.importance ?? -1) - (a.importance ?? -1)).slice(0, 3).map(a => a.joueur);
+      L.push(upLigne("alerte", "+", `<strong>${n} absent${n > 1 ? "s" : ""}</strong>${noms.length ? " : " + noms.join(", ") : ""}`, injuryBlock));
+    } else L.push(upLigne("ok", "+", "Aucune absence signalée", injuryBlock));
+  }
+  // Second avis d'API-Football
+  if (v.prediction) {
+    const acc = v.prediction_accord, p = v.prediction;
+    const tip = `<div class="dc-tip-head">Prévision API-Football</div>
+      <div class="dc-tip-row"><span>Vainqueur annoncé</span><strong>${p.vainqueur_annonce ?? "—"}</strong></div>
+      <div class="dc-tip-row"><span>Domicile / nul / extérieur</span><strong>${p.pct_domicile ?? "—"} · ${p.pct_nul ?? "—"} · ${p.pct_exterieur ?? "—"}</strong></div>
+      ${p.plus_moins ? `<div class="dc-tip-row"><span>Plus/Moins</span><strong>${p.plus_moins}</strong></div>` : ""}
+      <div class="dc-tip-row" style="display:block"><span>Conseil</span><br><strong>${p.conseil ?? "—"}</strong></div>
+      <div class="dc-tip-note">Un second avis indépendant du modèle, à lire comme une information brute.</div>`;
+    const lib = acc === "accord" ? "API-Football confirme" : acc === "desaccord" ? "API-Football diverge" : "Avis API-Football";
+    L.push(upLigne(acc === "accord" ? "ok" : acc === "desaccord" ? "neg" : "neutre", acc === "accord" ? "✓" : acc === "desaccord" ? "✗" : "i",
+      `<strong>${lib}</strong>${p.vainqueur_annonce ? ` : ${p.vainqueur_annonce}` : ""}`, tip));
+  }
+  // Cote face aux autres bookmakers
+  if (v.marche_mediane != null) {
+    const e = v.marche_ecart_pct;
+    const lib = e >= 3 ? "Cote au-dessus du marché" : e <= -3 ? "Cote en retrait du marché" : "Cote alignée sur le marché";
+    L.push(upLigne(e >= 3 ? "ok" : e <= -3 ? "neg" : "neutre", e >= 3 ? "✓" : e <= -3 ? "✗" : "=",
+      `<strong>${lib}</strong> (${e >= 0 ? "+" : "−"}${fr(Math.abs(e).toFixed(1))} % vs ${v.marche_n_bookmakers})`,
+      `Médiane de ${v.marche_n_bookmakers} bookmaker${v.marche_n_bookmakers > 1 ? "s" : ""} : <strong>${v.marche_mediane.toFixed(2)}</strong>, Winamax : <strong>${v.cote.toFixed(2)}</strong>.`));
+  }
+  // Mouvement de la cote Winamax
+  if (v.variation_proba != null && v.variation_proba < -0.0001)
+    L.push(upLigne("neg", "↗", `<strong>La cote s'allonge</strong> (${v.cote_ouverture} → ${v.cote.toFixed(2)})`, "Le marché s'éloigne de ce pari : historiquement le plus mauvais signal."));
+  else if (v.raccourcit)
+    L.push(upLigne("ok", "↘", `<strong>La cote raccourcit</strong> (${v.cote_ouverture} → ${v.cote.toFixed(2)})`, "Le marché confirme ce pari."));
+  return L.join("");
+}
+(function initRecTips() {
+  const grid = $("recGrid");
+  if (!grid) return;
+  let tip = null, ouvert = null;
+  const el = () => {
+    if (!tip) { tip = document.createElement("div"); tip.id = "recTip"; tip.className = "dc-tooltip rec-tip"; tip.hidden = true; tip.setAttribute("role", "tooltip"); document.body.appendChild(tip); }
+    return tip;
+  };
+  const fermer = () => { if (tip) tip.hidden = true; if (ouvert) ouvert.setAttribute("aria-expanded", "false"); ouvert = null; };
+  const ouvrir = chip => {
+    const t = el();
+    t.innerHTML = decodeURIComponent(chip.dataset.tip || "");
+    if (!t.textContent.trim()) return;
+    t.hidden = false;
+    const r = chip.getBoundingClientRect(), tw = t.offsetWidth || 280, th = t.offsetHeight || 160;
+    let left = r.left + window.scrollX, top = r.bottom + window.scrollY + 8;
+    if (left + tw > window.innerWidth - 10) left = window.innerWidth - tw - 10;
+    if (r.bottom + th + 16 > window.innerHeight) top = r.top + window.scrollY - th - 8;
+    t.style.left = Math.max(8, left) + "px"; t.style.top = Math.max(8, top) + "px";
+    ouvert = chip; chip.setAttribute("aria-expanded", "true");
+  };
+  const survol = () => window.matchMedia("(hover:hover)").matches;
+  grid.addEventListener("mouseover", e => { const c = e.target.closest(".rec-sig[data-tip]"); if (c && survol() && c !== ouvert) ouvrir(c); });
+  grid.addEventListener("mouseout", e => { const c = e.target.closest(".rec-sig[data-tip]"); if (c && survol() && !c.contains(e.relatedTarget)) fermer(); });
+  grid.addEventListener("click", e => {
+    const c = e.target.closest(".rec-sig[data-tip]");
+    if (!c) return;
+    e.preventDefault();
+    if (ouvert === c && !survol()) fermer(); else ouvrir(c);
+  });
+  // Clavier seulement (sur téléphone, le toucher donne aussi le focus : le clic qui suit refermerait l'infobulle).
+  grid.addEventListener("focusin", e => { const c = e.target.closest(".rec-sig[data-tip]"); if (c && c.matches(":focus-visible") && c !== ouvert) ouvrir(c); });
+  grid.addEventListener("focusout", e => { if (e.target.closest(".rec-sig[data-tip]")) fermer(); });
+  document.addEventListener("click", e => { if (ouvert && !e.target.closest(".rec-sig") && !e.target.closest("#recTip")) fermer(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") fermer(); });
+  window.addEventListener("scroll", () => { if (ouvert && !survol()) fermer(); }, {passive: true});
+})();
+
 // Une phrase qui dit quels filtres sont actifs, pour ne pas avoir à ouvrir le panneau.
 function upRenderFiltresResume() {
   const z = $("uFiltresResume");
@@ -3463,6 +3571,17 @@ function upRenderFiltresResume() {
       (carte || $("recGrid")).scrollIntoView({behavior: "smooth", block: "start"});
     }
   });
+  const majVue = () => { const j = upVue() === "jours"; if ($("uVueJours")) $("uVueJours").setAttribute("aria-pressed", j); if ($("uVueListe")) $("uVueListe").setAttribute("aria-pressed", !j); };
+  [["uVueJours", "jours"], ["uVueListe", "liste"]].forEach(([id, val]) => {
+    const b = $(id);
+    if (b) b.addEventListener("click", () => {
+      try { localStorage.setItem("ww_up_vue", val); } catch (e) { /* vue non retenue */ }
+      majVue();
+      if (val === "jours" && $("uSort") && $("uSort").value !== "kickoff") { $("uSort").value = "kickoff"; }
+      renderUpcoming();
+    });
+  });
+  majVue();
   const bF = $("uVoirFiltres");
   if (bF) bF.addEventListener("click", () => {
     const p = $("uFilterPanel");
@@ -4694,45 +4813,33 @@ function renderUpcoming() {
     return `
     <div class="rec${isPlaced ? ' placed' : ''}${classesLien}${horsF ? ' hors-filtres' : ''}" data-key="${key.replace(/"/g, '&quot;')}">
       ${badgeLien}
+      <div class="rec-s rec-s-tete">
       <div class="rec-top">
         <div class="rec-match">${v.match}${v.match_id ? ` <a href="https://www.winamax.fr/paris-sportifs/match/${v.match_id}" target="_blank" rel="noopener" class="rec-winamax-link" title="Parier sur ce match (Winamax)">↗</a>` : ""}</div>
         <div class="rec-when">${fmtKickoff(v.kickoff)}</div>
       </div>
       <div class="rec-league">${ligueLabel(v.pays, v.ligue)} · <span class="tag-cat">${v.categorie}</span>
         ${catBadgeHtml(v.categorie, CURRENT_UPCOMING_VERDICTS, "filtres communs actifs")}</div>
+      </div>
+      <div class="rec-s rec-s-pari">
       <div class="rec-bet">
         <span class="rec-pill" title="${String(v.colonne).replace(/"/g, "&quot;")}">${upLibellePari(v)}</span>
-        <span class="muted">à la cote</span>
         <span class="cote-zone"${cbkR ? ' data-cbk="1"' : ""}>${cbkR ? cbkR.zone : coteZone}</span>
       </div>
-      ${cbkR ? cbkR.ligneRef : ""}
       ${coteMiniHtml}
       ${alerteHors}
+      </div>
+      <div class="rec-s rec-s-chiffres">
       <div class="rec-metrics">
-        <div class="rec-metric"><div class="mk">Proba retenue</div><div class="mv">${((v.p_aff ?? v.p_model)*100).toFixed(0)} %</div></div>
+        <div class="rec-metric"><div class="mk">Proba</div><div class="mv">${((v.p_aff ?? v.p_model)*100).toFixed(0)} %</div></div>
         <div class="rec-metric"><div class="mk">Edge</div><div class="mv ${(v.edge_aff ?? v.edge)>=0?'pos':'neg'}">${fmtPct(v.edge_aff ?? v.edge)}</div></div>
         <div class="rec-metric"><div class="mk">Espérance</div><div class="mv ${(v.ev_aff ?? v.ev)>=0?'pos':'neg'}">${fmtPct(v.ev_aff ?? v.ev)}</div></div>
       </div>
       ${miseKelly != null ? `<div class="rec-kelly">Mise conseillée <strong>${miseKelly.toFixed(2)} €</strong>
         <span class="muted">(${(miseKelly/bankrollRef*100).toFixed(1)} % de ${bankrollRef.toFixed(0)} €)</span></div>` : ""}
-      ${cbkR ? cbkR.gain : ""}
-      <div class="rec-signaux">
-      ${cbkR ? cbkR.avert : ""}
-      ${injuryBlock}
-      ${predBlock}
-      ${marcheBlock}
-      ${(v.variation_proba != null && v.variation_proba < -0.0001) ? `
-        <div class="rec-injuries">
-          <span class="inj-dot" aria-hidden="true"></span>
-          <span><strong>La cote s'allonge</strong> (${v.cote_ouverture} → ${v.cote.toFixed(2)})
-          <span class="inj-adj">le marché s'éloigne de ce pari — historiquement le plus mauvais signal</span></span>
-        </div>` : (v.raccourcit ? `
-        <div class="rec-injuries ok">
-          <span class="inj-dot ok" aria-hidden="true"></span>
-          <span><strong>La cote raccourcit</strong> (${v.cote_ouverture} → ${v.cote.toFixed(2)})
-          <span class="inj-adj">le marché confirme</span></span>
-        </div>` : "")}
       </div>
+      <div class="rec-s rec-s-signaux">${upSignauxCarte(v, cbk, cbkR, injuryBlock)}</div>
+      <div class="rec-s rec-s-joue">
       <label class="rec-check" title="Cocher si tu as réellement joué ce pari">
         <input type="checkbox" class="chk placedchk" ${isPlaced ? "checked" : ""}>
         <span>${isPlaced ? "Pari joué" : "Marquer comme joué"}</span>
@@ -4755,6 +4862,7 @@ function renderUpcoming() {
                  title="Cote réellement obtenue sur le site joué au moment du pari. Corrigez-la si elle a bougé : elle sert au calcul du résultat réel et du CLV (page Bankroll).">
         </label>
         <span class="jouee-info muted">${texteCoteJouee(coteCaptureeCarte, coteJoueeNum)}</span>
+      </div>
       </div>
     </div>`;
   });
