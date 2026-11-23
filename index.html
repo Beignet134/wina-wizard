@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123214514">
+<link rel="stylesheet" href="style.css?v=20261123222147">
 </head>
 <body>
 <div class="topbar">
@@ -27,9 +27,10 @@
           <span class="brand-kicker">ANALYSE · FOOTBALL</span>
         </div>
       </div>
+      <nav class="menu" id="menuPrincipal" aria-label="Menu principal"></nav>
       <div class="freshness">
         <span class="pulse-dot" aria-hidden="true"></span>
-        <span>généré <span id="metaGenerated">—</span> <span id="metaAgo"></span></span>
+        <span><span class="fr-long">généré <span id="metaGenerated">—</span> </span><span id="metaAgo"></span></span>
       </div>
     </header>
     <nav class="tabs" role="tablist" aria-label="Sections de Wina Wizard" aria-orientation="horizontal">
@@ -3255,7 +3256,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123214621", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123214621", APP = "app.js?v=20261123214514";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261123222258", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261123222258", APP = "app.js?v=20261123222147";
   var bandeau = document.getElementById("chargementDonnees");
   function dire(t) { if (bandeau) bandeau.textContent = t; }
   function script(src, ok, ko) {
