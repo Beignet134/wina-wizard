@@ -657,6 +657,10 @@
   "mise": 5,
   "maj": 1795203446444
  },
+ "2026-11-22|Bologne - Udinese|1 - 2": {
+  "supprime": true,
+  "maj": 1795465842276
+ },
  "2026-11-22|LDU Quito - Aucas|awayWin": {
   "cote": 3.95,
   "cote_confirmee": false,
