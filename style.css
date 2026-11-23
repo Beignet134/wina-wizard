@@ -2786,6 +2786,142 @@ details.panel-foldable[open] > summary::before {
    habituel du formulaire ; .mc-strat-list est le cadre qui regroupe les
    lignes, comme un mini-groupe de filtres plutôt qu'un simple empilement. */
 .mc-strat-field { margin-top: .9rem; }
+/* ---- Page Paris à venir, refonte du 23/11/2026 ---- */
+.up-resume h2 { margin-bottom: .2rem; }
+.up-resume h2 .hint { color: var(--cyan); }
+.up-tuiles { margin-top: .6rem; }
+.up-jours { display: flex; gap: .5rem; margin-top: .9rem; overflow-x: auto; padding-bottom: .2rem; scrollbar-width: thin; }
+.up-jours:empty { display: none; }
+.up-jour-btn { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; min-width: 7.2rem;
+  padding: .5rem .75rem; border-radius: 12px; border: 1px solid var(--line-soft); background: rgba(10,16,26,.45);
+  color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.up-jour-btn:hover { border-color: var(--violet-lo); }
+.up-jour-btn:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.up-jour-btn.auj { border-color: rgba(155,140,255,.5); background: linear-gradient(150deg, rgba(155,140,255,.14), rgba(10,16,26,.45)); }
+.up-jour-nom { font-weight: 700; font-size: .84rem; }
+.up-jour-date { font: .7rem var(--font-mono); color: var(--ink-faint); }
+.up-jour-n { font-size: .72rem; color: var(--ink-dim); }
+.up-filtres-resume { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap;
+  margin-top: .9rem; padding-top: .7rem; border-top: 1px solid var(--line-soft); }
+.up-filtres-resume p { margin: 0; font-size: .78rem; color: var(--ink-faint); line-height: 1.5; flex: 1 1 280px; }
+.up-filtres-resume strong { color: var(--ink-dim); }
+.rec-grid .rec-jour { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: .2rem .7rem;
+  margin-top: .8rem; padding: .2rem 0 .45rem; border-bottom: 1px solid var(--line); scroll-margin-top: 90px; }
+.rec-grid .rec-jour:first-child { margin-top: 0; }
+.rec-jour-nom { font: 700 1.05rem var(--font-display); color: var(--ink); }
+.rec-jour-date { font-size: .8rem; color: var(--ink-faint); }
+.rec-jour-n { margin-left: auto; font-size: .76rem; color: var(--ink-dim); }
+.rec .rec-pill { font-family: var(--font-body); }
+.cbk-ctl-aide { flex-basis: 100%; margin-top: .3rem; }
+.cbk-ctl-aide > summary { cursor: pointer; font-size: .76rem; color: var(--ink-faint); }
+.cbk-ctl-aide > summary:hover { color: var(--ink-dim); }
+.cbk-ctl-aide .cbk-ctl-note { margin-top: .4rem; }
+/* Signaux de la carte (avertissements bookmakers, absences, second avis, marché, mouvement) : un seul bloc
+   compact au lieu d'une ligne séparée par un trait pour chacun. */
+.rec-signaux { margin-top: .55rem; padding-top: .45rem; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: .3rem; }
+.rec-signaux:empty { display: none; }
+.rec-signaux > .rec-pred, .rec-signaux > .rec-injuries { margin-top: 0; padding-top: 0; border-top: 0; font-size: .73rem; line-height: 1.35; }
+.rec-signaux .inj-adj { font-size: .68rem; }
+.rec-signaux .inj-dot { margin-top: .3rem; }
+@media (max-width: 640px) {
+  .up-tuiles { grid-template-columns: 1fr 1fr; }
+  .up-jour-btn { min-width: 6.4rem; padding: .45rem .6rem; }
+  .rec-jour-n { margin-left: 0; flex-basis: 100%; }
+  .up-filtres-resume .rp-btn { width: 100%; text-align: center; }
+}
+/* ---- Page Rétrospectif : rapprochement (22/11/2026) ---- */
+.rp-sante { display: grid; grid-template-columns: minmax(200px, 260px) 1fr; gap: 1.2rem; align-items: center;
+  padding: 1rem 1.1rem; border-radius: 14px; border: 1px solid var(--line-soft); background: rgba(10,16,26,.45); }
+.rp-score { display: flex; flex-direction: column; gap: .3rem; }
+.rp-big { font: 700 2.1rem/1 var(--font-mono); }
+.rp-ok .rp-big { color: var(--up); } .rp-moyen .rp-big { color: var(--gold); } .rp-fort .rp-big { color: var(--down); }
+.rp-lbl { font-size: .76rem; color: var(--ink-faint); line-height: 1.4; }
+.rp-pile { display: flex; gap: 2px; height: 14px; border-radius: 999px; overflow: hidden; }
+.rp-seg { display: block; min-width: 3px; }
+.rp-seg.ok { background: var(--lime); } .rp-seg.alias { background: var(--violet); } .rp-seg.decal { background: var(--gold); } .rp-seg.trou { background: rgba(255,111,97,.6); }
+.rp-leg { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin-top: .5rem; font-size: .72rem; color: var(--ink-dim); }
+.rp-leg span { display: inline-flex; align-items: center; gap: .35rem; }
+.rp-leg i { width: 10px; height: 10px; border-radius: 3px; }
+.rp-note { margin: .6rem 0 0; font-size: .78rem; color: var(--ink-dim); line-height: 1.45; }
+.rp-note strong { color: var(--ink); }
+.rp-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .7rem; margin-top: .9rem; }
+.rp-carte { border: 1px solid var(--line-soft); border-radius: 12px; padding: .8rem .9rem; display: flex; flex-direction: column; gap: .3rem; }
+.rp-carte.a-faire { border-color: rgba(155,140,255,.45); background: linear-gradient(150deg, rgba(155,140,255,.12), rgba(10,16,26,.4)); }
+.rp-carte.info { border-color: rgba(244,192,103,.3); }
+.rp-carte.vide { opacity: .55; background: none; border-color: var(--line-soft); }
+.rp-carte-tete { display: flex; align-items: baseline; gap: .5rem; }
+.rp-carte-n { font: 700 1.5rem/1 var(--font-mono); color: var(--ink); }
+.rp-carte.a-faire .rp-carte-n { color: var(--violet); }
+.rp-carte-titre { font-weight: 600; color: var(--ink); font-size: .88rem; }
+.rp-carte-sous { margin: 0; font-size: .72rem; color: var(--ink-faint); }
+.rp-carte-txt { margin: 0; font-size: .78rem; color: var(--ink-dim); line-height: 1.45; }
+.rp-carte-txt code { font-family: var(--font-mono); font-size: .72rem; background: var(--bg); padding: .05rem .3rem; border-radius: 4px; }
+.rp-btn { align-self: flex-start; margin-top: .3rem; background: none; border: 1px solid var(--line); border-radius: 999px; padding: .28rem .75rem;
+  color: var(--ink); font: 600 .76rem var(--font-body); cursor: pointer; }
+.rp-carte.a-faire .rp-btn { border-color: var(--violet); color: var(--violet); }
+.rp-btn:hover { background: rgba(155,140,255,.12); }
+.rp-btn:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.rp-sous-titre { margin: 1.2rem 0 .5rem; font: 700 .9rem var(--font-display); color: var(--ink); }
+.rp-ligues { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: .1rem 1.4rem; }
+.rp-ligue { display: grid; grid-template-columns: minmax(0, 1fr) 90px 2.6rem; align-items: center; gap: .6rem; padding: .35rem 0; border-bottom: 1px solid var(--line-soft); font-size: .8rem; }
+.rp-ligue-nom { display: flex; align-items: center; gap: .35rem; min-width: 0; color: var(--ink); }
+.rp-ligue-nom > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rp-tag { flex: none; font-style: normal; font-size: .62rem; padding: .02rem .35rem; border-radius: 6px; border: 1px solid rgba(255,111,97,.4); color: var(--coral); }
+.rp-tag.alias { border-color: rgba(155,140,255,.45); color: var(--violet); }
+.rp-ligue-bar { height: 7px; border-radius: 999px; background: rgba(119,134,154,.14); overflow: hidden; }
+.rp-ligue-bar > span { display: block; height: 100%; background: rgba(255,111,97,.65); border-radius: 999px; }
+.rp-ligue strong { font-family: var(--font-mono); text-align: right; color: var(--ink); }
+.rp-donnees { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); font-size: .74rem; color: var(--ink-faint); }
+.rp-donnees strong { font-family: var(--font-mono); color: var(--ink-dim); margin-left: .25rem; }
+.rp-donnees .sub { color: var(--ink-faint); font-weight: 400; }
+.rp-panel details.unmatched.rp-a-faire { border-color: rgba(155,140,255,.4); }
+.rp-panel details.unmatched.rp-a-faire > summary { color: var(--ink); font-weight: 600; }
+.rp-panel details.unmatched .mc-mini-aide { margin: .6rem 0; }
+@media (max-width: 640px) {
+  .rp-sante { grid-template-columns: 1fr; gap: .8rem; padding: .85rem; }
+  .rp-big { font-size: 1.8rem; }
+  .rp-actions { grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .rp-carte { padding: .7rem; }
+  .rp-carte-txt { display: none; }
+  .rp-ligues { grid-template-columns: 1fr; }
+  .rp-ligue { grid-template-columns: minmax(0, 1fr) 60px 2.2rem; }
+}
+/* ---- Graphiques sur téléphone (22/11/2026) ---- */
+.gz-barre { display: none; justify-content: space-between; align-items: center; gap: .6rem; margin: 0 0 .35rem; }
+.gz-astuce { font-size: .7rem; color: var(--ink-faint); line-height: 1.3; }
+.gz-btn { flex: none; display: inline-flex; align-items: center; gap: .35rem; padding: .32rem .7rem; border-radius: 999px;
+  border: 1px solid var(--line); background: rgba(10,16,26,.6); color: var(--ink); font: 600 .74rem var(--font-body); cursor: pointer; }
+.gz-btn::before { content: ""; width: 11px; height: 11px; background: currentColor; flex: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M7.5 1.5h3v3M4.5 10.5h-3v-3M10.5 1.5 7 5M1.5 10.5 5 7'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M7.5 1.5h3v3M4.5 10.5h-3v-3M10.5 1.5 7 5M1.5 10.5 5 7'/%3E%3C/svg%3E") center / contain no-repeat; }
+.gz-btn[aria-pressed="true"]::before { -webkit-mask: none; mask: none; content: "✕"; background: none; width: auto; height: auto; font-size: .7rem; }
+.gz-btn:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.gz-box.is-plein .gz-barre, .gz-box:fullscreen .gz-barre { display: flex; margin-bottom: .5rem; }
+@media (orientation: landscape) { .gz-box.is-plein .gz-astuce, .gz-box:fullscreen .gz-astuce { visibility: hidden; } }
+@media (max-width: 720px) {
+  .gz-barre { display: flex; }
+  /* Barres divergentes (paris par cote, etc.) : libellé et valeur sur une ligne, barre pleine largeur dessous */
+  .cote-rows { gap: 0; }
+  .cote-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "lab val" "trk trk" "meta meta";
+    gap: .3rem .6rem; padding: .55rem 0; border-bottom: 1px solid var(--line-soft); }
+  .cote-row:last-child { border-bottom: 0; }
+  .cote-label { grid-area: lab; font-size: .8rem; }
+  .cote-label br { display: none; }
+  .cote-val { grid-area: val; font-size: .85rem; }
+  .cote-track { grid-area: trk; height: 12px; }
+  .cote-fill { top: 2px; bottom: 2px; }
+  .cote-meta { grid-area: meta; padding-left: 0; font-size: .7rem; }
+  .cote-meta br { display: none; }
+  .cote-meta br + * { margin-left: .4rem; }
+}
+.gz-box.is-plein { position: fixed; inset: 0; z-index: 9000; background: var(--night); padding: 12px 14px 18px;
+  overflow: auto; display: flex; flex-direction: column; }
+.gz-box:fullscreen { background: var(--night); padding: 12px 14px 18px; overflow: auto; }
+body.gz-ouvert .mnav { display: none; }
+/* 22/11/2026 : la barre du haut est un enfant direct de <body> (sans marge intérieure) : ses marges négatives
+   la faisaient dépasser de 24 px à droite, d'où un léger défilement horizontal (et, sur téléphone en paysage,
+   une page un peu plus large que l'écran). */
+body > .topbar { margin-left: 0; margin-right: 0; }
 /* ---- Page Bankroll, refonte du 22/11/2026 ---- */
 .bk-tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; margin-top: 1rem; }
 .bk-tuile { border: 1px solid var(--line-soft); border-radius: 14px; padding: .85rem 1rem; background: rgba(10,16,26,.45); display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
