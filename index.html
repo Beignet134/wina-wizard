@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261124055728">
+<link rel="stylesheet" href="style.css?v=20261124064956">
 </head>
 <body>
 <div class="topbar">
@@ -1005,6 +1005,16 @@
         restent à leur cote Winamax.
       </p>
       <p class="muted" id="btMbkVide" style="display:none; font-size:.85rem"></p>
+      <!-- 24/11/2026 : nouvelle présentation, affichée seulement dans DC rétrospectif v2 (mbk2Render). -->
+      <div id="btMbkV2" class="mb2">
+        <div id="mb2Haut" aria-live="polite"></div>
+        <section class="mb2-bloc mb2-courbe">
+          <div class="mb2-courbe-t"><h4>Gain cumulé : Winamax seule ou au meilleur prix</h4>
+            <div class="mb2-leg"><span><i class="lw"></i>Winamax seule</span><span><i class="lb"></i>Au meilleur prix</span><span><i class="lz"></i>Écart entre les deux</span></div></div>
+          <div id="mb2ChartWrap" class="mb2-chart"></div>
+        </section>
+        <div id="mb2Bas"></div>
+      </div>
       <div id="btMbkContenu">
         <div class="score-tiles" id="btMbkTiles"></div>
 
@@ -3222,7 +3232,55 @@
 </div>
 
 
-<div id="chargementDonnees" class="chargement-donnees" role="status" aria-live="polite">Chargement des données…</div>
+<!-- Écran de premier chargement (24/11/2026) : styles en ligne pour s'afficher avant tout le reste. -->
+<style>
+  #chargementDonnees { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(1200px 600px at 50% 30%, rgba(84,217,206,.10), transparent 60%), radial-gradient(900px 500px at 80% 90%, rgba(128,175,255,.10), transparent 60%), #0a101a;
+    color: #f1f5fa; font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; transition: opacity .45s ease, visibility .45s; }
+  #chargementDonnees.chg-fin { opacity: 0; visibility: hidden; }
+  .chg-carte { width: min(420px, 100%); text-align: center; }
+  .chg-logo { width: 76px; height: 76px; margin: 0 auto 18px; position: relative; }
+  .chg-logo svg { width: 100%; height: 100%; display: block; }
+  .chg-logo::after { content: ""; position: absolute; inset: -14px; border-radius: 50%; border: 2px solid rgba(41,56,76,.6);
+    border-top-color: #54d9ce; border-right-color: rgba(128,175,255,.6); animation: chgTour 1.3s linear infinite; }
+  .chg-titre { margin: 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -.01em; }
+  .chg-titre span { background: linear-gradient(90deg, #80afff, #54d9ce); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chg-sous { margin: .25rem 0 1.6rem; font-size: .8rem; color: #77869a; }
+  .chg-msg { margin: 0 0 .7rem; font-size: .92rem; color: #a8b5c7; min-height: 1.3em; }
+  .chg-barre { height: 6px; border-radius: 999px; background: #1f2d40; overflow: hidden; position: relative; }
+  .chg-barre i { position: absolute; left: 0; top: 0; bottom: 0; width: 8%; border-radius: 999px; background: linear-gradient(90deg, #80afff, #54d9ce); transition: width .6s ease; }
+  .chg-barre i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: chgReflet 1.4s ease-in-out infinite; }
+  .chg-etapes { list-style: none; margin: 1.1rem 0 0; padding: 0; display: flex; justify-content: space-between; gap: .5rem; }
+  .chg-etapes li { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .35rem; font-size: .72rem; color: #77869a; }
+  .chg-etapes li b { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #29384c; display: inline-flex; align-items: center; justify-content: center;
+    font: 700 .68rem ui-monospace, "JetBrains Mono", monospace; color: #77869a; background: #101a27; }
+  .chg-etapes li.en-cours { color: #f1f5fa; } .chg-etapes li.en-cours b { border-color: #54d9ce; color: #54d9ce; box-shadow: 0 0 0 4px rgba(84,217,206,.12); }
+  .chg-etapes li.fait { color: #a8b5c7; } .chg-etapes li.fait b { border-color: #37d99b; background: #37d99b; color: #0a101a; }
+  .chg-temps { margin: 1.2rem 0 0; font-size: .72rem; color: #5d6b7f; min-height: 1em; }
+  .chg-erreur .chg-msg { color: #ff8a7d; } .chg-erreur .chg-barre i { background: #ff6f61; width: 100% !important; } .chg-erreur .chg-logo::after { animation: none; border-color: rgba(255,111,97,.6); }
+  .chg-recharger { margin-top: 1rem; font: 600 .85rem inherit; color: #0a101a; background: #54d9ce; border: 0; border-radius: 10px; padding: .55rem 1.1rem; cursor: pointer; }
+  @keyframes chgTour { to { transform: rotate(360deg); } }
+  @keyframes chgReflet { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  @media (prefers-reduced-motion: reduce) { .chg-logo::after, .chg-barre i::after { animation: none; } #chargementDonnees { transition: none; } }
+</style>
+<div id="chargementDonnees" role="status" aria-live="polite">
+  <div class="chg-carte">
+    <div class="chg-logo" aria-hidden="true"><svg viewBox="0 0 42 42" fill="none"><defs><linearGradient id="chgDeg" x1="7" y1="34" x2="35" y2="7" gradientUnits="userSpaceOnUse"><stop stop-color="#80afff"/><stop offset="1" stop-color="#54d9ce"/></linearGradient></defs>
+      <rect x="1" y="1" width="40" height="40" rx="13" fill="#101a27" stroke="url(#chgDeg)" stroke-opacity=".46"/>
+      <path d="m8.5 13.5 4.4 16 8.1-14.2 8.1 14.2 4.4-16" stroke="url(#chgDeg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="32.5" cy="9.5" r="3" fill="url(#chgDeg)"/></svg></div>
+    <p class="chg-titre">Wina <span>Wizard</span></p>
+    <p class="chg-sous">Analyse · Football</p>
+    <p class="chg-msg" id="chgMsg">Téléchargement des données…</p>
+    <div class="chg-barre"><i id="chgBarre"></i></div>
+    <ol class="chg-etapes">
+      <li data-chg="1" class="en-cours"><b>1</b>Téléchargement</li>
+      <li data-chg="2"><b>2</b>Décompression</li>
+      <li data-chg="3"><b>3</b>Tableau de bord</li>
+    </ol>
+    <p class="chg-temps" id="chgTemps"></p>
+  </div>
+</div>
 <script>
 /* Chargement des données (09/11/2026). donnees.js dépassait 160 Mo : la page restait vide (« généré — ») tant
    qu'il n'était pas entièrement téléchargé, surtout sur téléphone. On charge d'abord donnees_gz.js — les mêmes
@@ -3230,30 +3288,79 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261124055839", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261124055839", APP = "app.js?v=20261124055728";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261124065105", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261124065105", APP = "app.js?v=20261124064956";
   var bandeau = document.getElementById("chargementDonnees");
-  function dire(t) { if (bandeau) bandeau.textContent = t; }
+  var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
+  var debut = Date.now(), progres = 8, cible = 30;
+  function dire(t) { if (msg) msg.textContent = t; }
+  // Étapes 1 à 3 ; la barre avance doucement vers la fin de l'étape en cours (la taille réelle n'est pas connue).
+  function etape(n, texte) {
+    if (texte) dire(texte);
+    cible = [0, 30, 62, 96][n] || 96;
+    progres = Math.max(progres, [0, 8, 38, 70][n] || 100);   // saut visible même si la page est occupée
+    if (barre) barre.style.width = progres.toFixed(1) + "%";
+    if (!bandeau) return;
+    var lis = bandeau.querySelectorAll("[data-chg]");
+    for (var i = 0; i < lis.length; i++) {
+      var k = +lis[i].getAttribute("data-chg");
+      lis[i].className = k < n ? "fait" : (k === n ? "en-cours" : "");
+      lis[i].querySelector("b").textContent = k < n ? "✓" : k;
+    }
+  }
+  var minuteur = setInterval(function () {
+    progres += (cible - progres) * 0.06;
+    if (barre) barre.style.width = progres.toFixed(1) + "%";
+    var s = Math.round((Date.now() - debut) / 1000);
+    if (temps) temps.textContent = s >= 4 ? (s + " s" + (s >= 12 ? " · la première ouverture est plus longue sur téléphone" : "")) : "";
+  }, 120);
+  function erreur(t) {
+    clearInterval(minuteur);
+    dire(t);
+    if (!bandeau) return;
+    bandeau.className = "chg-erreur";
+    if (!bandeau.querySelector(".chg-recharger")) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "chg-recharger"; b.textContent = "Recharger la page";
+      b.onclick = function () { location.reload(); };
+      bandeau.querySelector(".chg-carte").appendChild(b);
+    }
+  }
+  function terminer() {
+    clearInterval(minuteur);
+    if (barre) barre.style.width = "100%";
+    etape(4);
+    if (!bandeau) return;
+    setTimeout(function () { bandeau.className = "chg-fin"; }, 150);
+    setTimeout(function () { if (bandeau.parentNode) bandeau.parentNode.removeChild(bandeau); }, 700);
+  }
   function script(src, ok, ko) {
     var s = document.createElement("script");
     s.src = src; s.onload = ok; s.onerror = ko;
     document.body.appendChild(s);
   }
   function lancerApp() {
-    dire("Préparation du tableau de bord…");
-    script(APP, function () { if (bandeau && bandeau.parentNode) bandeau.parentNode.removeChild(bandeau); },
-           function () { dire("Le tableau de bord n'a pas pu se charger : recharge la page."); });
+    etape(3, "Préparation du tableau de bord…");
+    // laisse le navigateur afficher l'étape avant le gros travail d'app.js
+    setTimeout(function () {
+      script(APP, function () { setTimeout(terminer, 50); },
+             function () { erreur("Le tableau de bord n'a pas pu se charger."); });
+    }, 30);
   }
   function complet() {
-    dire("Chargement des données (version complète, plus lente)…");
-    script(DONNEES, lancerApp, function () { dire("Données introuvables : recharge la page dans une minute."); });
+    etape(1, "Téléchargement des données (version complète, plus lente)…");
+    script(DONNEES, lancerApp, function () { erreur("Données introuvables : réessaie dans une minute."); });
   }
   if (!("DecompressionStream" in window) || !window.Response || !window.Blob) { complet(); return; }
   script(DONNEES_GZ, function () {
+    if (!window.WIZARD_DATA_GZ) { complet(); return; }
+    etape(2, "Décompression des données…");
+    // petit délai : laisse le navigateur afficher l'étape avant la décompression (travail bloquant)
+    setTimeout(decompresser, 40);
+  }, complet);
+  function decompresser() {
     try {
       var b64 = window.WIZARD_DATA_GZ;
       window.WIZARD_DATA_GZ = null;
       if (!b64) throw new Error("données compressées vides");
-      dire("Décompression des données…");
       var bin = atob(b64), n = bin.length, octets = new Uint8Array(n);
       b64 = null;
       for (var i = 0; i < n; i++) octets[i] = bin.charCodeAt(i);
@@ -3262,7 +3369,7 @@
         .then(function (texte) { window.WIZARD_DATA = JSON.parse(texte); lancerApp(); })
         .catch(complet);
     } catch (e) { complet(); }
-  }, complet);
+  }
 })();
 </script>
 </body>
