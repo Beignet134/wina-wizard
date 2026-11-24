@@ -8169,6 +8169,7 @@ function majBlocMeilleurBk(rowsFiltrees) {
     vide.style.display = "";
     vide.textContent = "Aucun pari avec les filtres actuels : rien à comparer.";
     contenu.style.display = "none";
+    if ($("mb2Haut")) { $("mb2Haut").innerHTML = ""; $("mb2Bas").innerHTML = ""; window.MB2_DERNIER = null; mb2Dessiner(); }
     return;
   }
   vide.style.display = "none";
@@ -8260,6 +8261,179 @@ function majBlocMeilleurBk(rowsFiltrees) {
     + `Comparaison théorique : elle suppose qu'on ait pu miser chez le site le plus généreux au moment du relevé, sans plafond de mise ni bonus ni délai, `
     + `et le gain mesuré vient du seul prix — il ne dit rien de plus sur la qualité du modèle.`;
   $("btMbkNotes").innerHTML = txt;
+  try { mb2Render(rowsFiltrees, C); } catch (e) { console.error("Meilleur site (v2) :", e); }
+}
+
+
+/* ---- Winamax ou meilleur site : présentation v2 (24/11/2026) ----
+   Mêmes calculs que le bloc d'origine (bkComparer, autreMouvement) ; affichée uniquement dans DC rétrospectif v2. */
+const MB2_COUL = {unibet: "#54d9ce", betclic: "#f4c067", bwin: "#80afff", daznbet: "#c39bff", winamax: "#37d99b"};
+function mb2Render(rows, C) {
+  const z = $("btMbkV2");
+  if (!z) return;
+  if (!rows.length || !C) { $("mb2Haut").innerHTML = ""; $("mb2Bas").innerHTML = ""; window.MB2_DERNIER = null; return; }
+  const fr = x => x.toLocaleString("fr-FR");
+  const eur = (x, d = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d}) + " €";
+  const pct = (x, d = 1) => x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d}) + " %";
+  const pc = x => Math.round(x * 100) + " %";
+  const t = C.tout, rW = t.mise ? t.netW / t.mise : null, rB = t.mise ? t.netB / t.mise : null, dn = t.netB - t.netW;
+  const couv = t.n ? t.nComp / t.n : 0, gainMoy = t.nMieux ? t.sommeGain / t.nMieux : null;
+  const sites = Object.keys(C.parSite).map(k => Object.assign({k}, C.parSite[k])).sort((a, b) => b.nMeilleur - a.nMeilleur || (b.netS - b.netW) - (a.netS - a.netW));
+  const champion = sites.find(s => s.nMeilleur > 0);
+  // --- verdict ---
+  const petit = Math.abs(dn) < Math.max(5, Math.abs(t.netW) * 0.01);
+  let titre, sous, ton;
+  if (!t.nComp) { titre = "Aucun de ces paris n'a de cote ailleurs"; sous = "Les relevés des autres sites ne couvrent pas encore ces matchs : rien à comparer."; ton = "neutre"; }
+  else if (petit) { titre = "Winamax suffit : le meilleur prix n'aurait presque rien changé"; ton = "ok";
+    sous = `${eur(dn)} sur ${fr(t.n)} paris. Seuls ${fr(t.nMieux)} étaient mieux payés ailleurs${gainMoy != null ? `, de ${pct(gainMoy)} en moyenne` : ""}.`; }
+  else if (dn > 0) { titre = `Jouer au meilleur prix aurait rapporté ${eur(dn)} de plus`; ton = "gain";
+    sous = `Soit ${cbkPtSigne(rB - rW)} de ROI. ${fr(t.nMieux)} paris étaient mieux payés ailleurs${champion ? `, surtout chez ${champion.nom} (${fr(champion.nMeilleur)})` : ""}.`; }
+  else { titre = `Winamax paie mieux : ${eur(-dn)} d'avance`; ton = "ok"; sous = "Les autres sites n'auraient pas fait mieux sur ces paris."; }
+  if (t.nComp && couv < 0.3) sous += ` <strong>Comparaison partielle</strong> : seuls ${pc(couv)} de tes paris ont une cote sur un autre site.`;
+  // --- couverture ---
+  const nMieux = t.nMieux, nEgal = t.nComp - t.nMieux, nSeul = t.n - t.nComp;
+  const seg = (n, cl, lib) => n ? `<i class="${cl}" style="flex:${n}" title="${lib} : ${fr(n)}"></i>` : "";
+  // --- courbe double ---
+  let cw = 0, cb = 0; const pw = [0], pb = [0];
+  C.lignes.forEach(L => { cw += L.pW; cb += L.pB; pw.push(cw); pb.push(cb); });
+  const W = 600, H = 150, P = 8, all = pw.concat(pb), lo = Math.min(...all, 0), hi = Math.max(...all, 0), sp = (hi - lo) || 1;
+  const X = i => P + (W - 2 * P) * i / Math.max(1, pw.length - 1), Y = v => P + (H - 2 * P) * (hi - v) / sp;
+  const path = a => a.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
+  const courbe = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" width="100%" height="${H}" aria-label="Gain cumulé : Winamax ${eur(cw)}, meilleur prix ${eur(cb)}">
+    <line x1="${P}" x2="${W - P}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" stroke="rgba(119,134,154,.35)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+    <path d="${path(pb)} L${X(pb.length - 1).toFixed(1)} ${Y(pw[pw.length - 1]).toFixed(1)} ${pw.slice().reverse().map((v, j) => `L${X(pw.length - 1 - j).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ")} Z" fill="rgba(84,217,206,.16)"/>
+    <path d="${path(pw)}" fill="none" stroke="#37d99b" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <path d="${path(pb)}" fill="none" stroke="#54d9ce" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/></svg>`;
+  // --- par type de pari ---
+  const cats = Object.keys(C.parCat).sort((a, b) => C.parCat[b].n - C.parCat[a].n);
+  const maxR = Math.max(0.1, ...cats.flatMap(c => { const x = C.parCat[c]; return x.mise ? [Math.abs(x.netW / x.mise), Math.abs(x.netB / x.mise)] : [0]; }));
+  const barre = (r, cl) => `<span class="mb2-b"><i class="${cl}${r < 0 ? " neg" : ""}" style="width:${(Math.abs(r || 0) / maxR * 100).toFixed(1)}%"></i></span>`;
+  const catsHtml = cats.map(c => { const x = C.parCat[c], w = x.mise ? x.netW / x.mise : 0, b = x.mise ? x.netB / x.mise : 0, d = x.netB - x.netW;
+    return `<div class="mb2-cat"><div class="mb2-cat-t"><b>${c}</b><small>${fr(x.n)} paris · ${fr(x.nComp)} comparés</small><span class="mb2-ecart ${d > 0.005 ? "pos" : d < -0.005 ? "neg" : ""}">${eur(d)}</span></div>
+      <div class="mb2-cat-r"><span>Winamax</span>${barre(w, "w")}<b>${pct(w, 0)}</b></div>
+      <div class="mb2-cat-r"><span>Meilleur prix</span>${barre(b, "m")}<b>${pct(b, 0)}</b></div></div>`; }).join("");
+  // --- sites ---
+  const sitesHtml = sites.length ? sites.map(s => {
+    const ec = s.sommeEcart / s.n, part = s.nPlus / s.n, d = s.netS - s.netW;
+    return `<div class="mb2-site${s === champion ? " top" : ""}">
+      <div class="mb2-site-t"><i style="background:${MB2_COUL[s.k] || "#a6b4c7"}"></i><b>${s.nom}</b>${s === champion ? '<span class="mb2-badge">le plus souvent meilleur</span>' : ""}</div>
+      <div class="mb2-site-big"><b class="${ec >= 0 ? "pos" : "neg"}">${pct(ec)}</b><small>cote moyenne vs Winamax</small></div>
+      <div class="mb2-jauge" title="Paie plus que Winamax sur ${fr(s.nPlus)} des ${fr(s.n)} paris cotés"><i style="width:${(part * 100).toFixed(1)}%"></i></div>
+      <dl><div><dt>Paie plus</dt><dd>${fr(s.nPlus)} / ${fr(s.n)} · ${pc(part)}</dd></div><div><dt>Meilleur prix retenu</dt><dd>${fr(s.nMeilleur)}</dd></div>
+      <div><dt>Tout joué chez lui</dt><dd class="${d > 0.005 ? "pos" : d < -0.005 ? "neg" : ""}">${eur(d)}</dd></div></dl></div>`; }).join("")
+    : '<p class="muted">Aucun autre site utilisable sur ces paris.</p>';
+  // --- mouvement ailleurs ---
+  const ordre = ((WIZARD_DATA.comparaison_bk || {}).autres || ["unibet", "betclic", "bwin", "daznbet"]);
+  const mv = {}; ordre.forEach(b => { mv[b] = {n: 0, mes: 0, inchangee: 0, allongee: 0, raccourcie: 0}; });
+  const grp = {inchangee: [], raccourcie: [], allongee: [], mixte: [], nonmes: []};
+  rows.forEach(r => { const ms = [];
+    (r.cbr || []).forEach(q => { const o = mv[q.b] || (mv[q.b] = {n: 0, mes: 0, inchangee: 0, allongee: 0, raccourcie: 0}); o.n++; const m = autreMouvement(q); if (!m) return; o.mes++; o[m]++; ms.push(m); });
+    const a = ms.includes("allongee"), c = ms.includes("raccourcie");
+    grp[!ms.length ? "nonmes" : a && c ? "mixte" : a ? "allongee" : c ? "raccourcie" : "inchangee"].push(r); });
+  const mvSites = Object.keys(mv).filter(b => mv[b].mes > 0);
+  const mvHtml = mvSites.map(b => { const o = mv[b];
+    return `<div class="mb2-mv"><span class="n"><span><i style="background:${MB2_COUL[b] || "#a6b4c7"}"></i>${CBK_NOMS[b] || b}</span><small>${fr(o.mes)} mesurables</small></span>
+      <span class="mb2-pile">${seg(o.inchangee, "inc", "Inchangée")}${seg(o.raccourcie, "rac", "Raccourcie")}${seg(o.allongee, "all", "Allongée")}</span>
+      <span class="p">${pc(o.raccourcie / o.mes)} raccourcies</span></div>`; }).join("");
+  const libG = {inchangee: "Inchangée partout", raccourcie: "Raccourcie ailleurs", allongee: "Allongée ailleurs", mixte: "Sens contraires", nonmes: "Non mesurable"};
+  const grpHtml = Object.keys(grp).filter(k => grp[k].length).map(k => { const L = grp[k];
+    const mise = L.reduce((a, r) => a + btStakeFor(r), 0), net = L.reduce((a, r) => a + r.profit * btStakeFor(r), 0), roi = mise ? net / mise : null;
+    return `<div class="mb2-g"><span>${libG[k]}</span><b>${fr(L.length)}</b><span class="${roi >= 0 ? "pos" : "neg"}">ROI ${pct(roi, 0)}</span></div>`; }).join("");
+  const notes = $("btMbkNotes") ? $("btMbkNotes").innerHTML.replace(/^<strong>À savoir<\/strong>\s*—\s*/, "") : "";
+  const noteMv = $("btMbkBougeNote") ? $("btMbkBougeNote").innerHTML : "";
+  window.MB2_DERNIER = C;
+  $("mb2Haut").innerHTML = `
+    <div class="mb2-hero mb2-${ton}">
+      <div class="mb2-verdict"><h3>${titre}</h3><p>${sous}</p></div>
+      <div class="mb2-kpis">
+        <div class="mb2-k"><span>Winamax seule</span><b class="${t.netW >= 0 ? "pos" : "neg"}">${eur(t.netW)}</b><small>ROI ${pct(rW)}</small></div>
+        <div class="mb2-k"><span>Au meilleur prix</span><b class="${t.netB >= 0 ? "pos" : "neg"}">${eur(t.netB)}</b><small>ROI ${pct(rB)}</small></div>
+        <div class="mb2-k mb2-k-ecart"><span>Écart</span><b class="${dn > 0.005 ? "cy" : dn < -0.005 ? "neg" : ""}">${eur(dn)}</b><small>${rW != null ? cbkPtSigne(rB - rW) + " de ROI" : "—"}</small></div>
+        <div class="mb2-k"><span>Mieux payés ailleurs</span><b>${fr(nMieux)}</b><small>${gainMoy != null ? `cote ${pct(gainMoy)} en moyenne` : "aucun"}</small></div>
+        <div class="mb2-k"><span>Comparés</span><b>${pc(couv)}</b><small>${fr(t.nComp)} des ${fr(t.n)} paris</small></div>
+      </div>
+    </div>
+    <div class="mb2-couv">
+      <div class="mb2-couv-t"><b>Sur tes ${fr(t.n)} paris</b><span>${pc(couv)} ont une cote sur au moins un autre site</span></div>
+      <div class="mb2-pile mb2-pile-l">${seg(nMieux, "mieux", "Mieux payé ailleurs")}${seg(nEgal, "egal", "Winamax égal ou meilleur")}${seg(nSeul, "seul", "Pas d'autre site")}</div>
+      <div class="mb2-leg"><span><i class="mieux"></i>Mieux payé ailleurs <b>${fr(nMieux)}</b></span><span><i class="egal"></i>Winamax égal ou meilleur <b>${fr(nEgal)}</b></span><span><i class="seul"></i>Pas d'autre site <b>${fr(nSeul)}</b></span></div>
+    </div>`;
+  mb2Dessiner();
+  $("mb2Bas").innerHTML = `
+    <div class="mb2-grid">
+      <section class="mb2-bloc"><h4>Par type de pari</h4>${catsHtml}</section>
+      ${mvHtml ? `<section class="mb2-bloc"><h4>La cote a-t-elle bougé ailleurs ? <button type="button" class="fx-i" data-fx-aide="${fxEsc(noteMv)}" aria-label="En savoir plus">i</button></h4>
+        <div class="mb2-leg"><span><i class="inc"></i>Inchangée</span><span><i class="rac"></i>Raccourcie</span><span><i class="all"></i>Allongée</span></div>${mvHtml}
+        <h4 style="margin-top:.9rem">Tes paris selon le marché</h4>${grpHtml}</section>` : ""}
+    </div>
+    <h4 class="mb2-h">Site par site</h4>
+    <div class="mb2-sites">${sitesHtml}</div>
+    ${notes ? `<details class="mb2-savoir"><summary>À savoir sur cette comparaison</summary><p>${notes}</p></details>` : ""}`;
+}
+// Grand graphique : deux courbes (Winamax seule / au meilleur prix), axes, étiquettes de fin, survol.
+function mb2Dessiner() {
+  const C = window.MB2_DERNIER, wrap = $("mb2ChartWrap");
+  if (!wrap) return;
+  if (!C || !C.lignes || C.lignes.length < 2) { wrap.innerHTML = '<p class="muted">Pas assez de paris pour tracer une évolution.</p>'; return; }
+  const W = Math.max(300, Math.round(wrap.clientWidth || (typeof chartW === "function" ? chartW() - 300 : 800)));
+  const petit = W < 560, H0 = petit ? 240 : 340, HE = petit ? 70 : 90, H = H0 + HE + 26, L = petit ? 44 : 62, R = petit ? 62 : 96, T = 16, B = 28;
+  let cw = 0, cb = 0;
+  const lignes = C.lignes.slice().sort((a, b) => String(a.r.date + (a.r.kickoff || "")).localeCompare(String(b.r.date + (b.r.kickoff || ""))));
+  const pts = [{w: 0, b: 0, d: lignes[0].r.date}];
+  lignes.forEach(Lg => { cw += Lg.pW; cb += Lg.pB; pts.push({w: cw, b: cb, d: Lg.r.date, L: Lg}); });
+  const n = pts.length;
+  const vals = pts.flatMap(p => [p.w, p.b]).concat([0]);
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * .06 || 10, y0 = lo - pad, y1 = hi + pad;
+  const X = i => L + (W - L - R) * i / (n - 1), Y = v => T + (H0 - T - B) * (y1 - v) / (y1 - y0);
+  const eur = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("fr-FR", {maximumFractionDigits: Math.abs(v) < 100 ? 1 : 0}) + " €";
+  const eur1 = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("fr-FR", {minimumFractionDigits: 1, maximumFractionDigits: 1}) + " €";
+  const pas = [10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000].find(p => (y1 - y0) / p <= 6) || 10000;
+  let svg = "";
+  for (let v = Math.ceil(y0 / pas) * pas; v <= y1; v += pas)
+    svg += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="${v === 0 ? "var(--line)" : "var(--chart-grid)"}"/><text x="${L - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="mb2-ax">${eur(v).replace(",0 €", " €")}</text>`;
+  const chemin = k => pts.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(p[k]).toFixed(1)}`).join(" ");
+  svg += `<path d="${chemin("b")} ${pts.slice().reverse().map((p, j) => `L${X(n - 1 - j).toFixed(1)} ${Y(p.w).toFixed(1)}`).join(" ")} Z" fill="rgba(84,217,206,.18)"/>`;
+  svg += `<path d="${chemin("w")}" fill="none" stroke="#37d99b" stroke-width="2.6" stroke-linejoin="round"/>`;
+  svg += `<path d="${chemin("b")}" fill="none" stroke="#54d9ce" stroke-width="2.4" stroke-dasharray="7 5" stroke-linejoin="round"/>`;
+  [0, Math.floor((n - 1) / 2), n - 1].forEach(i => { const d = pts[i].d || ""; svg += `<text x="${X(i).toFixed(1)}" y="${H0 - 8}" text-anchor="middle" class="mb2-ax">${d.slice(8, 10)}/${d.slice(5, 7)}</text>`; });
+  // Bande du bas : écart cumulé (meilleur prix − Winamax), lisible même quand les deux courbes se confondent.
+  const e0 = H0 + 22, eT = e0 + 6, eB = e0 + HE - 4;
+  const ecarts = pts.map(p => p.b - p.w), emx = Math.max(0.5, ...ecarts.map(Math.abs));
+  const YE = v => (eT + eB) / 2 - (v / emx) * (eB - eT) / 2;
+  svg += `<text x="${L}" y="${e0 - 4}" class="mb2-ax" style="fill:var(--ink-dim)">Écart cumulé (meilleur prix − Winamax)</text>`;
+  svg += `<rect x="${L}" y="${eT}" width="${W - L - R}" height="${eB - eT}" rx="6" fill="rgba(119,134,154,.06)"/>`;
+  svg += `<line x1="${L}" x2="${W - R}" y1="${YE(0).toFixed(1)}" y2="${YE(0).toFixed(1)}" stroke="var(--line)"/>`;
+  svg += `<path d="M${X(0).toFixed(1)} ${YE(0).toFixed(1)} ${pts.map((p, i) => `L${X(i).toFixed(1)} ${YE(ecarts[i]).toFixed(1)}`).join(" ")} L${X(n - 1).toFixed(1)} ${YE(0).toFixed(1)} Z" fill="rgba(84,217,206,.35)"/>`;
+  svg += `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${YE(ecarts[i]).toFixed(1)}`).join(" ")}" fill="none" stroke="#54d9ce" stroke-width="1.6"/>`;
+  svg += `<text x="${L - 8}" y="${(YE(emx) + 4).toFixed(1)}" text-anchor="end" class="mb2-ax">${eur1(emx)}</text><text x="${L - 8}" y="${(YE(0) + 4).toFixed(1)}" text-anchor="end" class="mb2-ax">0</text>`;
+  svg += `<text x="${(W - R + 8).toFixed(1)}" y="${(YE(ecarts[n - 1]) + 4).toFixed(1)}" class="mb2-fin" fill="#54d9ce">${eur1(ecarts[n - 1])}</text>`;
+  const fin = pts[n - 1];
+  const et = [[fin.w, "#37d99b", "Winamax " + eur(fin.w)], [fin.b, "#54d9ce", "Meilleur " + eur(fin.b)]].sort((a, b) => b[0] - a[0]);
+  let yp = -99;
+  et.forEach(([v, c, txt]) => { let y = Y(v) + 4; if (Math.abs(y - yp) < 15) y = yp + 15; yp = y;
+    svg += `<text x="${(W - R + 8).toFixed(1)}" y="${y.toFixed(1)}" class="mb2-fin" fill="${c}">${petit ? eur(v) : txt.split(" ")[0]}</text>${petit ? "" : `<text x="${(W - R + 8).toFixed(1)}" y="${(y + 13).toFixed(1)}" class="mb2-fin" fill="${c}">${eur1(v)}</text>`}`; yp = petit ? y : y + 13; });
+  svg += `<line id="mb2Cur" y1="${T}" y2="${eB}" stroke="var(--ink-faint)" stroke-dasharray="2 3" visibility="hidden"/>`;
+  wrap.innerHTML = `<div class="mb2-svgz"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Gain cumulé : Winamax ${eur(fin.w)}, au meilleur prix ${eur(fin.b)}">${svg}</svg><div class="dc-tooltip mb2-tip" id="mb2Tip" hidden></div></div>`;
+  const el = wrap.querySelector("svg"), tip = $("mb2Tip"), cur = $("mb2Cur");
+  const montrer = ev => {
+    const r = el.getBoundingClientRect(), x = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left) * W / r.width;
+    const i = Math.max(1, Math.min(n - 1, Math.round((x - L) / ((W - L - R) / (n - 1)))));
+    const p = pts[i], Lg = p.L, d = p.b - p.w;
+    cur.setAttribute("x1", X(i)); cur.setAttribute("x2", X(i)); cur.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div class="dc-tip-head">${(p.d || "").split("-").reverse().join("/")} · pari ${i} sur ${n - 1}</div>
+      <div class="dc-tip-row"><span>${Lg.r.match}</span></div>
+      <div class="dc-tip-row"><span>Winamax ${Number(Lg.r.cote).toFixed(2).replace(".", ",")}${Lg.autre ? ` · ${Lg.autre.nom || CBK_NOMS[Lg.autre.bk] || Lg.autre.bk} ${Number(Lg.autre.cote).toFixed(2).replace(".", ",")}` : ""}</span></div>
+      <div class="dc-tip-row"><span>Winamax seule</span><strong>${eur(p.w)}</strong></div>
+      <div class="dc-tip-row"><span>Au meilleur prix</span><strong>${eur(p.b)}</strong></div>
+      <div class="dc-tip-row"><span>Écart cumulé</span><strong class="${d > 0.005 ? "pos" : d < -0.005 ? "neg" : ""}">${eur1(d)}</strong></div>`;
+    tip.hidden = false;
+    const px = X(i) * r.width / W;
+    tip.style.left = Math.max(4, Math.min(r.width - tip.offsetWidth - 4, px + 14)) + "px";
+    tip.style.top = "8px";
+  };
+  const cacher = () => { tip.hidden = true; cur.setAttribute("visibility", "hidden"); };
+  el.addEventListener("mousemove", montrer); el.addEventListener("mouseleave", cacher);
+  el.addEventListener("touchstart", montrer, {passive: true}); el.addEventListener("touchmove", montrer, {passive: true});
 }
 
 /* ---- La cote a-t-elle aussi bougé ailleurs ? (08/11/2026) ----
@@ -17138,7 +17312,7 @@ function initMobile() {
     },
     bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
     bilan: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); },
-    dcv2: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); },
+    dcv2: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); if (typeof mb2Dessiner === "function") mb2Dessiner(); },
     // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
     montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
   };
@@ -17679,7 +17853,7 @@ function dvMaj() {
    pour les histogrammes, plus de dates lisibles). Sans plein écran possible (iPhone), une vue agrandie fixe
    prend toute la page : tourner le téléphone suffit alors. */
 function initAgrandirGraphiques() {
-  const IDS = ["blChartWrap", "chartWrap", "btEvoWrap", "btJourWrap", "btMbkChartWrap", "btCalibWrap", "mcFanWrap", "bkEvoWrap", "bkJourWrap"];
+  const IDS = ["mb2ChartWrap", "blChartWrap", "chartWrap", "btEvoWrap", "btJourWrap", "btMbkChartWrap", "btCalibWrap", "mcFanWrap", "bkEvoWrap", "bkJourWrap"];
   const redessiner = () => setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 120);
   // La vue agrandie est déplacée sous <body> le temps de l'affichage : un parent animé (transform) ferait
   // sinon de « position: fixed » un cadre relatif à lui, plus large que l'écran.
