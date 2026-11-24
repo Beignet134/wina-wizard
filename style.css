@@ -2907,6 +2907,27 @@ details.panel-foldable[open] > summary::before {
   .bl-wr { grid-template-columns: minmax(0, 1fr) 70px 4rem; }
   .bl-mois { grid-template-columns: repeat(2, 1fr); }
 }
+.chg-mark { width: 100%; height: 100%; display: block; filter: drop-shadow(0 8px 20px rgba(84,217,206,.22)); }
+/* ---- Pastille de fraîcheur (24/11/2026) ; la marque garde son style d'origine ---- */
+.topbar .freshness { display: flex; align-items: center; gap: .55rem; padding: .34rem .8rem .34rem .65rem; font-family: var(--font-body); letter-spacing: 0;
+  border: 1px solid var(--line-soft); border-radius: 12px; background: rgba(16,26,39,.75); cursor: default; }
+.topbar .freshness .fr-txt { display: flex; flex-direction: column; line-height: 1.2; }
+.topbar .freshness .fr-age { font-size: .76rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.topbar .freshness .fr-lib { font-weight: 500; color: var(--ink-dim); }
+.topbar .freshness .fr-long { font: 500 .66rem var(--font-mono); color: var(--ink-faint); white-space: nowrap; }
+.topbar .freshness #metaAgo::before, .topbar .freshness #metaAgo::after { content: none; }
+.topbar .freshness.no-rel .fr-age { display: none; }
+.topbar .freshness .pulse-dot { width: 8px; height: 8px; }
+.topbar .freshness.fr-moyen .pulse-dot { background: var(--gold); animation: none; box-shadow: 0 0 0 3px rgba(244,192,103,.15); }
+.topbar .freshness.fr-vieux .pulse-dot { background: var(--coral); animation: none; box-shadow: 0 0 0 3px rgba(255,111,97,.15); }
+.topbar .freshness.fr-moyen { border-color: rgba(244,192,103,.3); }
+.topbar .freshness.fr-vieux { border-color: rgba(255,111,97,.35); }
+@media (max-width: 1420px) { .topbar .freshness .fr-long { display: none; } .topbar .freshness { padding: .45rem .75rem; } }
+@media (max-width: 720px) {
+  .topbar .freshness { padding: .3rem .6rem; gap: .4rem; }
+  .topbar .freshness .fr-lib { display: none; }
+  .topbar .freshness .fr-age { font-size: .72rem; }
+}
 /* ---- Bankroll, refonte du 24/11/2026 ---- */
 .bk2-barre { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .8rem 1rem; padding: .85rem 1rem !important; }
 @media (min-width: 1180px) { .bk2-barre { flex-wrap: nowrap; } .bk2-barre .bk-raz-confirm, .bk2-barre .bk-raz-note { position: absolute; } .bk2-barre:has(.bk-raz-confirm:not([hidden])), .bk2-barre:has(.bk-raz-note:not([hidden])) { flex-wrap: wrap; } .bk2-barre:has(.bk-raz-confirm:not([hidden])) .bk-raz-confirm, .bk2-barre:has(.bk-raz-note:not([hidden])) .bk-raz-note { position: static; } }
@@ -2934,6 +2955,15 @@ details.panel-foldable[open] > summary::before {
 .bk2-hero { border-color: rgba(55,217,155,.32) !important; background: linear-gradient(165deg, rgba(55,217,155,.07), var(--night-2) 42%) !important; }
 .bk2-hero-t { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
 .bk2-hero-t h2 { margin: 0; font: 700 1.15rem var(--font-display); }
+.bk2-vues { flex: none; }
+.bk2-hero .gz-box[hidden], .bk2-hero [hidden] { display: none !important; }
+#bkJourWrap.bk2-courbe { min-height: 260px; }
+.bk2-hero #bkJourWrap .jour-plot { width: auto !important; margin-right: 14px; }
+.bk2-hero #bkJourWrap .jour-col { max-width: none; }
+.bk2-hero #bkJourWrap > p.muted { font-size: .78rem; margin: .5rem 0 0; }
+.bk2-hero #bkJourWrap > p.muted + p.muted { display: none; }
+.bk2-hero #bkJourWrap > .chart-help { margin-top: .4rem; font-size: .78rem; }
+@media (max-width: 720px) { .bk2-vues { width: 100%; display: flex; } .bk2-vues button { flex: 1; padding-left: .3rem; padding-right: .3rem; } }
 .bk2-hero-t .bk-periode-note { margin: .2rem 0 0; font-size: .8rem; }
 .bk2-verdict { margin: .8rem 0 0 !important; }
 .bk2-hero .bk-tuiles { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 0; margin-top: .9rem; border: 1px solid var(--line-soft); border-radius: 14px; background: rgba(10,16,26,.5); overflow: hidden; }
@@ -3343,7 +3373,7 @@ header { flex-wrap: nowrap; gap: 1.2rem; }
 .menu.mp-ouvert { overflow: visible; }
 header.mp-2l { flex-wrap: wrap; row-gap: .5rem; }
 header.mp-2l .menu { order: 3; flex-basis: 100%; }
-@media (max-width: 1420px) { .freshness .fr-long { display: none; } }
+
 @media (max-width: 720px) { .menu { display: none; } header { flex-wrap: nowrap; } }
 .msheet-groupe { grid-column: 1 / -1; font-size: .72rem; color: var(--ink-faint); margin: .6rem .2rem .1rem; }
 .msheet-groupe:first-child { margin-top: 0; }
