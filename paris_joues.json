@@ -686,5 +686,16 @@
   "capture_iso": "2026-11-22T19:57:12.638816",
   "mise": 5,
   "maj": 1795374141044
+ },
+ "2026-11-24|Hibernian FC - Dundee FC|0 - 1": {
+  "cote": 17.25,
+  "cote_confirmee": false,
+  "site": "betclic",
+  "cote_capturee": 17.25,
+  "ts": "2026-11-24T20:34:53",
+  "kickoff": "2026-11-24T20:45:00",
+  "capture_iso": "2026-11-24T20:08:02.760094",
+  "mise": 10,
+  "maj": 1795548893780
  }
 }
