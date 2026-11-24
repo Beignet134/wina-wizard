@@ -1855,6 +1855,7 @@ function activerOnglet(tab) {
   if (typeof majNavMobile === "function") majNavMobile();
   if (typeof window.majMenuPrincipal === "function") window.majMenuPrincipal();
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
+  if (tab.dataset.page === "overview" && typeof ov2Tout === "function") ov2Tout();
   if (tab.dataset.page === "teams" && typeof renderTeams === "function") renderTeams();
   if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
   if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
@@ -6449,6 +6450,203 @@ $("teamBody").addEventListener("keydown", ev => {
 });
 $("eqReperes").addEventListener("click", ev => { const b = ev.target.closest(".eq-repere"); if (b) eqChoisir(+b.dataset.eq, true); });
 
+
+/* ================= VUE D'ENSEMBLE — refonte du 23/11/2026 =================
+   Tableau de bord : 5 tuiles, prochains paris (par date ou meilleure espérance), gain cumulé des filtres DC
+   rétrospectif, bankroll réelle et état des données. Rien n'est recalculé côté modèle : mêmes lignes que les pages
+   d'origine (CURRENT_UPCOMING_ROWS, btFiltered, calculerBankroll, WIZARD_DATA.meta). */
+let OV2_TRI = "date";
+try { OV2_TRI = localStorage.getItem("ww_ov2_tri") === "ev" ? "ev" : "date"; } catch (e) { /* rien */ }
+const OV2_JOURS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+const OV2_MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const ov2E = (x, d = 0) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toLocaleString("fr-FR", {maximumFractionDigits: d}) + " €";
+const ov2P = (x, d = 1) => x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toLocaleString("fr-FR", {maximumFractionDigits: d}) + " %";
+function ov2Heure(iso) { const m = /T(\d{2}):(\d{2})/.exec(String(iso || "")); return m ? `${m[1]}:${m[2]}` : ""; }
+function ov2Jour(iso) {
+  const j = String(iso || "").slice(0, 10);
+  if (j === upAujourdhui()) return "Aujourd'hui";
+  if (j === upAujourdhui(1)) return "Demain";
+  const d = new Date(j + "T12:00:00");
+  return isNaN(d) ? j : `${OV2_JOURS[d.getDay()]} ${d.getDate()} ${OV2_MOIS[d.getMonth()]}`;
+}
+function ov2Dans(iso) {
+  const t = new Date(iso).getTime() - Date.now();
+  if (!isFinite(t)) return "";
+  if (t < 0) return "commencé";
+  const h = t / 36e5;
+  return h < 1 ? `dans ${Math.max(1, Math.round(t / 6e4))} min` : h < 48 ? `dans ${Math.round(h)} h` : `dans ${Math.round(h / 24)} j`;
+}
+function ov2PariLu(l) {
+  const p = String(l.pari || "");
+  if (["homeWin", "draw", "awayWin"].includes(p)) return upLibellePari({match: l.match, colonne: p});
+  return /^\d+\s*-\s*\d+$/.test(p) ? "Score " + p.replace(/\s/g, "") : p;
+}
+function ov2Libelle(v) { return v.categorie === "Score exact" ? `Score ${String(v.colonne).replace(/\s/g, "")}` : upLibellePari(v); }
+function ov2Spark(pts, opts = {}) {
+  if (!pts.length) return "";
+  const W = 600, H = opts.h || 110, P = 6;
+  const ys = pts.concat([opts.base ?? 0]);
+  const lo = Math.min(...ys), hi = Math.max(...ys), sp = (hi - lo) || 1;
+  const X = i => P + (W - 2 * P) * (pts.length > 1 ? i / (pts.length - 1) : .5), Y = v => P + (H - 2 * P) * (hi - v) / sp;
+  const d = pts.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
+  const base = Y(opts.base ?? 0), fin = pts[pts.length - 1], coul = fin >= (opts.base ?? 0) ? "#37d99b" : "#ff6f61";
+  const id = "ov2g" + Math.random().toString(36).slice(2, 7);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" width="100%" height="${H}" aria-hidden="true">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${coul}" stop-opacity=".28"/><stop offset="1" stop-color="${coul}" stop-opacity="0"/></linearGradient></defs>
+    <line x1="${P}" x2="${W - P}" y1="${base.toFixed(1)}" y2="${base.toFixed(1)}" stroke="rgba(119,134,154,.35)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+    <path d="${d} L${X(pts.length - 1).toFixed(1)} ${base.toFixed(1)} L${X(0).toFixed(1)} ${base.toFixed(1)} Z" fill="url(#${id})"/>
+    <path d="${d}" fill="none" stroke="${coul}" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+const OV2 = {};
+function ov2Tuiles() {
+  const z = $("ov2Tuiles"); if (!z) return;
+  const t = OV2;
+  const tuile = (page, lib, val, sous, cls = "") => `<button type="button" class="ov2-tuile ov-jump-tab ${cls}" data-page="${page}"><span class="l">${lib}</span><span class="v">${val}</span><span class="s">${sous}</span></button>`;
+  z.innerHTML =
+    tuile("upcoming", "Paris à venir", t.nAvenir ?? "—", t.avenirSous || "") +
+    tuile("upcoming", "Prochain match", t.prochainHeure || "—", t.prochainSous || "aucun match prévu", "ov2-t-texte") +
+    tuile("bankroll", "Bankroll", t.bk != null ? t.bk.toLocaleString("fr-FR", {maximumFractionDigits: 0}) + " €" : "—", t.bkSous || "", t.bkNet > 0 ? "pos" : t.bkNet < 0 ? "neg" : "") +
+    tuile("bilan", "Tes filtres", t.roi != null ? ov2P(t.roi, 0) : "—", t.filtresSous || "", t.roi > 0 ? "pos" : t.roi < 0 ? "neg" : "") +
+    tuile("retro", "Données", t.age || "—", t.donSous || "", t.donCls || "");
+}
+function ov2AVenir(rowsActifs) {
+  const rows = (rowsActifs || CURRENT_UPCOMING_ROWS || UPCOMING || []).slice();
+  const maintenant = Date.now();
+  const futurs = rows.filter(v => !v.kickoff || new Date(v.kickoff).getTime() > maintenant);
+  const liste = futurs.length ? futurs : rows;
+  OV2.nAvenir = rows.length.toLocaleString("fr-FR");
+  const auj = rows.filter(v => upJourIso(v) === upAujourdhui()).length, dem = rows.filter(v => upJourIso(v) === upAujourdhui(1)).length;
+  OV2.avenirSous = rows.length ? `${auj} aujourd'hui · ${dem} demain` : "aucun avec tes filtres";
+  const prochain = liste.filter(v => v.kickoff).sort((a, b) => String(a.kickoff).localeCompare(String(b.kickoff)))[0];
+  OV2.prochainHeure = prochain ? `${ov2Jour(prochain.kickoff) === "Aujourd'hui" ? "" : ov2Jour(prochain.kickoff) + " "}${ov2Heure(prochain.kickoff)}` : null;
+  OV2.prochainSous = prochain ? `${prochain.match} · ${ov2Dans(prochain.kickoff)}` : "";
+  // bande des 7 jours
+  const jours = $("ov2Jours");
+  if (jours) {
+    const parJ = new Map(); rows.forEach(v => { const j = upJourIso(v); parJ.set(j, (parJ.get(j) || 0) + 1); });
+    const nb = Math.max(1, UPCOMING_DAYS || 7);
+    const cells = []; for (let i = 0; i < nb; i++) { const j = upAujourdhui(i); cells.push([j, parJ.get(j) || 0]); }
+    const mx = Math.max(1, ...cells.map(c => c[1]));
+    jours.innerHTML = cells.map(([j, n], i) => `<div class="ov2-j${n ? "" : " vide"}" title="${n} pari${n > 1 ? "s" : ""} — ${ov2Jour(j)}"><span class="b"><i style="height:${Math.round(n / mx * 100)}%"></i></span><b>${n || "·"}</b><small>${i === 0 ? "auj." : i === 1 ? "dem." : OV2_JOURS[new Date(j + "T12:00:00").getDay()]}</small></div>`).join("");
+  }
+  const sous = $("ov2AvenirSous");
+  if (sous) sous.textContent = rows.length ? `${rows.length} paris retenus par tes filtres sur les ${UPCOMING_DAYS} prochains jours.` : "Aucun pari ne passe tes filtres pour l'instant.";
+  const z = $("ov2Liste"); if (!z) return;
+  if (!liste.length) { z.innerHTML = '<p class="ov2-vide">Rien à jouer pour le moment. Les prochaines recommandations arriveront avec la prochaine mise à jour.</p>'; ov2Tuiles(); return; }
+  const tri = OV2_TRI === "ev"
+    ? liste.slice().sort((a, b) => ((b.ev_aff ?? b.ev) ?? -9) - ((a.ev_aff ?? a.ev) ?? -9))
+    : liste.slice().sort((a, b) => String(a.kickoff).localeCompare(String(b.kickoff)) || ((b.ev_aff ?? b.ev) - (a.ev_aff ?? a.ev)));
+  const top = tri.slice(0, 8);
+  let html = "", jourPrec = null;
+  top.forEach(v => {
+    const j = upJourIso(v);
+    if (OV2_TRI === "date" && j !== jourPrec) { html += `<div class="ov2-jt">${ov2Jour(v.kickoff || v.date)}</div>`; jourPrec = j; }
+    const ev = v.ev_aff ?? v.ev, joue = typeof betKey === "function" && PLACED.has(betKey(v));
+    html += `<div class="ov2-p${joue ? " joue" : ""}">
+      <span class="h">${OV2_TRI === "date" ? ov2Heure(v.kickoff) : ov2Jour(v.kickoff || v.date).replace("Aujourd'hui", "Auj.")}</span>
+      <span class="m"><b>${v.match}</b><small>${ov2Libelle(v)} · ${ligueLabel(v.pays, v.ligue)}</small></span>
+      <span class="c">${Number(v.cote).toFixed(2).replace(".", ",")}</span>
+      <span class="e ${ev >= 0 ? "pos" : "neg"}">${ov2P(ev, 0)}</span>
+      ${joue ? '<span class="j" title="Déjà marqué comme joué">joué</span>' : '<span class="j"></span>'}</div>`;
+  });
+  if (tri.length > top.length) html += `<p class="ov2-plus">+ ${tri.length - top.length} autre${tri.length - top.length > 1 ? "s" : ""}</p>`;
+  z.innerHTML = html;
+  ov2Tuiles();
+}
+function ov2Filtres() {
+  let rows = [];
+  try { rows = btFiltered().slice().sort((a, b) => String(a.date + (a.kickoff || "")).localeCompare(String(b.date + (b.kickoff || "")))); } catch (e) { rows = []; }
+  const n = rows.length;
+  let cum = 0, mise = 0, pk = 0, dd = 0; const pts = [0];
+  const mois = new Map();
+  rows.forEach(r => { const st = btStakeFor(r); cum += r.profit * st; mise += st; pts.push(cum); pk = Math.max(pk, cum); dd = Math.max(dd, pk - cum);
+    const k = r.date.slice(0, 7), o = mois.get(k) || {net: 0, mise: 0, n: 0}; o.net += r.profit * st; o.mise += st; o.n++; mois.set(k, o); });
+  const roi = mise ? cum / mise : null;
+  const roiDe = sub => { let a = 0, b = 0; sub.forEach(r => { const st = btStakeFor(r); a += r.profit * st; b += st; }); return b ? a / b : null; };
+  const coupe = Math.floor(n / 2), roiTest = n >= 8 ? roiDe(rows.slice(coupe)) : null;
+  const ms = [...mois.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const der = ms[ms.length - 1], roiDer = der && der[1].mise ? der[1].net / der[1].mise : null;
+  OV2.roi = roi; OV2.filtresSous = n ? `${n} paris · test ${ov2P(roiTest, 0)}` : "aucun pari";
+  const sous = $("ov2FiltresSous");
+  if (sous) {
+    let t = !n ? "Aucun pari ne passe tes filtres DC rétrospectif." :
+      roiTest == null ? "Trop peu de paris pour un test hors échantillon." :
+      roiTest > 0 ? `L'avantage tient sur la période de test (${ov2P(roiTest)}).` : `L'avantage ne tient pas sur la période de test (${ov2P(roiTest)}).`;
+    if (n && roi > 0 && roiDer != null && roiDer < roi * 0.3 && ms.length >= 2) t += ` <strong>Ralentit</strong> : ${ov2P(roiDer)} en ${OV2_MOIS[+der[0].slice(5, 7) - 1]}.`;
+    sous.innerHTML = t;
+  }
+  const kpi = $("ov2FiltresKpi");
+  if (kpi) kpi.innerHTML = `<div class="k-main"><span>Résultat</span><b class="${cum >= 0 ? "pos" : "neg"}">${ov2E(cum, 1)}</b></div>
+    <div><span>ROI</span><b class="${roi >= 0 ? "pos" : "neg"}">${ov2P(roi)}</b></div><div><span>Paris</span><b>${n}</b></div><div><span>Plus forte baisse</span><b class="${dd > 0 ? "neg" : ""}">${dd > 0 ? ov2E(-dd) : "—"}</b></div>`;
+  const sp = $("ov2FiltresSpark"); if (sp) sp.innerHTML = n ? ov2Spark(pts) : "";
+  const mz = $("ov2FiltresMois");
+  if (mz) mz.innerHTML = ms.slice(-4).map(([k, o]) => { const r = o.mise ? o.net / o.mise : 0, faible = roi > 0 && r < roi * 0.3;
+    return `<span class="ov2-m${r < 0 ? " neg" : faible ? " ov2-w" : ""}"><small>${OV2_MOIS[+k.slice(5, 7) - 1]}</small><b>${ov2E(o.net)}</b><small>${ov2P(r, 0)}</small></span>`; }).join("");
+  ov2Tuiles();
+}
+function ov2Bankroll() {
+  const dep = $("bkDepart"), depart = parseFloat(dep && dep.value) || 0;
+  let lignes = [];
+  try { lignes = calculerBankroll(depart) || []; } catch (e) { lignes = []; }
+  const res = lignes.filter(l => l.resultatEuros != null), att = lignes.length - res.length;
+  const net = res.reduce((t, l) => t + l.resultatEuros, 0), mise = res.reduce((t, l) => t + (Number(l.mise) || 0), 0);
+  const bk = depart + net, roi = mise ? net / mise : null, gagnes = res.filter(l => l.gagne).length;
+  OV2.bk = lignes.length || depart ? bk : null; OV2.bkNet = net;
+  OV2.bkSous = lignes.length ? `${ov2E(net, 0)} · ${att} en attente` : "aucun pari joué";
+  const sous = $("ov2BkSous");
+  if (sous) sous.textContent = lignes.length ? `Tes paris réellement joués, depuis une bankroll de départ de ${depart.toLocaleString("fr-FR")} €.` : "";
+  const kpi = $("ov2BkKpi");
+  if (kpi) kpi.innerHTML = !lignes.length ? '<p class="ov2-vide">Aucun pari marqué « joué » pour l\'instant. Coche-les depuis « Paris à venir » pour suivre ta bankroll ici.</p>'
+    : `<div class="k-main"><span>Bankroll</span><b>${bk.toLocaleString("fr-FR", {maximumFractionDigits: 2})} €</b></div>
+      <div><span>Net</span><b class="${net >= 0 ? "pos" : "neg"}">${ov2E(net, 2)}</b></div><div><span>ROI réel</span><b class="${roi >= 0 ? "pos" : "neg"}">${ov2P(roi)}</b></div>
+      <div><span>Réglés</span><b>${res.length}</b><small>${gagnes} gagnés · ${att} en attente</small></div>`;
+  const sp = $("ov2BkSpark"); if (sp) sp.innerHTML = res.length > 1 ? ov2Spark([depart].concat(res.map(l => l.bankrollApres)), {base: depart, h: 80}) : "";
+  const dz = $("ov2BkDerniers");
+  if (dz) dz.innerHTML = res.slice(-3).reverse().map(l => `<div class="ov2-d"><span class="m"><b>${l.match}</b><small>${ov2PariLu(l)}${l.date ? " · " + l.date.split("-").reverse().slice(0, 2).join("/") : ""}</small></span><span class="${l.resultatEuros >= 0 ? "pos" : "neg"}">${ov2E(l.resultatEuros, 2)}</span></div>`).join("");
+  ov2Tuiles();
+}
+function ov2Donnees() {
+  const meta = WIZARD_DATA.meta || {};
+  const matched = Number(meta.matched) || 0, unmatched = Number(meta.unmatched) || 0, tot = matched + unmatched;
+  const pct = tot ? matched / tot : null;
+  const compte = new Map();
+  [(WIZARD_DATA.dc_stats || {}).ligues_non_alignees, (WIZARD_DATA.poisson_stats || {}).ligues_non_alignees].forEach(src => (src || []).forEach(([c, n]) => compte.set(c, (compte.get(c) || 0) + n)));
+  const nonAl = compte.size;
+  const gen = Date.parse(WIZARD_DATA.generated_iso || "");
+  let age = null, ageH = null;
+  if (isFinite(gen)) { const ms = Math.max(0, Date.now() - gen); ageH = ms / 36e5; age = ageH < 1 ? `${Math.max(1, Math.floor(ms / 6e4))} min` : ageH < 48 ? `${Math.floor(ageH)} h` : `${Math.floor(ageH / 24)} j`; }
+  const frais = ageH != null && ageH < 24;
+  OV2.age = age ? "il y a " + age : "—"; OV2.donCls = ageH == null ? "" : frais ? "pos" : "ov2-w";
+  OV2.donSous = pct != null ? `${Math.round(pct * 100)} % des matchs rapprochés` : "";
+  const etat = $("ov2DonEtat");
+  if (etat) { etat.className = "ov2-etat " + (frais ? "ok" : "alerte"); etat.textContent = ageH == null ? "date inconnue" : frais ? "À jour" : "À actualiser"; }
+  const sous = $("ov2DonSous");
+  if (sous) sous.textContent = `Générées le ${WIZARD_DATA.generated || "—"}${age ? ` (il y a ${age})` : ""}.`;
+  const z = $("ov2Don"); if (!z) return;
+  const bloc = (lib, val, sous, page, cls = "") => `<${page ? `button type="button" data-page="${page}"` : "div"} class="ov2-dk ${page ? "ov-jump-tab " : ""}${cls}"><span>${lib}</span><b>${val}</b><small>${sous}</small></${page ? "button" : "div"}>`;
+  z.innerHTML =
+    `<div class="ov2-couv"><div class="ov2-couv-t"><span>Matchs rapprochés de leur résultat</span><b>${pct != null ? Math.round(pct * 1000) / 10 + " %" : "—"}</b></div>
+      <div class="ov2-barre"><i style="width:${pct != null ? (pct * 100).toFixed(1) : 0}%"></i></div>
+      <small>${matched.toLocaleString("fr-FR")} sur ${tot.toLocaleString("fr-FR")} matchs cotés</small></div>` +
+    bloc("Non rapprochés", unmatched.toLocaleString("fr-FR"), unmatched ? "résultat introuvable · voir" : "tout est rapproché", unmatched ? "retro" : "", unmatched ? "ov2-w" : "") +
+    bloc("Compétitions non alignées", nonAl, nonAl ? "noms différents · voir" : "aucune", nonAl ? "dc" : "", nonAl ? "ov2-w" : "") +
+    bloc("Fichiers de cotes", (Number(meta.n_odds_files) || 0).toLocaleString("fr-FR"), `${(Number(meta.n_odds_dedup) || 0).toLocaleString("fr-FR")} cotes uniques`, "") +
+    bloc("Fichiers de résultats", (Number(meta.n_results_files) || 0).toLocaleString("fr-FR"), "collectés", "");
+  ov2Tuiles();
+}
+function ov2Tout() {
+  [ov2AVenir, ov2Filtres, ov2Bankroll, ov2Donnees].forEach(fn => { try { fn(); } catch (e) { console.error("Vue d'ensemble :", e); } });
+}
+(function initOv2() {
+  document.querySelectorAll("[data-ov2-tri]").forEach(b => b.addEventListener("click", () => {
+    OV2_TRI = b.dataset.ov2Tri;
+    try { localStorage.setItem("ww_ov2_tri", OV2_TRI); } catch (e) { /* rien */ }
+    document.querySelectorAll("[data-ov2-tri]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    ov2AVenir();
+  }));
+  document.querySelectorAll("[data-ov2-tri]").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.ov2Tri === OV2_TRI)));
+})();
+
 /* ================= PAGE 0 — VUE D'ENSEMBLE ================= */
 // Bascule vers un autre onglet en JS — utilisé par le chip d'alerte
 // "Qualité des données" ci-dessous pour renvoyer directement au panneau de
@@ -6468,6 +6666,7 @@ document.addEventListener("click", e => {
 // value bets et la qualité/fraîcheur des données. Les gains cumulés et les
 // classements détaillés restent dans l'onglet DC rétrospectif.
 function renderOverviewUpcoming(rowsActifs, verdictsActifs) {
+  try { ov2AVenir(rowsActifs); } catch (e) { console.error("Vue d'ensemble :", e); }
   const rows = rowsActifs || UPCOMING;
   const verdicts = verdictsActifs || CURRENT_UPCOMING_VERDICTS || {};
   const topUpcoming = rows.slice()
@@ -6505,6 +6704,7 @@ function renderOverview() {
   );
   renderOverviewTest();
   renderOverviewDonnees();
+  ov2Tout();
 }
 
 // « Résistance au test » : depuis le 11/11/2026 (demande : « sur l'onglet vue
@@ -6514,6 +6714,7 @@ function renderOverview() {
 // échantillon (renderOosValidation, qui rappelle cette fonction à chaque
 // rendu) ; avant, sur toutes les lignes du backtest sans aucun filtre.
 function renderOverviewTest() {
+  try { ov2Filtres(); } catch (e) { console.error("Vue d'ensemble :", e); }
   const dateCourte = value => {
     const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
     return match ? match[3] + "/" + match[2] + "/" + match[1] : (value || "");
