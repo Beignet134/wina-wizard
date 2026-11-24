@@ -17847,6 +17847,30 @@ function dvMaj() {
   if ($("dvExport")) $("dvExport").addEventListener("click", () => { const b = $("btExportCsv"); if (b) b.click(); });
 })();
 
+
+/* ---- Bankroll : onglets du détail (24/11/2026) ---- */
+(function initBankrollOnglets() {
+  const boutons = [...document.querySelectorAll("[data-bk2]")];
+  if (!boutons.length) return;
+  let courant = "repart";
+  try { courant = localStorage.getItem("ww_bk2") || "repart"; } catch (e) { /* rien */ }
+  const montrer = () => {
+    if (!boutons.some(b => b.dataset.bk2 === courant)) courant = "repart";
+    boutons.forEach(b => b.setAttribute("aria-selected", String(b.dataset.bk2 === courant)));
+    document.querySelectorAll("[data-bk2-page]").forEach(p => { p.hidden = p.dataset.bk2Page !== courant; });
+    setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 40);
+  };
+  boutons.forEach(b => b.addEventListener("click", () => {
+    courant = b.dataset.bk2;
+    try { localStorage.setItem("ww_bk2", courant); } catch (e) { /* rien */ }
+    montrer();
+  }));
+  const att = $("bkAttente"), nb = $("bk2NbAtt");
+  const majNb = () => { const n = parseInt((att && att.textContent) || "0", 10) || 0; if (nb) { nb.hidden = !n; nb.textContent = n; } };
+  if (att) new MutationObserver(majNb).observe(att, {childList: true, characterData: true, subtree: true});
+  majNb(); montrer();
+})();
+
 /* ---------- Graphiques agrandis sur téléphone (22/11/2026) ----------
    Sur un écran étroit, chaque grand graphique reçoit un bouton « Agrandir » : le graphique passe en plein écran
    et, sur Android, l'écran bascule en paysage ; il est redessiné à la nouvelle largeur (jours au lieu de semaines
