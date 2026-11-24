@@ -1742,15 +1742,27 @@ function relativeTime(isoString) {
   return `il y a ${Math.round(hours / 24)} j`;
 }
 
+// Pastille de fraîcheur (24/11/2026) : âge en clair, date en dessous, couleur selon l'âge des données.
+function majFraicheur() {
+  const box = document.querySelector(".freshness");
+  if (!box) return;
+  const rel = relativeTime(WIZARD_DATA.generated_iso);
+  const t = Date.parse(WIZARD_DATA.generated_iso || ""), h = isFinite(t) ? (Date.now() - t) / 36e5 : null;
+  $("metaGenerated").textContent = WIZARD_DATA.generated || "—";
+  $("metaAgo").textContent = rel || "";
+  box.classList.toggle("no-rel", !rel);
+  box.classList.remove("fr-ok", "fr-moyen", "fr-vieux");
+  if (h != null) box.classList.add(h < 12 ? "fr-ok" : h < 36 ? "fr-moyen" : "fr-vieux");
+  box.title = `Données générées le ${WIZARD_DATA.generated || "—"}` + (h == null ? "" : h < 12 ? " : à jour." : h < 36 ? " : une mise à jour arrive bientôt." : " : la mise à jour automatique semble arrêtée.");
+}
 function initMeta() {
   const m = WIZARD_DATA.meta;
   const rel = relativeTime(WIZARD_DATA.generated_iso);
   // Date et ancienneté dans deux éléments : sur ordinateur l'affichage est identique
   // (« date (il y a 3 h) », parenthèses ajoutées par la feuille de style) ; sur mobile
   // seule l'ancienneté reste.
-  $("metaGenerated").textContent = WIZARD_DATA.generated;
-  $("metaAgo").textContent = rel || "";
-  document.querySelector(".freshness").classList.toggle("no-rel", !rel);
+  majFraicheur();
+  setInterval(majFraicheur, 60000);
   $("metaOddsFiles").textContent = m.n_odds_files;
   $("metaResultsFiles").textContent = m.n_results_files;
   $("metaOddsDedup").textContent = m.n_odds_dedup;
@@ -1986,8 +1998,6 @@ const MENU_DIRECTS = ["overview", "upcoming", "bankroll"];
   const ajuster = () => {
     if (!entete || getComputedStyle(menu).display === "none") return;
     entete.classList.remove("mp-2l");
-    const fr = entete.querySelector(".freshness"), mg = $("metaGenerated");
-    if (fr && mg) fr.title = "Données générées le " + mg.textContent.trim();
     if (menu.scrollWidth > menu.clientWidth + 1) entete.classList.add("mp-2l");
   };
   const majOrig = window.majMenuPrincipal;
@@ -17848,6 +17858,34 @@ function dvMaj() {
 })();
 
 
+
+/* ---- Bankroll : vues du graphique principal (24/11/2026) ---- */
+(function initBankrollVues() {
+  const btns = [...document.querySelectorAll("[data-bk2-vue]")];
+  if (!btns.length) return;
+  let vue = "courbe";
+  try { vue = localStorage.getItem("ww_bk2_vue") || "courbe"; } catch (e) { /* rien */ }
+  const cadre = id => { const w = $(id); return w ? (w.closest(".gz-box") || w) : null; };
+  const montrer = () => {
+    btns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.bk2Vue === vue)));
+    const courbe = vue === "courbe", evo = cadre("bkEvoWrap"), jr = cadre("bkJourWrap");
+    if (evo) evo.hidden = !courbe;
+    if (jr) jr.hidden = courbe;
+    if ($("bkJourWrap")) $("bkJourWrap").hidden = courbe;
+    if (!courbe) {
+      const b = document.querySelector(`#bkJourModes [data-mode="${vue}"]`);
+      if (b && !b.classList.contains("is-active")) b.click();
+      else if (typeof HISTO_BK !== "undefined" && HISTO_BK.dernier) dessinerHistoJour(HISTO_BK, HISTO_BK.dernier);
+    }
+    setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 40);
+  };
+  btns.forEach(b => b.addEventListener("click", () => {
+    vue = b.dataset.bk2Vue;
+    try { localStorage.setItem("ww_bk2_vue", vue); } catch (e) { /* rien */ }
+    montrer();
+  }));
+  setTimeout(montrer, 0);
+})();
 /* ---- Bankroll : onglets du détail (24/11/2026) ---- */
 (function initBankrollOnglets() {
   const boutons = [...document.querySelectorAll("[data-bk2]")];
