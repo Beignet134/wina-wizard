@@ -1853,6 +1853,40 @@ initMeta();  // appelé ici : $ est maintenant défini
 
 /* ---------- Navigation par onglets ---------- */
 const tabs = [...document.querySelectorAll(".tab")];
+// Menus courts -> boutons segmentés sur les pages harmonisées (25/11/2026),
+// même règle que les panneaux de filtres : ≤ 4 choix courts. Le <select>
+// reste la référence (caché), les boutons le pilotent.
+const PG_PAGES_SEG = ["page-marges", "page-tirs", "page-dc", "page-teams", "page-montecarlo"];
+function pgSegSync(sel) {
+  if (sel && sel._pgSeg) sel._pgSeg.querySelectorAll("button").forEach(b => { b.classList.toggle("is-on", b.dataset.v === sel.value); b.disabled = sel.disabled; });
+}
+function pgSegmenter() {
+  PG_PAGES_SEG.forEach(id => {
+    const page = document.getElementById(id);
+    if (!page) return;
+    page.querySelectorAll(".field").forEach(field => {
+      const sels = field.querySelectorAll("select"), autres = field.querySelectorAll("input:not([type=hidden])");
+      if (sels.length !== 1 || autres.length) return;
+      const sel = sels[0];
+      if (sel._pgSeg || sel._fxSeg) return;
+      const opts = [...sel.options];
+      if (opts.length < 2 || opts.length > 4 || opts.some(o => o.text.trim().length > 14) || opts.reduce((n, o) => n + o.text.trim().length, 0) > 34) return;
+      const seg = document.createElement("div"); seg.className = "fx-seg pg-seg"; seg.setAttribute("role", "group");
+      const lab = field.querySelector("label"); if (lab) seg.setAttribute("aria-label", lab.textContent.trim());
+      const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+      seg.innerHTML = opts.map(o => `<button type="button" data-v="${esc(o.value)}">${esc(o.text.trim())}</button>`).join("");
+      seg.addEventListener("click", e => {
+        const b = e.target.closest("button"); if (!b || sel.disabled || sel.value === b.dataset.v) return;
+        sel.value = b.dataset.v; sel.dispatchEvent(new Event("input", {bubbles: true})); sel.dispatchEvent(new Event("change", {bubbles: true}));
+        pgSegSync(sel);
+      });
+      sel.addEventListener("change", () => pgSegSync(sel));
+      sel.classList.add("fx-sr"); sel.after(seg); sel._pgSeg = seg; field.classList.add("pg-field-seg");
+      pgSegSync(sel);
+    });
+  });
+}
+function pgSegToutSync() { document.querySelectorAll("select.fx-sr").forEach(pgSegSync); }
 function activerOnglet(tab) {
   tabs.forEach(t => {
     const actif = t === tab;
@@ -1866,6 +1900,7 @@ function activerOnglet(tab) {
   window.scrollTo({top:0, behavior:"instant"});
   if (typeof majNavMobile === "function") majNavMobile();
   if (typeof window.majMenuPrincipal === "function") window.majMenuPrincipal();
+  try { pgSegmenter(); pgSegToutSync(); } catch (e) { console.error("segmentés :", e); }
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
   if (tab.dataset.page === "overview" && typeof ov2Tout === "function") ov2Tout();
   if (tab.dataset.page === "teams" && typeof renderTeams === "function") renderTeams();
@@ -2996,6 +3031,16 @@ function renderDcVerdict() {
     txt += ` Espérance annoncée ${dcS(t.ev)} %, gain réel ${dcS(t.roi)} % par mise.`;
   }
   vb.innerHTML = txt; vb.style.display = "";
+  const cases = [];
+  if (t && t.n >= 30) {
+    const ecart = t.p - t.g;
+    cases.push({k: "Réussite annoncée → réalisée", v: `${dcV(t.p, 0)} % <small>→</small> ${dcV(t.g, 0)} %`,
+      s: ecart > 1.5 ? `trop optimiste d'environ ${dcV(ecart, 0)} points` : ecart < -1.5 ? `prudent d'environ ${dcV(-ecart, 0)} points` : "bien calibré en moyenne", cls: ecart > 1.5 ? "neg" : "pos"});
+    cases.push({k: "Espérance annoncée", v: `${dcS(t.ev)} %`, s: "par mise, si le modèle était juste"});
+    cases.push({k: "Gain réel", v: `${dcS(t.roi)} %`, s: `par mise, sur ${t.n.toLocaleString("fr-FR")} paris passés`, cls: t.roi >= 0 ? "pos" : "neg"});
+  }
+  cases.push({k: "Value bets à venir", v: av.toLocaleString("fr-FR"), s: `sur ${VALUE_BETS.length.toLocaleString("fr-FR")} repérés`});
+  pgKpis($("dcKpis"), cases);
 }
 function renderValueBets() {
   const stake = parseFloat($("vStake").value) || 0;
@@ -6345,12 +6390,29 @@ function eqRenderReperes(rows, paris) {
   if (c5 && c5.v > 0) cartes.push({ic: "💰", titre: "Te rapporte le plus", x: c5.x, val: `${fmtEur(c5.v)} sur ${paris.get(c5.x.i).n} paris`, cls: "pos"});
   const c6 = meilleur(avecParis, ({i}) => paris.get(i).net, false);
   if (c6 && c6.v < 0) cartes.push({ic: "📉", titre: "Te coûte le plus", x: c6.x, val: `${fmtEur(c6.v)} sur ${paris.get(c6.x.i).n} paris`, cls: "neg"});
-  zone.innerHTML = cartes.map(c => `<button type="button" class="eq-repere" data-eq="${c.x.i}">
-      <span class="eq-repere-tete"><span aria-hidden="true">${c.ic}</span>${c.titre}</span>
-      <span class="eq-repere-nom">${eqEsc(c.x.t.equipe)}</span>
-      <span class="eq-repere-val ${c.cls || ""}">${eqEsc(c.val)}</span>
-      <span class="eq-repere-ligue">${eqEsc(ligueLabel(c.x.t.pays, c.x.t.ligue))}</span>
+  const nAff = rows.length;
+  zone.style.setProperty("--pg-n", cartes.length);
+  zone.innerHTML = `<div class="pg-k"><div class="k">Équipes affichées</div><div class="v">${nAff.toLocaleString("fr-FR")}</div><div class="s">sur ${TEAM_STATS.length.toLocaleString("fr-FR")} connues</div></div>`
+    + cartes.map(c => `<button type="button" class="pg-k pg-k-btn" data-eq="${c.x.i}">
+      <span class="k"><span aria-hidden="true">${c.ic}</span> ${c.titre}</span>
+      <span class="v v-txt">${eqEsc(c.x.t.equipe)}</span>
+      <span class="s"><strong class="${c.cls || ""}">${eqEsc(c.val)}</strong><br>${eqEsc(ligueLabel(c.x.t.pays, c.x.t.ligue))}</span>
     </button>`).join("");
+  // verdict
+  const vb = $("eqVerdict");
+  if (vb) {
+    const avec = rows.filter(({i}) => paris.has(i));
+    let txt = `<strong>L'essentiel.</strong> ${nAff.toLocaleString("fr-FR")} équipe${nAff > 1 ? "s" : ""} affichée${nAff > 1 ? "s" : ""}.`;
+    if (c1) txt += ` Meilleure attaque : <strong>${eqEsc(c1.x.t.equipe)}</strong> (${eqNum(c1.v)} × la moyenne de sa ligue)${c2 ? `, meilleure défense : <strong>${eqEsc(c2.x.t.equipe)}</strong> (${eqNum(c2.v)} ×)` : ""}.`;
+    if (avec.length) {
+      const net = avec.reduce((a, {i}) => a + paris.get(i).net, 0), np = avec.reduce((a, {i}) => a + paris.get(i).n, 0);
+      txt += ` Tes paris portent sur ${avec.length} de ces équipes (${np} paris, <strong class="${net >= 0 ? "pos" : "neg"}">${fmtEur(net)}</strong>)`;
+      if (c5 && c5.v > 0) txt += ` : <strong>${eqEsc(c5.x.t.equipe)}</strong> te rapporte le plus (${fmtEur(c5.v)})`;
+      if (c6 && c6.v < 0) txt += `${c5 && c5.v > 0 ? "," : " :"} <strong>${eqEsc(c6.x.t.equipe)}</strong> te coûte le plus (${fmtEur(c6.v)})`;
+      txt += ".";
+    } else txt += " Aucun de tes paris ne porte sur ces équipes.";
+    vb.innerHTML = txt; vb.style.display = nAff ? "" : "none";
+  }
 }
 function eqBarreForce(lbl, v, defense) {
   if (v == null) return "";
@@ -6458,7 +6520,7 @@ $("teamBody").addEventListener("keydown", ev => {
   if (ev.key !== "Enter" && ev.key !== " ") return;
   const tr = ev.target.closest("tr.eq-row"); if (tr) { ev.preventDefault(); eqChoisir(+tr.dataset.eq, true); }
 });
-$("eqReperes").addEventListener("click", ev => { const b = ev.target.closest(".eq-repere"); if (b) eqChoisir(+b.dataset.eq, true); });
+$("eqReperes").addEventListener("click", ev => { const b = ev.target.closest("[data-eq]"); if (b) eqChoisir(+b.dataset.eq, true); });
 
 
 /* ================= VUE D'ENSEMBLE — refonte du 23/11/2026 =================
@@ -14048,6 +14110,17 @@ let MG_PARIS = null;
 function mgParisFiltres() {
   try { return btFiltered().filter(r => r.gagne != null); } catch (e) { return []; }
 }
+// ---------------------------------------------------------------------------
+// Harmonisation des pages (25/11/2026) : bloc « en bref » commun (verdict +
+// bande de chiffres clés), sur le modèle de la page Bankroll.
+// pgKpis(zone, [{k, v, s, cls}]) : la première case est la case principale.
+// ---------------------------------------------------------------------------
+function pgKpis(zone, cases) {
+  if (!zone) return;
+  zone.style.setProperty("--pg-n", Math.max(1, cases.length - 1));
+  zone.innerHTML = cases.map(c => `<div class="pg-k"><div class="k">${c.k}</div><div class="v ${c.cls || ""}">${c.v}</div>${c.s ? `<div class="s">${c.s}</div>` : ""}</div>`).join("");
+  zone.hidden = !cases.length;
+}
 function renderMarges() {
   const marches = MARGE.par_marche || [];
   const wrap = $("margeMarcheList");
@@ -14104,6 +14177,14 @@ function renderMarges() {
     }
     vb.innerHTML = txt;
     vb.style.display = "";
+    const cases = [];
+    if (se) cases.push({k: "Score exact", v: `${mgVirg(se.marge)} %`, s: `≈ ${mgVirg(mgPerte(se.marge), 0)} € perdus pour 100 € misés au hasard`, cls: "neg"});
+    if (vm) cases.push({k: "Vainqueur du match", v: `${mgVirg(vm.marge)} %`, s: `≈ ${mgVirg(mgPerte(vm.marge), 0)} € perdus pour 100 € misés au hasard`});
+    const pm = familles.length ? familles[0] : null;
+    if (pm && pm.m && (!vm || (pm.nom || pm.m.marche) !== "Vainqueur du match")) cases.push({k: "Le moins cher", v: `${mgVirg(pm.m.marge)} %`, s: pm.nom || pm.m.marche});
+    if (MARGE.ecart_marches != null) cases.push({k: "Écart entre types de pari", v: `${mgVirg(MARGE.ecart_marches)} pts`, s: "du moins cher au plus cher"});
+    if (MARGE.ecart_ligues != null) cases.push({k: "Écart entre ligues", v: `${mgVirg(MARGE.ecart_ligues)} pts`, s: "sur le Vainqueur du match"});
+    pgKpis($("margeKpis"), cases.slice(0, 5));
   }
 }
 function mgRenderParis(parNom) {
@@ -16723,7 +16804,7 @@ function runMonteCarlo() {
 
   const pctOf = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(p * (sorted.length - 1))))];
   const eur = v => v.toLocaleString("fr-FR", {maximumFractionDigits: 2}) + " €";
-  const pct = v => (v * 100).toFixed(1) + " %";
+  const pct = v => (v * 100).toLocaleString("fr-FR", {minimumFractionDigits: 1, maximumFractionDigits: 1}) + "\u00a0%";
 
   const resultatsStrat = strategies.map((strat, s) => {
     const finalesSorted = Float64Array.from(finales[s]).sort();
@@ -16865,7 +16946,7 @@ function runMonteCarlo() {
   if ($("mcVerdict")) {
     const meilleure = resultatsStrat.reduce((a, b) => (b.mediane > a.mediane ? b : a));
     const plusSure = resultatsStrat.reduce((a, b) => (b.probaRuine < a.probaRuine ? b : a));
-    let phrase = extrapole ? `Sur ${horizonJours} jours simulés, ` : `Sur les ${horizonJours} jours de ton historique filtré, `;
+    let phrase = "<strong>L'essentiel.</strong> " + (extrapole ? `Sur ${horizonJours} jours simulés, ` : `Sur les ${horizonJours} jours de ton historique filtré, `);
     phrase += `<strong>${meilleure.strat.label}</strong> donne la bankroll médiane la plus haute (${eur(meilleure.mediane)} pour ${eur(depart)} au départ)`;
     // "plus prudente" seulement si une AUTRE stratégie a un risque de ruine
     // strictement plus faible — sinon (ex-aequo à 0 %, comme c'est souvent
@@ -18297,13 +18378,13 @@ function renderTirsPage() {
   const pct = c.n_equipes ? pret / c.n_equipes * 100 : 0;
   const fmtD = d => { try { return new Date(d + "T12:00:00").toLocaleDateString("fr-FR", {month: "short", year: "numeric"}); } catch (e) { return d; } };
   const tcMatch = c.moyenne_ligue != null ? c.moyenne_ligue * 2 : null;
-  board.innerHTML = `<div class="ti-tuiles">
-      <div class="ti-tuile"><span class="ti-big">${c.n_matchs.toLocaleString("fr-FR")}</span><span class="ti-lbl">matchs avec tirs cadrés${c.periode ? `<br>${fmtD(c.periode[0])} → ${fmtD(c.periode[1])}` : ""}</span></div>
-      <div class="ti-tuile"><span class="ti-big">${pret.toLocaleString("fr-FR")}<small> / ${c.n_equipes.toLocaleString("fr-FR")}</small></span><span class="ti-lbl">équipes exploitables (${seuil} matchs ou plus)</span>
-        <span class="ti-jauge"><span style="width:${pct.toFixed(0)}%"></span></span></div>
-      <div class="ti-tuile"><span class="ti-big">${tiV(tcMatch, 1)}</span><span class="ti-lbl">tirs cadrés par match<br>(${tiV(c.moyenne_ligue, 1)} par équipe)</span></div>
-      ${c.conversion != null ? `<div class="ti-tuile"><span class="ti-big">${tiV(c.conversion, 0)} %</span><span class="ti-lbl">des tirs cadrés finissent au fond<br>(1 sur ${tiV(100 / c.conversion, 1)})</span></div>` : ""}
+  board.innerHTML = `<div class="pg-kpis" style="--pg-n:${c.conversion != null ? 3 : 2}">
+      <div class="pg-k"><div class="k">Matchs avec tirs cadrés</div><div class="v">${c.n_matchs.toLocaleString("fr-FR")}</div><div class="s">${c.periode ? `${fmtD(c.periode[0])} → ${fmtD(c.periode[1])}` : ""}</div></div>
+      <div class="pg-k"><div class="k">Équipes exploitables</div><div class="v">${pret.toLocaleString("fr-FR")}<small> / ${c.n_equipes.toLocaleString("fr-FR")}</small></div><div class="s">${seuil} matchs ou plus</div><span class="ti-jauge"><span style="width:${pct.toFixed(0)}%"></span></span></div>
+      <div class="pg-k"><div class="k">Tirs cadrés par match</div><div class="v">${tiV(tcMatch, 1)}</div><div class="s">${tiV(c.moyenne_ligue, 1)} par équipe</div></div>
+      ${c.conversion != null ? `<div class="pg-k"><div class="k">Finissent au fond</div><div class="v">${tiV(c.conversion, 0)} %</div><div class="s">1 tir cadré sur ${tiV(100 / c.conversion, 1)}</div></div>` : ""}
     </div>`;
+  if ($("tirsPeriode")) $("tirsPeriode").textContent = c.periode ? `matchs collectés de ${fmtD(c.periode[0])} à ${fmtD(c.periode[1])}` : "";
   // Répartition des équipes selon le nombre de matchs collectés : une barre empilée
   const rep = c.repartition || {}, ordre = ["1", "2", "3", "4", "5", "6+"];
   const tot = ordre.reduce((t, k) => t + (rep[k] || 0), 0) || 1;
