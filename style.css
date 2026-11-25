@@ -4154,6 +4154,45 @@ body > .topbar { margin-left: 0; margin-right: 0; }
 .mc-toggle input:checked + .mc-toggle-track::after { transform: translateX(14px); background: #fff; }
 .mc-toggle input:focus-visible + .mc-toggle-track { outline: 2px solid var(--violet); outline-offset: 2px; }
 .mc-empty { text-align: center; margin: 1.4rem 0; padding: 1.4rem; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--ink-dim); }
+/* Harmonisation des pages (25/11/2026) : bloc « en bref » commun */
+.pg-hero { border-color: rgba(55,217,155,.32) !important; background: linear-gradient(165deg, rgba(55,217,155,.07), var(--night-2) 42%) !important; }
+.pg-hero-t { display: flex; justify-content: space-between; align-items: baseline; gap: .3rem 1rem; flex-wrap: wrap; }
+.pg-hero-t h2 { margin: 0; font: 700 1.15rem var(--font-display); }
+.pg-hero-s { margin: 0; font-size: .8rem; color: var(--ink-faint); }
+.pg-hero .mg-verdict { margin: .8rem 0 0; }
+.pg-hero .mc-verdict { max-width: none; margin: .8rem 0 1rem; }
+.pg-kpis { display: grid; grid-template-columns: 1.4fr repeat(var(--pg-n, 3), minmax(0, 1fr)); margin-top: .9rem; border: 1px solid var(--line-soft); border-radius: 14px; background: rgba(10,16,26,.5); overflow: hidden; }
+.pg-kpis[hidden], .pg-kpis:empty { display: none; }
+.pg-k { display: flex; flex-direction: column; gap: .25rem; min-width: 0; padding: .75rem 1rem; border: 0; border-left: 1px solid var(--line-soft); background: none; text-align: left; font: inherit; color: inherit; }
+.pg-k:first-child { border-left: 0; background: rgba(55,217,155,.06); }
+.pg-k .k { font-size: .74rem; color: var(--ink-faint); }
+.pg-k .v { font: 700 1.4rem/1.15 var(--font-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-k:first-child .v { font-size: 1.9rem; }
+.pg-k .v small { font-size: .78rem; font-weight: 500; color: var(--ink-faint); }
+.pg-k .v.pos { color: var(--up); } .pg-k .v.neg { color: var(--down); }
+.pg-k .v.v-txt { font: 700 .98rem/1.3 var(--font-display); white-space: normal; }
+.pg-k .s { font-size: .72rem; color: var(--ink-faint); line-height: 1.4; }
+.pg-k .s strong { font-family: var(--font-mono); color: var(--ink-dim); } .pg-k .s strong.pos { color: var(--up); } .pg-k .s strong.neg { color: var(--down); }
+.pg-k .ti-jauge { margin-top: .3rem; }
+.pg-k-btn { cursor: pointer; transition: background .15s; }
+.pg-k-btn:hover, .pg-k-btn:focus-visible { background: rgba(255,255,255,.035); outline: none; }
+.pg-k-btn:focus-visible { box-shadow: inset 0 0 0 2px var(--violet); }
+.pg-kpis-auto { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.pg-kpis-auto .pg-k:first-child .v { font-size: 1.6rem; }
+#tirsRepartWrap { margin-top: .9rem; }
+/* libellés des champs au format des panneaux de filtres */
+:is(#page-marges, #page-tirs, #page-dc, #page-teams, #page-montecarlo) .field > label { font-size: .76rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-faint); }
+.pg-field-seg { position: relative; }
+.pg-field-seg select.fx-sr { left: 0; top: 0; max-width: 1px; overflow: hidden; }
+.pg-field-seg .fx-seg { min-height: 38px; }
+.pg-field-seg .fx-seg button { min-height: 36px; }
+@media (max-width: 900px) { .pg-kpis:not(.pg-kpis-auto) { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pg-kpis:not(.pg-kpis-auto) .pg-k:nth-child(odd) { border-left: 0; } .pg-kpis:not(.pg-kpis-auto) .pg-k:nth-child(n+3) { border-top: 1px solid var(--line-soft); } }
+@media (max-width: 720px) {
+  .pg-k:first-child .v { font-size: 1.5rem; } .pg-k .v { font-size: 1.2rem; }
+  .pg-k .v { white-space: normal; overflow: visible; }
+  .pg-kpis-auto { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-kpis-auto .pg-k:nth-child(odd) { border-left: 0; } .pg-kpis-auto .pg-k:nth-child(n+3) { border-top: 1px solid var(--line-soft); }
+}
 .mc-verdict { margin: -.4rem 0 1rem; font-size: .95rem; line-height: 1.55; color: var(--ink); max-width: 90ch; }
 .mc-verdict strong { color: #fff; }
 .mc-resume-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .8rem; }
