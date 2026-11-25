@@ -11937,6 +11937,16 @@ const LIBRE_VARIABLES = {
     {k: "h2", lo: 20, hi: 30, label: "20 à 29"}, {k: "h3", lo: 30, hi: 50, label: "30 à 49"},
     {k: "h4", lo: 50, hi: 100, label: "50 à 99"}, {k: "h5", lo: 100, hi: Infinity, label: "100 et +"}],
     r => (r.n_hist_dom == null || r.n_hist_ext == null) ? null : Math.min(r.n_hist_dom, r.n_hist_ext))),
+  // 25/11/2026 : buts attendus du match et équilibre (λ du modèle Dixon-Coles)
+  butsAtt: Object.assign({nom: "Buts attendus du match", groupe: "Modèle"}, libreTranches([
+    {k: "b0", lo: -Infinity, hi: 2.2, label: "moins de 2,2"}, {k: "b1", lo: 2.2, hi: 2.6, label: "2,2 à 2,6"},
+    {k: "b2", lo: 2.6, hi: 3, label: "2,6 à 3"}, {k: "b3", lo: 3, hi: 3.5, label: "3 à 3,5"},
+    {k: "b4", lo: 3.5, hi: Infinity, label: "3,5 et plus"}],
+    r0 => { const r = r0.orig || r0; return (r.lam_home == null || r.lam_away == null) ? null : r.lam_home + r.lam_away; })),
+  equilibre: Object.assign({nom: "Équilibre du match (écart de buts attendus)", groupe: "Modèle"}, libreTranches([
+    {k: "q0", lo: -Infinity, hi: 0.3, label: "très serré (< 0,3)"}, {k: "q1", lo: 0.3, hi: 0.7, label: "serré (0,3 à 0,7)"},
+    {k: "q2", lo: 0.7, hi: 1.2, label: "un favori (0,7 à 1,2)"}, {k: "q3", lo: 1.2, hi: Infinity, label: "déséquilibré (1,2 et +)"}],
+    r0 => { const r = r0.orig || r0; return (r.lam_home == null || r.lam_away == null) ? null : Math.abs(r.lam_home - r.lam_away); })),
   meilleur: {nom: "Winamax face aux autres sites", groupe: "Autres sites",
     groupes: () => [{k: "w", label: "Winamax paie le mieux (ou autant)"}, {k: "a", label: "Mieux payé ailleurs"}, {k: "nc", label: "Pas comparé"}],
     cle: r0 => { const r = r0.orig || r0; const c = (r.cbr || []).map(q => q.c).filter(v => v > 1); return !c.length ? "nc" : (arrMax(c) > r.cote + 1e-9 ? "a" : "w"); }},
@@ -15965,66 +15975,77 @@ function renderComparaison(rowsRetroFiltre) {
   const totJ = {n: reels.length, mise: A.miseJ + C.miseJ, net: A.netJ + C.netJ};
 
   const part = (a, b) => b ? `${Math.round(a / b * 100)} %` : "—";
-  const kpi = (k, v, sub, cls) =>
-    `<div class="kpi"><div class="k">${k}</div><div class="v ${cls || ""}">${v}</div><div class="kpi-sub">${sub}</div></div>`;
+  // ---- Présentation du 24/11/2026 : verdict, chiffres alignés, recouvrement visuel, puis tout le détail. ----
   const effet = A.netJ - A.netRvm;
-  const kpis = `<div class="kpis">`
-    + kpi("Vos paris dans le rétrospectif", `${A.n} / ${reels.length}`,
-          reels.length ? `${part(A.n, reels.length)} · ${C.n} absent${C.n > 1 ? "s" : ""} (raisons plus bas)` : "aucun pari joué et terminé")
-    + kpi("Lignes du rétrospectif jouées", `${A.n} / ${retro.length}`,
-          retro.length ? `${part(A.n, retro.length)} · ${B.n} jamais jouée${B.n > 1 ? "s" : ""}` : "rétrospectif vide sur la période")
-    + kpi("Effet de vos prix (mêmes paris)", A.n ? fmtEur(effet) : "—",
-          A.n ? "votre résultat − celui du rétrospectif, à vos mises" : "aucun pari commun", A.n ? cmpSigne(effet) : "")
-    + kpi("ROI : vous / rétrospectif", `${cmpPct(cmpRoi(totJ.net, totJ.mise))} / ${cmpPct(cmpRoi(totR.net, totR.mise))}`,
-          `${totJ.n} pari${totJ.n > 1 ? "s" : ""} joué${totJ.n > 1 ? "s" : ""} · ${totR.n} ligne${totR.n > 1 ? "s" : ""}`)
-    + `</div>`;
-
-  // --- Synthèse par groupe --------------------------------------------------
-  const ligne = (lib, o, cls) => `<tr class="${cls || ""}">
-      <td data-label=""${cls ? "" : ' class="cmp-sous"'}>${lib}</td><td data-label="Paris" class="num">${o.n}</td>
-      <td data-label="Mises" class="num">${o.n ? cmpMontant(o.mise) : "—"}</td>
-      <td data-label="Net" class="num ${cmpSigne(o.net)}">${o.n ? fmtEur(o.net) : "—"}</td>
-      <td data-label="ROI" class="num ${cmpSigne(cmpRoi(o.net, o.mise))}">${cmpPct(cmpRoi(o.net, o.mise))}</td></tr>`;
-  const synthese = `<div class="tablewrap"><table class="cmp-table cardify">
-    <thead><tr><th>Groupe</th><th class="num">Paris</th><th class="num">Mises</th><th class="num">Net</th><th class="num">ROI</th></tr></thead>
-    <tbody>
-      ${ligne("Rétrospectif — total (cote du dernier relevé, sa mise)", totR, "cmp-total")}
-      ${ligne("dont déjà joués par vous", {n: A.n, mise: A.miseR, net: A.netR})}
-      ${ligne("dont jamais joués", {n: B.n, mise: B.miseR, net: B.netR})}
-      ${ligne("Vos paris joués — total (votre cote, vos mises)", totJ, "cmp-total")}
-      ${ligne("dont présents dans le rétrospectif", {n: A.n, mise: A.miseJ, net: A.netJ})}
-      ${ligne("dont absents du rétrospectif", {n: C.n, mise: C.miseJ, net: C.netJ})}
-    </tbody></table></div>`;
-
-  // --- Mêmes paris, deux prix -----------------------------------------------
   const conf = paires.filter(p => p.l.confirmee && p.l.coteJouee != null);
   const ratios = conf.map(p => p.l.coteJouee / p.r.cote);
   const moy = (a, f) => a.length ? somme(a, f) / a.length : null;
   const roiRvm = cmpRoi(A.netRvm, A.miseJ), roiJ = cmpRoi(A.netJ, A.miseJ);
-  const nPire = ratios.filter(x => x < 0.98).length, nMieux = ratios.filter(x => x > 1.02).length;
+  const nPire = ratios.filter(x => x < 0.98).length, nMieux = ratios.filter(x => x > 1.02).length, nEgal = ratios.length - nPire - nMieux;
+  const roiTotJ = cmpRoi(totJ.net, totJ.mise), roiTotR = cmpRoi(totR.net, totR.mise);
+  const eur = v => v == null ? "—" : fmtEur(v);
+  const pl = (n, m) => `${n} ${m}${n > 1 ? "s" : ""}`;
+  // verdict
+  let titre, sous;
+  if (!reels.length && !retro.length) { titre = "Rien à comparer sur cette période"; sous = "Aucun pari joué et terminé, et aucune ligne du rétrospectif."; }
+  else if (!reels.length) { titre = "Aucun pari joué et terminé sur cette période"; sous = `Le rétrospectif en contient ${retro.length} : ${eur(totR.net)} (${cmpPct(roiTotR)}).`; }
+  else {
+    titre = `Tu as joué ${A.n} des ${retro.length} paris du rétrospectif`;
+    sous = `Soit ${part(A.n, retro.length)} de ses lignes. `;
+    if (A.n && conf.length) sous += effet >= 0 ? `Sur ces paris communs, <strong class="pos">tes prix t'ont rapporté ${fmtEur(effet)}</strong> de plus que ses cotes. `
+                                              : `Sur ces paris communs, <strong class="neg">tes prix t'ont coûté ${fmtEur(Math.abs(effet))}</strong> face à ses cotes. `;
+    else if (A.n) sous += "Aucune cote saisie sur les paris communs : l'effet de tes prix ne se mesure pas encore. ";
+    if (C.n) sous += `${`${C.n} pari${C.n > 1 ? "s" : ""} joué${C.n > 1 ? "s" : ""}`} n'y figure${C.n > 1 ? "nt" : ""} pas (raisons plus bas).`;
+  }
+  const k = (lib, val, sub, cls) => `<div class="cp2-k"><span>${lib}</span><b class="${cls || ""}">${val}</b><small>${sub}</small></div>`;
+  const kpis = `<div class="cp2-hero">
+      <div class="cp2-verdict"><h3>${titre}</h3><p>${sous}</p></div>
+      <div class="cp2-kpis">
+        ${k("Ton ROI", cmpPct(roiTotJ), `${`${totJ.n} pari${totJ.n > 1 ? "s" : ""} joué${totJ.n > 1 ? "s" : ""}`} · ${eur(totJ.net)}`, cmpSigne(roiTotJ))}
+        ${k("ROI du rétrospectif", cmpPct(roiTotR), `${pl(totR.n, "ligne")} · ${eur(totR.net)}`, cmpSigne(roiTotR))}
+        ${k("Effet de tes prix", A.n ? fmtEur(effet) : "—", A.n ? "mêmes paris, à tes mises" : "aucun pari commun", A.n ? "cp2-ecart " + cmpSigne(effet) : "cp2-ecart")}
+        ${k("Tes paris dans le rétro", `${A.n} / ${reels.length}`, reels.length ? `${part(A.n, reels.length)} · ${C.n} absent${C.n > 1 ? "s" : ""}` : "aucun pari terminé")}
+        ${k("Lignes du rétro jouées", `${A.n} / ${retro.length}`, retro.length ? `${part(A.n, retro.length)} · ${B.n} jamais jouée${B.n > 1 ? "s" : ""}` : "rétrospectif vide")}
+      </div></div>`;
+
+  // --- Recouvrement : joués seulement | communs | rétro seulement -------------
+  const tot3 = C.n + A.n + B.n || 1;
+  const seg = (n, cl) => n ? `<i class="${cl}" style="flex:${n}"></i>` : "";
+  const carte = (cl, titreC, n, lignesC) => `<div class="cp2-g ${cl}"><div class="cp2-g-t"><i></i><b>${titreC}</b><span>${n}</span></div>${lignesC}</div>`;
+  const lg = (lib, mise, net, nn) => `<div class="cp2-g-l"><span>${lib}</span><b class="${cmpSigne(net)}">${nn ? fmtEur(net) : "—"}</b><small>${nn ? cmpMontant(mise) + " misés" : ""}</small><em class="${cmpSigne(cmpRoi(net, mise))}">${nn ? cmpPct(cmpRoi(net, mise)) : ""}</em></div>`;
+  const synthese = `<section class="cp2-bloc">
+      <h4>Qui contient quoi</h4>
+      <div class="cp2-pile">${seg(C.n, "c")}${seg(A.n, "a")}${seg(B.n, "b")}</div>
+      <div class="cp2-grille">
+        ${carte("c", "Joués seulement", C.n, lg("toi", C.miseJ, C.netJ, C.n))}
+        ${carte("a", "Joués et dans le rétro", A.n, lg("toi", A.miseJ, A.netJ, A.n) + lg("rétro", A.miseR, A.netR, A.n))}
+        ${carte("b", "Rétro seulement, jamais joués", B.n, lg("rétro", B.miseR, B.netR, B.n))}
+      </div>
+      <div class="cp2-totaux">
+        <div><span>Tes paris joués, total</span><span>${pl(totJ.n, "pari")}</span><span>${cmpMontant(totJ.mise)}</span><b class="${cmpSigne(totJ.net)}">${eur(totJ.net)}</b><em class="${cmpSigne(roiTotJ)}">${cmpPct(roiTotJ)}</em></div>
+        <div><span>Rétrospectif, total</span><span>${pl(totR.n, "ligne")}</span><span>${cmpMontant(totR.mise)}</span><b class="${cmpSigne(totR.net)}">${eur(totR.net)}</b><em class="${cmpSigne(roiTotR)}">${cmpPct(roiTotR)}</em></div>
+      </div>
+      <p class="cp2-note">Toi : ta cote obtenue (sinon la clôture) et tes mises. Rétro : la dernière cote relevée avant le match et la mise de sa page.</p>
+    </section>`;
+
+  // --- Mêmes paris, deux prix -------------------------------------------------
   let prix = "";
   if (A.n) {
-    prix = `<h3 class="cmp-sous-titre">Les mêmes ${A.n} paris, deux prix</h3>
-      <div class="tablewrap"><table class="cmp-table cardify">
-        <thead><tr><th></th><th class="num">Au prix du rétrospectif</th><th class="num">Votre prix</th><th class="num">Écart</th></tr></thead>
-        <tbody>
-          <tr><td data-label="">Résultat net, à vos mises</td><td data-label="Au prix du rétrospectif" class="num ${cmpSigne(A.netRvm)}">${fmtEur(A.netRvm)}</td>
-            <td data-label="Votre prix" class="num ${cmpSigne(A.netJ)}">${fmtEur(A.netJ)}</td><td data-label="Écart" class="num ${cmpSigne(effet)}">${fmtEur(effet)}</td></tr>
-          <tr><td data-label="">ROI (pondéré par vos mises)</td><td data-label="Au prix du rétrospectif" class="num ${cmpSigne(roiRvm)}">${cmpPct(roiRvm)}</td>
-            <td data-label="Votre prix" class="num ${cmpSigne(roiJ)}">${cmpPct(roiJ)}</td>
-            <td data-label="Écart" class="num ${cmpSigne(roiJ - roiRvm)}">${roiJ != null && roiRvm != null ? cmpPt(roiJ - roiRvm) : "—"}</td></tr>
-          <tr><td data-label="">Cote moyenne (${conf.length} cote${conf.length > 1 ? "s" : ""} confirmée${conf.length > 1 ? "s" : ""} par vous)</td>
-            <td data-label="Au prix du rétrospectif" class="num">${conf.length ? moy(conf, p => p.r.cote).toFixed(2) : "—"}</td>
-            <td data-label="Votre prix" class="num">${conf.length ? moy(conf, p => p.l.coteJouee).toFixed(2) : "—"}</td>
-            <td data-label="Écart" class="num ${cmpSigne(conf.length ? moy(conf, p => p.l.coteJouee / p.r.cote) - 1 : null)}">${conf.length ? cmpPct(moy(conf, p => p.l.coteJouee / p.r.cote) - 1) : "—"}</td></tr>
-        </tbody></table></div>
-      <p class="muted cmp-note">${conf.length
-        ? `Sur les ${conf.length} paris dont vous avez saisi ou validé la cote : rapport médian cote jouée / cote du rétrospectif <strong>${cmpMediane(ratios).toFixed(3).replace(".", ",")}</strong> ;
-           cote jouée au moins 2 % <strong>moins bonne</strong> dans <strong>${nPire}</strong> cas (${part(nPire, conf.length)}), au moins 2 % <strong>meilleure</strong> dans ${nMieux} (${part(nMieux, conf.length)}).`
-        : `Aucune cote saisie ou validée par vous sur ces paris : votre résultat est alors calculé à la cote de clôture, celle du rétrospectif — l'écart de prix est nul par construction. Saisissez « Cote obtenue » sur la page Paris à venir pour mesurer l'écart réel.`}
-        Le « prix du rétrospectif » est la dernière cote capturée avant le match.</p>`;
+    const cMoyR = conf.length ? moy(conf, p => p.r.cote) : null, cMoyJ = conf.length ? moy(conf, p => p.l.coteJouee) : null;
+    const ecC = conf.length ? moy(conf, p => p.l.coteJouee / p.r.cote) - 1 : null;
+    prix = `<section class="cp2-bloc">
+      <h4>Les mêmes ${A.n} paris, deux prix</h4>
+      <div class="cp2-duel">
+        <div><span>Au prix du rétrospectif</span><b class="${cmpSigne(A.netRvm)}">${fmtEur(A.netRvm)}</b><small>ROI ${cmpPct(roiRvm)}${cMoyR ? ` · cote moy. ${cMoyR.toFixed(2).replace(".", ",")}` : ""}</small></div>
+        <div class="cp2-duel-e"><span>Écart</span><b class="${cmpSigne(effet)}">${fmtEur(effet)}</b><small>${roiJ != null && roiRvm != null ? cmpPt(roiJ - roiRvm) + " de ROI" : "—"}${ecC != null ? ` · cote ${cmpPct(ecC)}` : ""}</small></div>
+        <div><span>À ton prix</span><b class="${cmpSigne(A.netJ)}">${fmtEur(A.netJ)}</b><small>ROI ${cmpPct(roiJ)}${cMoyJ ? ` · cote moy. ${cMoyJ.toFixed(2).replace(".", ",")}` : ""}</small></div>
+      </div>
+      ${conf.length ? `<div class="cp2-ratio"><div class="cp2-ratio-t"><span>Ta cote face à celle du rétro, sur ${pl(conf.length, "cote saisie")} par toi</span><span>rapport médian <b>${cmpMediane(ratios).toFixed(3).replace(".", ",")}</b></span></div>
+          <div class="cp2-pile">${seg(nPire, "pire")}${seg(nEgal, "egal")}${seg(nMieux, "mieux")}</div>
+          <div class="cp2-leg"><span><i class="pire"></i>moins bonne de 2 % ou plus <b>${nPire}</b> (${part(nPire, conf.length)})</span><span><i class="egal"></i>à peu près égale <b>${nEgal}</b></span><span><i class="mieux"></i>meilleure de 2 % ou plus <b>${nMieux}</b> (${part(nMieux, conf.length)})</span></div></div>`
+        : `<p class="cp2-note">Aucune cote saisie ou validée par toi sur ces paris : ton résultat est calculé à la clôture, comme le rétrospectif, donc l'écart est nul par construction. Saisis « Cote obtenue » sur Paris à venir pour le mesurer.</p>`}
+    </section>`;
   }
-  // Résultat différent entre les deux sources (ne devrait pas arriver)
   const discordants = paires.filter(p => !!p.l.gagne !== !!p.r.gagne);
   const alerte = discordants.length
     ? `<div class="cmp-alerte"><strong>${discordants.length} pari${discordants.length > 1 ? "s" : ""} commun${discordants.length > 1 ? "s" : ""}</strong>
@@ -16034,19 +16055,15 @@ function renderComparaison(rowsRetroFiltre) {
   // --- Paris joués absents du rétrospectif ------------------------------------
   let absents = "";
   if (C.n) {
-    const lignesR = CMP_ORDRE_RAISONS.map(k => {
-      const g = horsRetro.filter(h => h.raison === k);
-      if (!g.length) return "";
-      const mise = somme(g, h => cmpMiseEng(h.l)), net = somme(g, h => h.l.resultatEuros);
-      return `<tr><td data-label="">${CMP_RAISONS[k]}</td><td data-label="Paris" class="num">${g.length}</td><td data-label="Mises" class="num">${cmpMontant(mise)}</td>
-        <td data-label="Net réel" class="num ${cmpSigne(net)}">${fmtEur(net)}</td><td data-label="ROI" class="num ${cmpSigne(cmpRoi(net, mise))}">${cmpPct(cmpRoi(net, mise))}</td></tr>`;
-    }).join("");
-    absents = `<h3 class="cmp-sous-titre">Vos ${C.n} paris joués absents du rétrospectif — pourquoi ?</h3>
-      <div class="tablewrap"><table class="cmp-table cardify">
-        <thead><tr><th>Raison</th><th class="num">Paris</th><th class="num">Mises</th><th class="num">Net réel</th><th class="num">ROI</th></tr></thead>
-        <tbody>${lignesR}</tbody></table></div>
-      <p class="muted cmp-note">Un pari joué tôt peut ne plus passer les critères au dernier relevé (cote qui s'allonge, edge qui disparaît) : le rétrospectif,
-        qui ne voit que les paris restés qualifiés jusqu'au bout, ne les contient alors jamais. C'est l'écart de sélection entre « ce qu'on joue » et « ce qui est simulé ».</p>`;
+    const groupes = CMP_ORDRE_RAISONS.map(kk => ({kk, g: horsRetro.filter(h => h.raison === kk)})).filter(x => x.g.length);
+    const mx = Math.max(...groupes.map(x => x.g.length));
+    absents = `<section class="cp2-bloc">
+      <h4>Tes ${C.n} paris joués absents du rétrospectif : pourquoi ? <button type="button" class="fx-i" data-fx-aide="Un pari joué tôt peut ne plus passer les critères au dernier relevé (cote qui s'allonge, edge qui disparaît) : le rétrospectif, qui ne voit que les paris restés qualifiés jusqu'au bout, ne les contient alors jamais. C'est l'écart de sélection entre « ce qu'on joue » et « ce qui est simulé »." aria-label="En savoir plus">i</button></h4>
+      ${groupes.map(({kk, g}) => { const mise = somme(g, h => cmpMiseEng(h.l)), net = somme(g, h => h.l.resultatEuros);
+        return `<div class="cp2-r"><span class="cp2-r-l">${CMP_RAISONS_COURT[kk]} <button type="button" class="fx-i" data-fx-aide="${cmpEsc(CMP_RAISONS[kk])}" aria-label="Détail">i</button></span>
+          <span class="cp2-r-b"><i style="width:${(g.length / mx * 100).toFixed(1)}%"></i></span><b>${g.length}</b>
+          <span>${cmpMontant(mise)}</span><b class="${cmpSigne(net)}">${fmtEur(net)}</b><em class="${cmpSigne(cmpRoi(net, mise))}">${cmpPct(cmpRoi(net, mise))}</em></div>`; }).join("")}
+    </section>`;
   }
 
   // --- Détail pari par pari ------------------------------------------------------
@@ -16055,19 +16072,20 @@ function renderComparaison(rowsRetroFiltre) {
       coteJ: l.coteJouee, confirmee: l.confirmee, coteR: r.cote,
       miseJ: l.mise, resJ: l.resultatEuros, miseR: stR(r), resR: r.profit * stR(r),
       ecart: l.resultatEuros - r.profit * l.mise, discord: !!l.gagne !== !!r.gagne})),
-    ...horsRetro.map(({l, raison: k}) => ({type: "joue", date: l.date, match: l.match, pari: l.pari,
+    ...horsRetro.map(({l, raison: kk}) => ({type: "joue", date: l.date, match: l.match, pari: l.pari,
       coteJ: l.coteJouee, confirmee: l.confirmee, coteR: l.coteCloture,
-      miseJ: l.mise, resJ: l.resultatEuros, raison: k})),
+      miseJ: l.mise, resJ: l.resultatEuros, raison: kk})),
     ...nonJoues.map(r => ({type: "retro", date: r.date, match: r.match, pari: r.colonne,
       coteR: r.cote, miseR: stR(r), resR: r.profit * stR(r)})),
   ].sort((a, b) => b.date.localeCompare(a.date) || a.match.localeCompare(b.match) || String(a.pari).localeCompare(String(b.pari)));
 
   const attenteN = lignes.length - reels.length;
   corps.innerHTML = kpis
-    + `<h3 class="cmp-sous-titre">Synthèse</h3>` + synthese
-    + (attenteN ? `<p class="muted cmp-note">${attenteN} pari${attenteN > 1 ? "s" : ""} joué${attenteN > 1 ? "s" : ""} dont le match n'est pas terminé ne figure${attenteN > 1 ? "nt" : ""} pas ici.</p>` : "")
-    + prix + alerte + absents
-    + `<h3 class="cmp-sous-titre">Détail, pari par pari</h3><div id="cmpDetailWrap"></div>`;
+    + (attenteN ? `<p class="cp2-note">${attenteN} pari${attenteN > 1 ? "s" : ""} joué${attenteN > 1 ? "s" : ""} dont le match n'est pas terminé ne figure${attenteN > 1 ? "nt" : ""} pas ici.</p>` : "")
+    + alerte
+    + `<div class="cp2-deux">${synthese}${prix}</div>`
+    + absents
+    + `<section class="cp2-bloc cp2-detail"><h4>Détail, pari par pari</h4><div id="cmpDetailWrap"></div></section>`;
   cmpDessinerDetail({A, B, C});
 }
 
@@ -16077,11 +16095,12 @@ function cmpDessinerDetail(n) {
   if (n) wrap.dataset.n = JSON.stringify({tous: n.A.n + n.B.n + n.C.n, commun: n.A.n, joue: n.C.n, retro: n.B.n});
   const nb = wrap.dataset.n ? JSON.parse(wrap.dataset.n) : {tous: CMP_DETAIL.length, commun: 0, joue: 0, retro: 0};
   const onglets = [["tous", "Tous"], ["commun", "Joués + rétrospectif"], ["joue", "Joués seulement"], ["retro", "Rétrospectif seulement"]];
-  const puces = `<div class="jour-modes" id="cmpFiltreBtns" role="group" aria-label="Filtrer le détail">`
+  const puces = `<div class="jour-modes cp2-filtre" id="cmpFiltreBtns" role="group" aria-label="Filtrer le détail">`
     + onglets.map(([k, lib]) => `<button type="button" class="jour-mode${CMP_FILTRE === k ? " is-active" : ""}" data-cmp="${k}" aria-pressed="${CMP_FILTRE === k}">${lib} (${nb[k]})</button>`).join("")
     + `</div>`;
   const lignes = CMP_FILTRE === "tous" ? CMP_DETAIL : CMP_DETAIL.filter(d => d.type === CMP_FILTRE);
-  const visibles = CMP_TOUT ? lignes : lignes.slice(0, CMP_MAX_LIGNES);
+  const maxL = window.matchMedia("(max-width: 720px)").matches ? 15 : CMP_MAX_LIGNES;   // téléphone : cartes plus hautes
+  const visibles = CMP_TOUT ? lignes : lignes.slice(0, maxL);
   const BADGES = {commun: "Joué + rétro", joue: "Joué seulement", retro: "Rétro seulement"};
   const cote = (c, conf) => c == null ? "—" : c.toFixed(2) + (conf === false ? "*" : "");
   const euros = (v, mise) => v == null ? "—" : `<span class="${cmpSigne(v)}">${fmtEur(v)}</span>`;
@@ -16089,9 +16108,9 @@ function cmpDessinerDetail(n) {
     const ecartCote = (d.type === "commun" && d.confirmee && d.coteJ != null && d.coteR)
       ? d.coteJ / d.coteR - 1 : null;
     return `<tr>
-      <td data-label="Date">${d.date}</td>
+      <td data-label="Date" class="cp2-date">${d.date.slice(8, 10)}/${d.date.slice(5, 7)}</td>
       <td data-label="Match">${cmpEsc(d.match)}</td>
-      <td data-label="Pari">${cmpEsc(d.pari)}</td>
+      <td data-label="Pari">${cmpEsc(["homeWin", "draw", "awayWin"].includes(d.pari) && typeof upLibellePari === "function" ? upLibellePari({match: d.match, colonne: d.pari}) : d.pari)}</td>
       <td data-label="Statut"><span class="cmp-badge ${d.type}">${BADGES[d.type]}</span>${d.discord ? ' <span title="Résultat différent entre vos paris et le rétrospectif">⚠</span>' : ""}${d.raison ? `<div class="cmp-raison" title="${cmpEsc(CMP_RAISONS[d.raison])}">${CMP_RAISONS_COURT[d.raison]}</div>` : ""}</td>
       <td data-label="Cote jouée" class="num">${cote(d.coteJ, d.confirmee)}</td>
       <td data-label="Cote rétro" class="num">${d.type === "joue" ? (d.coteR != null ? `<span class="muted" title="Clôture">${d.coteR.toFixed(2)}</span>` : "—") : cote(d.coteR)}</td>
@@ -16104,16 +16123,16 @@ function cmpDessinerDetail(n) {
     </tr>`;
   }).join("") || `<tr><td colspan="12" class="muted">Aucune ligne.</td></tr>`;
   wrap.innerHTML = puces
-    + `<div class="tablewrap"><table class="cmp-table cmp-detail cardify"><thead><tr>
+    + `<div class="tablewrap cp2-table"><table class="cmp-table cmp-detail cardify"><thead><tr>
         <th>Date</th><th>Match</th><th>Pari</th><th>Statut</th><th class="num">Cote jouée</th><th class="num">Cote rétro</th>
         <th class="num">Écart cote</th><th class="num">Votre mise</th><th class="num">Votre résultat</th>
         <th class="num">Mise rétro</th><th class="num">Résultat rétro</th><th class="num">Écart (vos mises)</th>
       </tr></thead><tbody>${corpsT}</tbody></table></div>`
-    + (lignes.length > CMP_MAX_LIGNES
-        ? `<p class="muted cmp-note">${CMP_TOUT ? `${lignes.length} lignes affichées.` : `${CMP_MAX_LIGNES} lignes les plus récentes sur ${lignes.length}.`}
+    + (lignes.length > maxL
+        ? `<p class="muted cmp-note">${CMP_TOUT ? `${lignes.length} lignes affichées.` : `${maxL} lignes les plus récentes sur ${lignes.length}.`}
            <button type="button" class="jour-mode" id="cmpPlus">${CMP_TOUT ? "Réduire" : "Tout afficher"}</button></p>` : "")
-    + `<p class="muted cmp-note">« Écart (vos mises) » = votre résultat − le résultat du rétrospectif recalculé avec <em>vos</em> mises : il ne reflète que la différence de cote. « Rétro seulement » : mise et résultat de la simulation, que vous n'avez pas joués.
-        Cote jouée suivie de <strong>*</strong> : cote de la carte, non saisie par vous (non comparée). Pour un pari « Joué seulement », la colonne « Cote rétro » est sa cote de clôture.</p>`;
+    + `<details class="cp2-savoir"><summary>Lire ce tableau</summary><p>« Écart (vos mises) » = votre résultat − le résultat du rétrospectif recalculé avec <em>vos</em> mises : il ne reflète que la différence de cote. « Rétro seulement » : mise et résultat de la simulation, que vous n'avez pas joués.
+        Cote jouée suivie de <strong>*</strong> : cote de la carte, non saisie par vous (non comparée). Pour un pari « Joué seulement », la colonne « Cote rétro » est sa cote de clôture.</p></details>`;
 }
 
 if ($("cmpCorps")) {
@@ -17321,7 +17340,7 @@ function initMobile() {
       if (typeof drawCalibration === "function") drawCalibration();
     },
     bankroll: () => { if (typeof renderBankroll === "function") renderBankroll(); },
-    bilan: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); },
+    bilan: () => { if (typeof blDessiner === "function") blDessiner(); if (typeof blGrosDessiner === "function") blGrosDessiner(); if (typeof blIcDessiner === "function") blIcDessiner(); MAP_GRAPHIQUES.backtest(); },
     dcv2: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); if (typeof mb2Dessiner === "function") mb2Dessiner(); },
     // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
     montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
@@ -17488,7 +17507,7 @@ function renderBilan() {
   if (BL_EMPRUNTS.some(([, id]) => $(id) && $(id)._blIci)) blMontrerExp();
   if (!D.n) {
     $("blKpis").innerHTML = ""; $("blChartWrap").innerHTML = '<p class="muted">Aucun pari avec les filtres actuels de DC rétrospectif.</p>';
-    ["blMois", "blChance", "blForme", "blSeries", "blFiltres", "blEns", "blOu"].forEach(id => { if ($(id)) $(id).innerHTML = ""; });
+    ["blMois", "blChance", "blForme", "blSeries", "blFiltres", "blEns", "blOu", "blGrosVerdict", "blGrosChart", "blGrosTop", "blGrosBandes", "blGrosNote", "blIcVerdict", "blIcKpis", "blIcChart", "blIcNote"].forEach(id => { if ($(id)) $(id).innerHTML = ""; });
     $("blSub").textContent = ""; return;
   }
   // sous-titre : test + tendance
@@ -17499,11 +17518,13 @@ function renderBilan() {
   if (roiDer != null && D.roi > 0 && roiDer < D.roi * 0.3 && D.mois.length >= 2)
     sub += ` <strong>Il ralentit nettement</strong> : ${blP(roiDer)} en ${BL_MOIS[+derM.k.slice(5, 7) - 1]}${D.roiRecent != null ? `, ${blP(D.roiRecent)} sur les 50 derniers paris` : ""}.`;
   $("blSub").innerHTML = sub;
+  // fourchette du ROI (24/11/2026)
+  try { D.ic = blIcCalculer(D); } catch (e) { D.ic = null; console.error("Bilan (fourchette ROI) :", e); }
   // KPI
   const clv = $("btClv"), clvSub = $("btClvSub");
   $("blKpis").innerHTML = `
     <div class="bl-k bl-k-main"><div class="l">Résultat net</div><div class="v ${D.net >= 0 ? "pos" : "neg"}">${blE(D.net)}</div><div class="s">${$("btNetSub") && $("btNetSub").textContent.trim() !== "—" ? $("btNetSub").textContent : `${D.n} paris · ${Math.round(D.mise).toLocaleString("fr-FR")} € misés`}</div></div>
-    <div class="bl-k"><div class="l">ROI</div><div class="v ${D.roi >= 0 ? "pos" : "neg"}">${blP(D.roi)}</div><div class="s" id="blRoiRef"></div></div>
+    <div class="bl-k"><div class="l">ROI</div><div class="v ${D.roi >= 0 ? "pos" : "neg"}">${blP(D.roi)}</div>${D.ic && D.ic.se != null ? `<div class="s bl-roi-ic" title="Fourchette à 95 % du vrai ROI de ces paris (voir « Ton vrai ROI » plus bas)">entre ${blP(D.ic.bas, 0)} et ${blP(D.ic.haut, 0)}</div>` : ""}<div class="s" id="blRoiRef"></div></div>
     <div class="bl-k"><div class="l">Réussite</div><div class="v">${(D.gagnes / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</div><div class="s">${D.gagnes} gagnés · ${D.attendus.toLocaleString("fr-FR", {maximumFractionDigits: 1})} attendus (${(D.attendus / D.n * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %)</div></div>
     <div class="bl-k"><div class="l">Cote moyenne</div><div class="v">${D.coteMoy.toLocaleString("fr-FR", {maximumFractionDigits: 2})}</div><div class="s">${D.matchs} matchs</div></div>
     <div class="bl-k"><div class="l">Plus forte baisse</div><div class="v ${D.dd > 0 ? "neg" : ""}">${D.dd > 0 ? blE(-D.dd) : "aucune"}</div><div class="s">${D.dd > 0 ? `${blD(D.pts[Math.max(0, D.ddA)].d)} → ${blD(D.pts[D.ddB].d)}` : ""}</div></div>
@@ -17521,6 +17542,8 @@ function renderBilan() {
       <div class="b"><i style="width:${(Math.abs(roi) / maxRoi * 100).toFixed(0)}%"></i></div></div>`;
   }).join("");
   blRenderChance(D); blRenderForme(D); blRenderSeries(D);
+  try { blRenderIc(D); } catch (e) { console.error("Bilan (vrai ROI) :", e); }
+  try { blRenderGros(D); } catch (e) { console.error("Bilan (gros coups) :", e); }
   setTimeout(() => { try { blRenderContribution(D); blRenderOu(D); } catch (e) { console.error("Bilan (filtres) :", e); } }, 30);
 }
 function blRenderNotes() {
@@ -17662,6 +17685,243 @@ function blRenderForme(D) {
   z.innerHTML = `<div class="bl-duo"><div><div class="l">Tous les paris</div><div class="v ${D.roi >= 0 ? "pos" : "neg"}">${blP(D.roi, 0)}</div></div>
       <div><div class="l">${D.roiRecent != null ? `50 derniers (depuis le ${blD(D.debutRecent)})` : "Derniers paris"}</div><div class="v ${D.roiRecent == null ? "" : D.roiRecent < D.roi * 0.3 ? "gold" : D.roiRecent >= 0 ? "pos" : "neg"}">${D.roiRecent != null ? blP(D.roiRecent, 0) : "—"}</div></div></div>
     <p>${txt}</p>`;
+}
+// ---------------------------------------------------------------------------
+// « Tes gros coups » (24/11/2026) : ce que le gain doit à quelques paris.
+// Deux lectures, recalculées à chaque changement de filtre :
+//  - la courbe du gain net quand on retire les N plus gros gains (N = 0 à 20) ;
+//  - par tranche de cote, paris gagnés contre paris prévus par le modèle
+//    (somme des p_model) et par le marché (cotes sans marge, comme « Chance ou
+//    avantage ? »). Une tranche « au-dessus des prévisions » rapporte plus que
+//    ce que le modèle attendait : cet excédent vient en partie de la chance.
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// « Ton vrai ROI » (24/11/2026) : fourchette à 95 % du ROI, qui se resserre
+// avec le nombre de paris. ROI = Σ gain×mise / Σ mise ; son écart-type est
+// estimé par la méthode delta : √(Σ mise² (gain − ROI)²) / Σ mise, corrigé
+// n/(n−1). À mise fixe, c'est l'écart-type habituel d'une moyenne.
+// « Paris pour trancher » : nombre de paris pour qu'un ROI égal à celui
+// qu'annonce le modèle (espérance moyenne des paris) se distingue de zéro,
+// soit (1,96 × écart-type par pari / espérance)².
+// ---------------------------------------------------------------------------
+let BL_IC = null;
+function blIcCalculer(D) {
+  const P = D.pts, n = P.length;
+  let s1 = 0, sp = 0, s2 = 0, s2p = 0, s2pp = 0, sev = 0;
+  const serie = [];
+  P.forEach((p, i) => {
+    const st = p.st, g = p.r.profit;
+    s1 += st; sp += st * g; s2 += st * st; s2p += st * st * g; s2pp += st * st * g * g; sev += (p.r.ev || 0) * st;
+    const k = i + 1, roi = s1 ? sp / s1 : 0;
+    const v = Math.max(0, s2pp - 2 * roi * s2p + roi * roi * s2);
+    const se = k > 1 && s1 ? Math.sqrt(v * k / (k - 1)) / s1 : null;
+    serie.push({k, roi, se, bas: se == null ? null : Math.max(-1, roi - 1.96 * se), haut: se == null ? null : roi + 1.96 * se, p});
+  });
+  const fin = serie[n - 1];
+  const ev = s1 ? sev / s1 : null;
+  const sdPari = fin.se != null ? fin.se * Math.sqrt(n) : null;
+  const nReq = sdPari != null && ev > 0.005 ? Math.ceil((1.96 * sdPari / ev) ** 2) : null;
+  const j0 = new Date(P[0].d + "T12:00:00"), j1 = new Date(P[n - 1].d + "T12:00:00");
+  const jours = Math.max(1, Math.round((j1 - j0) / 864e5) + 1), parJour = n / jours;
+  const dateReq = nReq && nReq > n ? new Date(j1.getTime() + (nReq - n) / parJour * 864e5) : null;
+  return {roi: fin.roi, se: fin.se, bas: fin.bas, haut: fin.haut, ev, sdPari, nReq, dateReq, parMois: parJour * 30.4, serie, n};
+}
+function blRenderIc(D) {
+  const I = D.ic, z = $("blIc");
+  if (!z) return;
+  BL_IC = I;
+  if (!I || I.se == null) { $("blIcVerdict").textContent = "Pas assez de paris pour estimer une fourchette."; ["blIcKpis", "blIcChart", "blIcNote"].forEach(id => $(id).innerHTML = ""); return; }
+  const arr = n => n >= 1000 ? Math.round(n / 100) * 100 : n >= 100 ? Math.round(n / 10) * 10 : n;
+  const nf = n => arr(n).toLocaleString("fr-FR");
+  const quand = d => d ? `${BL_MOIS[d.getMonth()].replace(".", "")} ${d.getFullYear()}` : "";
+  const ans = (I.nReq - I.n) / I.parMois / 12;
+  const duree = ans >= 1.9 ? `environ ${Math.round(ans)} ans` : ans >= 0.9 ? `environ ${Math.round(ans * 12)} mois` : `environ ${Math.max(1, Math.round(ans * 12))} mois`;
+  let v;
+  if (I.bas > 0) v = `Ton ROI réel est probablement <strong>entre ${blP(I.bas, 0)} et ${blP(I.haut, 0)}</strong>. Même le bas de la fourchette est positif : <strong>ton avantage est probablement réel</strong>.`;
+  else if (I.haut < 0) v = `Ton ROI réel est probablement <strong>entre ${blP(I.bas, 0)} et ${blP(I.haut, 0)}</strong> : même le haut de la fourchette est négatif, <strong>ces paris perdent probablement de l'argent</strong>.`;
+  else v = `Ton ROI réel est probablement <strong>entre ${blP(I.bas, 0)} et ${blP(I.haut, 0)}</strong>. La fourchette contient zéro : <strong>l'avantage n'est pas encore prouvé</strong>, il peut s'agir de chance.`;
+  if (I.ev != null && I.ev > 0 && I.roi > 2 * I.ev) v += ` ${blP(I.roi, 0)} n'est pas un rythme de croisière : le modèle n'annonce que ${blP(I.ev, 0)} sur ces paris.`;
+  if (I.nReq && I.nReq > I.n) v += ` Pour qu'un avantage de ${blP(I.ev, 0)} se distingue de la chance, il faut environ <strong>${nf(I.nReq)} paris</strong>, soit ${duree} à ton rythme.`;
+  else if (I.nReq) v += ` Tu as déjà assez de paris pour qu'un avantage de ${blP(I.ev, 0)} se distingue de la chance.`;
+  $("blIcVerdict").innerHTML = v.replace(/ (%|€)/g, "\u00a0$1");
+  const k = (l, val, sub, cls = "") => `<div class="bl-ic-k"><div class="l">${l}</div><div class="v ${cls}">${val}</div><div class="s">${sub}</div></div>`;
+  $("blIcKpis").innerHTML =
+    k("Fourchette du ROI (95\u00a0%)", `${blP(I.bas, 0)} <span>à</span> ${blP(I.haut, 0)}`, `ROI mesuré ${blP(I.roi, 0)} sur ${I.n} paris`, I.bas > 0 ? "pos" : I.haut < 0 ? "neg" : "")
+    + k("Annoncé par le modèle", I.ev != null ? blP(I.ev, 0) : "—", "espérance moyenne de ces paris", "vio")
+    + k("Paris pour trancher", I.nReq ? (I.nReq > I.n ? `≈ ${nf(I.nReq)}` : "atteint") : "—",
+        I.nReq ? (I.nReq > I.n ? `vers ${quand(I.dateReq)}, à ${Math.round(I.parMois)} paris par mois` : `${I.n} paris joués pour ${nf(I.nReq)} nécessaires`) : "le modèle n'annonce pas d'avantage");
+  $("blIcNote").textContent = "Fourchette à 95 % : si tu rejouais 100 fois une période comme celle-ci, le vrai ROI serait dans la fourchette environ 95 fois. Elle est large parce que les cotes sont élevées : quelques paris gagnés de plus ou de moins font varier le ROI de plusieurs dizaines de points.";
+  blIcDessiner();
+}
+function blIcDessiner() {
+  const I = BL_IC, wrap = $("blIcChart");
+  if (!I || !wrap || !wrap.offsetParent || I.se == null) return;
+  const S = I.serie, n = S.length;
+  const k0 = n >= 60 ? Math.max(30, Math.round(n * 0.2)) : Math.min(n, 10);
+  const vis = S.filter(p => p.k >= k0 && p.se != null);
+  if (vis.length < 2) { wrap.innerHTML = ""; return; }
+  const W = Math.max(280, wrap.clientWidth || 600), petit = W < 460, H = petit ? 220 : 250, L = petit ? 46 : 56, R = petit ? 52 : 74, T = 16, B = 34;
+  const vals = vis.flatMap(p => [p.bas, p.haut, p.roi]).concat([0, I.ev || 0]);
+  let y0 = Math.min(...vals), y1 = Math.max(...vals);
+  const pad = (y1 - y0) * 0.06; y0 = Math.max(-1, y0 - pad); y1 += pad;
+  const X = k => L + (W - L - R) * (k - k0) / Math.max(1, n - k0), Y = v => T + (H - T - B) * (y1 - v) / (y1 - y0);
+  const pct = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v * 100)) + " %";
+  const pasL = [0.1, 0.2, 0.25, 0.5, 1, 2, 5].find(p => (y1 - y0) / p <= 5) || 10;
+  let svg = "";
+  for (let v = Math.ceil(y0 / pasL) * pasL; v <= y1 + 1e-9; v += pasL)
+    svg += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="${Math.abs(v) < 1e-9 ? "var(--ink-faint)" : "var(--chart-grid)"}"${Math.abs(v) < 1e-9 ? ' stroke-width="1.2"' : ""}/><text x="${L - 7}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="bl-ax">${pct(v)}</text>`;
+  const haut = vis.map((p, i) => `${i ? "L" : "M"}${X(p.k).toFixed(1)} ${Y(p.haut).toFixed(1)}`).join(" ");
+  const bas = vis.slice().reverse().map(p => `L${X(p.k).toFixed(1)} ${Y(p.bas).toFixed(1)}`).join(" ");
+  svg += `<path d="${haut} ${bas} Z" fill="rgba(55,217,155,.16)"/>`;
+  svg += `<path d="${haut}" fill="none" stroke="rgba(55,217,155,.45)" stroke-width="1"/><path d="${vis.map((p, i) => `${i ? "L" : "M"}${X(p.k).toFixed(1)} ${Y(p.bas).toFixed(1)}`).join(" ")}" fill="none" stroke="rgba(55,217,155,.45)" stroke-width="1"/>`;
+  if (I.ev != null) svg += `<line x1="${L}" x2="${W - R}" y1="${Y(I.ev).toFixed(1)}" y2="${Y(I.ev).toFixed(1)}" stroke="var(--violet)" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+  svg += `<path d="${vis.map((p, i) => `${i ? "L" : "M"}${X(p.k).toFixed(1)} ${Y(p.roi).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--lime)" stroke-width="2.4" stroke-linejoin="round"/>`;
+  const f = vis[vis.length - 1], xf = X(f.k);
+  svg += `<circle cx="${xf.toFixed(1)}" cy="${Y(f.roi).toFixed(1)}" r="4.5" fill="var(--lime)" stroke="var(--night-2)" stroke-width="2"/>`;
+  // étiquettes de fin, sans chevauchement
+  const etq = [[f.haut, "var(--ink-dim)", pct(f.haut)], [f.roi, "var(--lime)", pct(f.roi)], [f.bas, "var(--ink-dim)", pct(f.bas)]];
+  if (I.ev != null) etq.push([I.ev, "var(--violet)", (petit ? "" : "modèle ") + pct(I.ev)]);
+  etq.sort((a, b) => Y(a[0]) - Y(b[0]));
+  let yPrev = -99;
+  etq.forEach(([v, c, t]) => { let y = Y(v) + 4; if (y - yPrev < 13) y = yPrev + 13; yPrev = y; svg += `<text x="${(xf + 7).toFixed(1)}" y="${y.toFixed(1)}" class="bl-fin" style="fill:${c};font-size:11px">${t}</text>`; });
+  const tk = [k0, Math.round((k0 + n) / 2), n];
+  svg += tk.map(k => `<text x="${X(k).toFixed(1)}" y="${H - 16}" text-anchor="middle" class="bl-ax">${k}</text>`).join("");
+  svg += `<text x="${((L + W - R) / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" class="bl-ax" style="fill:var(--ink-faint)">nombre de paris</text>`;
+  svg += `<line id="blIcCur" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--ink-faint)" stroke-dasharray="2 3" visibility="hidden"/>`;
+  wrap.innerHTML = `<div class="bl-svg-zone"><svg viewBox="0 0 ${W} ${H}" width="100%" class="bl-svg" role="img" aria-label="ROI et sa fourchette à 95 % au fil des paris : ${pct(f.bas)} à ${pct(f.haut)} après ${n} paris">${svg}</svg><div class="dc-tooltip bl-tip" id="blIcTip" hidden></div></div>`;
+  const svgEl = wrap.querySelector("svg"), tip = $("blIcTip");
+  const montrer = ev => {
+    const rect = svgEl.getBoundingClientRect(), x = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left) * W / rect.width;
+    const k = Math.max(k0, Math.min(n, Math.round(k0 + (x - L) / (W - L - R) * (n - k0))));
+    const p = S[k - 1], cur = $("blIcCur");
+    cur.setAttribute("x1", X(k)); cur.setAttribute("x2", X(k)); cur.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div class="dc-tip-head">Après ${k} paris (${blD(p.p.d)})</div>
+      <div class="dc-tip-row"><span>ROI mesuré</span><strong class="${p.roi >= 0 ? "pos" : "neg"}">${blP(p.roi, 0)}</strong></div>
+      <div class="dc-tip-row"><span>Fourchette à 95 %</span><strong>${blP(p.bas, 0)} à ${blP(p.haut, 0)}</strong></div>`;
+    tip.hidden = false;
+    const px = X(k) * rect.width / W, py = Y(p.roi) * rect.height / H;
+    tip.style.left = Math.min(rect.width - tip.offsetWidth - 4, Math.max(4, px + 12)) + "px";
+    tip.style.top = Math.max(4, py - tip.offsetHeight - 10) + "px";
+  };
+  const cacher = () => { tip.hidden = true; const c = $("blIcCur"); if (c) c.setAttribute("visibility", "hidden"); };
+  svgEl.addEventListener("mousemove", montrer); svgEl.addEventListener("mouseleave", cacher);
+  svgEl.addEventListener("touchstart", montrer, {passive: true}); svgEl.addEventListener("touchmove", montrer, {passive: true});
+}
+const BL_GROS_BANDES = [[0, 4, "moins de 4"], [4, 8, "4 à 8"], [8, 12, "8 à 12"], [12, 18, "12 à 18"], [18, Infinity, "18 et plus"]];
+let BL_GROS = null;
+const blEurEntier = x => { const v = Math.round(x); return (v < 0 ? "−" : v > 0 ? "+" : "") + Math.abs(v).toLocaleString("fr-FR") + " €"; };
+function blGrosLib(r) { return `${r.categorie === "Score exact" ? "score exact " : ""}${r.colonne} à ${Number(r.cote).toLocaleString("fr-FR", {maximumFractionDigits: 2})}`; }
+function blRenderGros(D) {
+  const z = $("blGros");
+  if (!z) return;
+  const items = D.pts.map(p => ({r: p.r, st: p.st, v: p.r.profit * p.st}));
+  const gains = items.filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const mise = items.reduce((s, x) => s + x.st, 0);
+  const K = Math.min(20, gains.length);
+  const courbe = [{k: 0, net: D.net, retire: null}];
+  let cum = 0;
+  for (let k = 1; k <= K; k++) { cum += gains[k - 1].v; courbe.push({k, net: D.net - cum, retire: gains[k - 1]}); }
+  const bascule = D.net > 0 ? courbe.find(c => c.k > 0 && c.net <= 0) : null;
+  // tranches de cote
+  const bandes = BL_GROS_BANDES.map(([a, b, lib]) => {
+    const s = items.filter(x => x.r.cote >= a && x.r.cote < b);
+    let w = 0, pm = 0, pq = 0, net = 0, att = 0;
+    s.forEach(x => { w += x.r.gagne ? 1 : 0; pm += x.r.p_model || 0; pq += (1 / x.r.cote) / (1 + blMarge(x.r)); net += x.v; att += (x.r.ev || 0) * x.st; });
+    const ecart = w - pm, seuil = Math.max(1.5, 0.25 * pm);
+    const etat = ecart >= seuil ? "plus" : -ecart >= seuil ? "moins" : "ok";
+    return {lib, a, b, n: s.length, w, pm, pq, net, att, etat};
+  }).filter(x => x.n);
+  BL_GROS = {courbe, bascule, mise, n: D.n, net: D.net};
+  // verdict
+  const nf = v => v.toLocaleString("fr-FR", {maximumFractionDigits: 1});
+  const eur = blEurEntier;
+  let v;
+  if (D.net <= 0) v = `Tu es en perte sur ces ${D.n} paris : même tes plus gros gains ne compensent pas le reste.`;
+  else if (bascule) v = `Ton bénéfice repose sur <strong>tes ${bascule.k} plus gros gain${bascule.k > 1 ? "s" : ""}</strong>, sur ${D.n} paris : sans eux, tu serais à ${eur(bascule.net)}.`;
+  else v = `Même sans tes ${K} plus gros gains, tu restes gagnant (${eur(courbe[K].net)}) : <strong>ton bénéfice ne tient pas à quelques coups</strong>.`;
+  const ok = bandes.filter(x => x.etat === "ok" && x.net > 0 && x.n >= 10), plus = bandes.filter(x => x.etat === "plus");
+  const libs = arr => arr.map(x => x.b === Infinity ? `à ${x.a} et plus` : x.a === 0 ? `sous ${x.b}` : `de ${x.a} à ${x.b}`).join(arr.length > 2 ? ", " : " et ").replace(/, ([^,]*)$/, " et $1");
+  if (ok.length) v += ` Aux cotes ${libs(ok)}, tu gagnes à peu près ce que le modèle prévoit : <strong>c'est ton avantage le plus fiable</strong>.`;
+  if (plus.length) {
+    const w = plus.reduce((s, x) => s + x.w, 0), pm = plus.reduce((s, x) => s + x.pm, 0), ex = plus.reduce((s, x) => s + x.net - x.att, 0);
+    v += ` Aux cotes ${libs(plus)}, tu as gagné <strong>${w} paris pour ${nf(pm)} prévus</strong>${ex > 0 ? ` : environ ${Math.round(ex).toLocaleString("fr-FR")} € de ton gain viennent de cette réussite en plus, qui ne se répétera pas forcément` : ""}.`;
+  }
+  $("blGrosVerdict").innerHTML = v.replace(/ (%|€)/g, "\u00a0$1");
+  // plus gros gains
+  $("blGrosTop").innerHTML = gains.length ? `<div class="bl-gros-top-t">Tes ${Math.min(5, gains.length)} plus gros gains</div>` + gains.slice(0, 5).map((x, i) =>
+    `<div class="bl-gros-l"><span class="d">${blD(x.r.date)}</span><span class="m" title="${x.r.match}">${x.r.match}<small>${blGrosLib(x.r)}</small></span><strong class="pos">${eur(x.v)}</strong></div>`).join("") : "";
+  // tranches
+  const etatLib = {ok: "comme prévu", plus: "au-dessus des prévisions", moins: "en dessous des prévisions"};
+  $("blGrosBandes").innerHTML = bandes.map(x => {
+    const mx = Math.max(x.w, x.pm, x.pq, 0.5) * 1.12, pc = v => (v / mx * 100).toFixed(1);
+    return `<div class="bl-gb bl-gb-${x.etat}">
+      <div class="bl-gb-l"><strong>Cote ${x.lib}</strong><span>${x.n} pari${x.n > 1 ? "s" : ""}</span></div>
+      <div class="bl-gb-barre" title="${x.w} gagnés · ${nf(x.pm)} prévus par le modèle · ${nf(x.pq)} par le marché">
+        <i class="r" style="width:${pc(x.w)}%"></i><b class="m" style="left:${pc(x.pm)}%"></b><b class="q" style="left:${pc(x.pq)}%"></b>
+      </div>
+      <div class="bl-gb-c"><strong>${x.w}</strong> <span>/ ${nf(x.pm)}</span></div>
+      <div class="bl-gb-e"><span class="bl-gb-chip">${etatLib[x.etat]}</span><span class="${x.net >= 0 ? "pos" : "neg"}">${eur(x.net)}</span></div>
+    </div>`;
+  }).join("");
+  $("blGrosNote").textContent = "Paris prévus par le modèle : somme de ses probabilités sur ces paris. Par le marché : probabilités des cotes une fois la marge retirée. Sur quelques paris, un écart de 1 ou 2 reste courant : c'est l'accumulation qui compte.";
+  blGrosDessiner();
+}
+function blGrosDessiner() {
+  const G = BL_GROS, wrap = $("blGrosChart");
+  if (!G || !wrap || !wrap.offsetParent) return;
+  const C = G.courbe, n = C.length;
+  if (n < 2) { wrap.innerHTML = '<p class="muted">Pas encore de pari gagné avec ces filtres.</p>'; return; }
+  const W = Math.max(280, wrap.clientWidth || 520), petit = W < 460, H = petit ? 210 : 240, L = petit ? 44 : 58, R = 14, T = 18, B = 34;
+  const vals = C.map(c => c.net).concat([0]);
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.08 || 10, y0 = lo - pad, y1 = hi + pad;
+  const X = k => L + (W - L - R) * k / (n - 1), Y = v => T + (H - T - B) * (y1 - v) / (y1 - y0);
+  const fmtY = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v)).toLocaleString("fr-FR") + (petit ? "" : " €");
+  const span = y1 - y0, pas = [50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000].find(p => span / p <= 5) || 20000;
+  let svg = "";
+  for (let v = Math.ceil(y0 / pas) * pas; v <= y1; v += pas)
+    svg += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="${v === 0 ? "var(--line)" : "var(--chart-grid)"}"/><text x="${L - 7}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="bl-ax">${fmtY(v)}</text>`;
+  // zones au-dessus / en dessous de zéro
+  const y0px = Y(0).toFixed(1);
+  svg += `<defs><clipPath id="blGrosHaut"><rect x="0" y="0" width="${W}" height="${y0px}"/></clipPath><clipPath id="blGrosBas"><rect x="0" y="${y0px}" width="${W}" height="${H}"/></clipPath></defs>`;
+  const d = C.map((c, i) => `${i ? "L" : "M"}${X(c.k).toFixed(1)} ${Y(c.net).toFixed(1)}`).join(" ");
+  const aire = `${d} L${X(n - 1).toFixed(1)} ${y0px} L${X(0).toFixed(1)} ${y0px} Z`;
+  svg += `<path d="${aire}" fill="rgba(55,217,155,.16)" clip-path="url(#blGrosHaut)"/><path d="${aire}" fill="rgba(255,113,133,.16)" clip-path="url(#blGrosBas)"/>`;
+  svg += `<path d="${d}" fill="none" stroke="var(--lime)" stroke-width="2.4" stroke-linejoin="round" clip-path="url(#blGrosHaut)"/><path d="${d}" fill="none" stroke="var(--coral)" stroke-width="2.4" stroke-linejoin="round" clip-path="url(#blGrosBas)"/>`;
+  svg += C.map(c => `<circle cx="${X(c.k).toFixed(1)}" cy="${Y(c.net).toFixed(1)}" r="${c.k === 0 ? 4.5 : 2.6}" fill="${c.net > 0 ? "var(--lime)" : "var(--coral)"}" stroke="var(--night-2)" stroke-width="1.5"/>`).join("");
+  if (G.bascule) {
+    const b = G.bascule, bx = X(b.k), by = Y(b.net);
+    svg += `<line x1="${bx.toFixed(1)}" x2="${bx.toFixed(1)}" y1="${T}" y2="${H - B}" stroke="var(--coral)" stroke-dasharray="3 3" opacity=".7"/>`;
+    svg += `<circle cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="5" fill="var(--coral)" stroke="var(--night-2)" stroke-width="2"/>`;
+    const txt = `sans tes ${b.k} plus gros gains : ${blEurEntier(b.net)}`, larg = txt.length * 6.7;
+    const droite = bx + 8 + larg > W - R && bx - 8 - larg >= L;
+    svg += `<text x="${(bx + (droite ? -8 : 8)).toFixed(1)}" y="${T + 11}" text-anchor="${droite ? "end" : "start"}" class="bl-ax" style="fill:var(--coral)">${bx + 8 + larg > W - R && !droite ? `sans tes ${b.k} : ${blEurEntier(b.net)}` : txt}</text>`;
+  }
+  svg += `<text x="${(X(0) + 8).toFixed(1)}" y="${(Y(C[0].net) + (Y(C[0].net) < T + 22 ? 16 : -9)).toFixed(1)}" class="bl-fin" style="fill:var(--lime)">${blEurEntier(C[0].net)}</text>`;
+  // axe des x : nombre de gains retirés
+  const tk = [...new Set([0, 5, 10, 15, 20, n - 1].filter(k => k <= n - 1))];
+  svg += tk.map(k => `<text x="${X(k).toFixed(1)}" y="${H - 16}" text-anchor="middle" class="bl-ax">${k}</text>`).join("");
+  svg += `<text x="${((L + W - R) / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" class="bl-ax" style="fill:var(--ink-faint)">plus gros gains retirés</text>`;
+  svg += `<line id="blGrosCur" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--ink-faint)" stroke-dasharray="2 3" visibility="hidden"/>`;
+  wrap.innerHTML = `<div class="bl-svg-zone"><svg viewBox="0 0 ${W} ${H}" width="100%" class="bl-svg" role="img" aria-label="Gain net en retirant tes plus gros gains, de 0 à ${n - 1}">${svg}</svg><div class="dc-tooltip bl-tip" id="blGrosTip" hidden></div></div>`;
+  const svgEl = wrap.querySelector("svg"), tip = $("blGrosTip");
+  const montrer = ev => {
+    const rect = svgEl.getBoundingClientRect(), x = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left) * W / rect.width;
+    const k = Math.max(0, Math.min(n - 1, Math.round((x - L) / ((W - L - R) / (n - 1)))));
+    const c = C[k], cur = $("blGrosCur");
+    cur.setAttribute("x1", X(k)); cur.setAttribute("x2", X(k)); cur.setAttribute("visibility", "visible");
+    const roi = G.mise ? c.net / G.mise : 0;
+    tip.innerHTML = `<div class="dc-tip-head">${k ? `Sans tes ${k} plus gros gain${k > 1 ? "s" : ""}` : `Tous tes paris (${G.n})`}</div>
+      <div class="dc-tip-row"><span>Gain net</span><strong class="${c.net >= 0 ? "pos" : "neg"}">${blEurEntier(c.net)}</strong></div>
+      <div class="dc-tip-row"><span>ROI</span><strong>${blP(roi)}</strong></div>
+      ${c.retire ? `<div class="dc-tip-row"><span>${k === 1 ? "1er" : k + "ᵉ"} gain retiré (${blD(c.retire.r.date)})</span><strong class="pos">${blEurEntier(c.retire.v)}</strong></div><div class="dc-tip-row"><span class="muted">${c.retire.r.match}, ${blGrosLib(c.retire.r)}</span></div>` : ""}`;
+    tip.hidden = false;
+    const px = X(k) * rect.width / W, py = Y(c.net) * rect.height / H;
+    tip.style.left = Math.min(rect.width - tip.offsetWidth - 4, Math.max(4, px + 12)) + "px";
+    tip.style.top = Math.max(4, py - tip.offsetHeight - 10) + "px";
+  };
+  const cacher = () => { tip.hidden = true; const cur = $("blGrosCur"); if (cur) cur.setAttribute("visibility", "hidden"); };
+  svgEl.addEventListener("mousemove", montrer); svgEl.addEventListener("mouseleave", cacher);
+  svgEl.addEventListener("touchstart", montrer, {passive: true}); svgEl.addEventListener("touchmove", montrer, {passive: true});
 }
 function blRenderSeries(D) {
   $("blSeries").innerHTML = `<div class="bl-duo"><div><div class="l">Plus longue série perdue</div><div class="v">${D.maxSerie} paris</div></div>
