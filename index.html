@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261125104516">
+<link rel="stylesheet" href="style.css?v=20261125200743">
 </head>
 <body>
 <div class="topbar">
@@ -1762,6 +1762,38 @@
       <div class="bl-mois" id="blMois"></div>
     </div>
 
+    <div class="panel bl-gros bl-ic" id="blIc">
+      <div class="bl-gros-tete">
+        <h2>Ton vrai ROI <span class="hint">— la fourchette se resserre à mesure que les paris s'accumulent</span></h2>
+        <p class="bl-gros-verdict" id="blIcVerdict"></p>
+      </div>
+      <div class="bl-ic-corps">
+        <div class="bl-ic-kpis" id="blIcKpis"></div>
+        <div class="bl-chart" id="blIcChart"></div>
+      </div>
+      <p class="bl-note" id="blIcNote"></p>
+    </div>
+
+    <div class="panel bl-gros" id="blGros">
+      <div class="bl-gros-tete">
+        <h2>Tes gros coups <span class="hint">— ce que ton gain doit à quelques paris</span></h2>
+        <p class="bl-gros-verdict" id="blGrosVerdict"></p>
+      </div>
+      <div class="bl-gros-corps">
+        <div class="bl-gros-g">
+          <h3>Ton gain si on retire tes plus gros gains</h3>
+          <div class="bl-chart" id="blGrosChart"></div>
+          <div class="bl-gros-top" id="blGrosTop"></div>
+        </div>
+        <div class="bl-gros-d">
+          <h3>Paris gagnés et paris prévus, par cote</h3>
+          <div class="bl-gros-leg"><span><i class="g-reel"></i>gagnés</span><span><i class="g-mod"></i>prévus par le modèle</span><span><i class="g-mar"></i>prévus par le marché</span></div>
+          <div id="blGrosBandes"></div>
+          <p class="bl-note" id="blGrosNote"></p>
+        </div>
+      </div>
+    </div>
+
     <div class="bl-grid3">
       <div class="panel bl-carte"><h2>Chance ou avantage ?</h2><div id="blChance"></div></div>
       <div class="panel bl-carte"><h2>Forme récente</h2><div id="blForme"></div></div>
@@ -2749,13 +2781,11 @@
 
     <div class="panel bk2-page" data-bk2-page="cmp" id="cmpPanel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 6.5h10M11 3.5l3 3-3 3M16 13.5H6M9 10.5l-3 3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Comparaison avec DC rétrospectif <span class="hint">— ce que vous avez vraiment joué face à la simulation</span></h2>
-      <p class="muted" style="margin:0 0 .8rem">
-        Chaque pari que vous avez joué (match terminé) est rapproché de la ligne du <strong>même pari</strong>
+      <details class="cp2-savoir cp2-intro"><summary>Comment la comparaison est faite</summary><p>Chaque pari que vous avez joué (match terminé) est rapproché de la ligne du <strong>même pari</strong>
         (date, match, pari) dans la page <strong>DC rétrospectif</strong>. Le rétrospectif simule, lui, tous les
         paris qui passent ses filtres, à la <em>dernière cote capturée avant le match</em> et à sa propre mise ;
         il ne sait pas ce que vous avez joué. La comparaison suit <strong>les filtres actuels du rétrospectif</strong>
-        et <strong>la période choisie plus haut</strong> dans ce panneau Bankroll.
-      </p>
+        et <strong>la période choisie plus haut</strong> dans ce panneau Bankroll.</p></details>
       <div id="cmpFiltres" class="cmp-filtres"></div>
       <div id="cmpCorps"><p class="muted">Calcul en cours…</p></div>
     </div>
@@ -3305,7 +3335,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261125104624", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261125104624", APP = "app.js?v=20261125104516";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261125200801", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261125200801", APP = "app.js?v=20261125200743";
   var bandeau = document.getElementById("chargementDonnees");
   var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
   var debut = Date.now(), progres = 8, cible = 30;
