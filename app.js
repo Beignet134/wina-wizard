@@ -2620,6 +2620,19 @@ document.addEventListener("click", e => {
 function dateEstFuture(dateStr) {
   return !!dateStr && dateStr > new Date().toISOString().slice(0, 10);
 }
+// Taux de rapprochement commun (26/11/2026) : matchs rapprochés ÷ matchs DÉJÀ
+// JOUÉS. Les matchs pas encore joués (classés « futur ») n'ont pas encore de
+// résultat : ils ne comptent pas comme des échecs. Utilisé par la page
+// Rétrospectif et par la Vue d'ensemble (qui divisait auparavant par tous
+// les matchs cotés, d'où un taux plus bas).
+function tauxRapprochement() {
+  const m = (typeof WIZARD_DATA !== "undefined" && WIZARD_DATA.meta) || {};
+  const U = Array.isArray(UNMATCHED) ? UNMATCHED : [];
+  const futur = U.filter(t => classifierUnmatched(t) === "futur").length;
+  const matched = Number(m.matched) || 0, unmatched = m.unmatched != null ? Number(m.unmatched) : U.length;
+  const joues = Math.max(0, matched + unmatched - futur);
+  return {matched, unmatched, futur, joues, nonRapproches: Math.max(0, unmatched - futur), pct: joues ? matched / joues : null};
+}
 function classifierUnmatched(t) {
   if (typeof t === "string") return "string";     // anciennes données (donnees.js pas régénéré)
   if (t.candidat_date) return "date_decalee";      // candidat trouvé à une date proche, pas le jour même
@@ -2875,8 +2888,8 @@ function renderUnmatchedItem(t, idx) {
   [(WIZARD_DATA.dc_stats || {}).ligues_non_alignees, (WIZARD_DATA.poisson_stats || {}).ligues_non_alignees]
     .forEach(src => (src || []).forEach(([cle, n]) => comp.set(cle, Math.max(comp.get(cle) || 0, n))));
   const nComp = comp.size, nCompMatchs = [...comp.values()].reduce((t, n) => t + n, 0);
-  const matched = m.matched || 0, total = matched + (m.unmatched != null ? m.unmatched : U.length);
-  const joues = Math.max(1, total - nFutur);
+  const TR = tauxRapprochement();
+  const matched = TR.matched, joues = Math.max(1, TR.joues);
   const pct = matched / joues * 100;
   const etat = pct >= 97 ? "ok" : pct >= 92 ? "moyen" : "fort";
   const fr = n => n.toLocaleString("fr-FR");
@@ -6679,8 +6692,10 @@ function ov2Bankroll() {
 }
 function ov2Donnees() {
   const meta = WIZARD_DATA.meta || {};
-  const matched = Number(meta.matched) || 0, unmatched = Number(meta.unmatched) || 0, tot = matched + unmatched;
-  const pct = tot ? matched / tot : null;
+  // même calcul que la page Rétrospectif : rapprochés ÷ matchs déjà joués
+  const TR = tauxRapprochement();
+  const matched = TR.matched, unmatched = TR.nonRapproches, tot = TR.joues, futur = TR.futur;
+  const pct = TR.pct;
   const compte = new Map();
   [(WIZARD_DATA.dc_stats || {}).ligues_non_alignees, (WIZARD_DATA.poisson_stats || {}).ligues_non_alignees].forEach(src => (src || []).forEach(([c, n]) => compte.set(c, (compte.get(c) || 0) + n)));
   const nonAl = compte.size;
@@ -6689,7 +6704,7 @@ function ov2Donnees() {
   if (isFinite(gen)) { const ms = Math.max(0, Date.now() - gen); ageH = ms / 36e5; age = ageH < 1 ? `${Math.max(1, Math.floor(ms / 6e4))} min` : ageH < 48 ? `${Math.floor(ageH)} h` : `${Math.floor(ageH / 24)} j`; }
   const frais = ageH != null && ageH < 24;
   OV2.age = age ? "il y a " + age : "—"; OV2.donCls = ageH == null ? "" : frais ? "pos" : "ov2-w";
-  OV2.donSous = pct != null ? `${Math.round(pct * 100)} % des matchs rapprochés` : "";
+  OV2.donSous = pct != null ? `${(Math.round(pct * 1000) / 10).toLocaleString("fr-FR")} % des matchs joués rapprochés` : "";
   const etat = $("ov2DonEtat");
   if (etat) { etat.className = "ov2-etat " + (frais ? "ok" : "alerte"); etat.textContent = ageH == null ? "date inconnue" : frais ? "À jour" : "À actualiser"; }
   const sous = $("ov2DonSous");
@@ -6697,9 +6712,9 @@ function ov2Donnees() {
   const z = $("ov2Don"); if (!z) return;
   const bloc = (lib, val, sous, page, cls = "") => `<${page ? `button type="button" data-page="${page}"` : "div"} class="ov2-dk ${page ? "ov-jump-tab " : ""}${cls}"><span>${lib}</span><b>${val}</b><small>${sous}</small></${page ? "button" : "div"}>`;
   z.innerHTML =
-    `<div class="ov2-couv"><div class="ov2-couv-t"><span>Matchs rapprochés de leur résultat</span><b>${pct != null ? Math.round(pct * 1000) / 10 + " %" : "—"}</b></div>
+    `<div class="ov2-couv"><div class="ov2-couv-t"><span>Matchs joués rapprochés de leur résultat</span><b>${pct != null ? (Math.round(pct * 1000) / 10).toLocaleString("fr-FR") + "\u00a0%" : "—"}</b></div>
       <div class="ov2-barre"><i style="width:${pct != null ? (pct * 100).toFixed(1) : 0}%"></i></div>
-      <small>${matched.toLocaleString("fr-FR")} sur ${tot.toLocaleString("fr-FR")} matchs cotés</small></div>` +
+      <small>${matched.toLocaleString("fr-FR")} sur ${tot.toLocaleString("fr-FR")} matchs déjà joués${futur ? ` · ${futur.toLocaleString("fr-FR")} pas encore joués, mis à part` : ""}</small></div>` +
     bloc("Non rapprochés", unmatched.toLocaleString("fr-FR"), unmatched ? "résultat introuvable · voir" : "tout est rapproché", unmatched ? "retro" : "", unmatched ? "ov2-w" : "") +
     bloc("Compétitions non alignées", nonAl, nonAl ? "noms différents · voir" : "aucune", nonAl ? "dc" : "", nonAl ? "ov2-w" : "") +
     bloc("Fichiers de cotes", (Number(meta.n_odds_files) || 0).toLocaleString("fr-FR"), `${(Number(meta.n_odds_dedup) || 0).toLocaleString("fr-FR")} cotes uniques`, "") +
@@ -7774,6 +7789,113 @@ function renderBtFilterImpact(rowsFiltrees, historiqueComplet) {
 // Résumé lisible de l'échantillon réellement affiché. Les contrôles restent
 // la source de vérité ; ce bandeau rend simplement leurs effets visibles
 // sans devoir rouvrir les menus ni inspecter chaque KPI séparément.
+// ---------------------------------------------------------------------------
+// Filtres actifs regroupés et rédigés (26/11/2026). Lit les mêmes contrôles
+// que renderBtActiveFilters (qui garde ses pastilles, utilisées ailleurs),
+// mais rend des phrases courtes rangées par famille, et laisse de côté les
+// réglages neutres (« Peu importe », « 2 % (tous) », « Illimitée »…).
+// ---------------------------------------------------------------------------
+function btFiltresGroupes() {
+  // 26/11/2026 (v2) : les VRAIES modalités — nom du réglage tel qu'il apparaît dans le panneau, valeur
+  // telle qu'elle est choisie —, rangées par famille. Les réglages laissés sur une valeur neutre
+  // (« Peu importe », « Illimitée »…) restent visibles mais en retrait et ne sont pas comptés.
+  const G = new Map(), ordre = [];
+  const add = (cle, titre, cls, l, v, opt = {}) => {
+    if (v == null || v === "") return;
+    if (!G.has(cle)) { G.set(cle, {cle, titre, cls, items: []}); ordre.push(cle); }
+    G.get(cle).items.push(Object.assign({l, v: String(v)}, opt));
+  };
+  const nf = (v, d = 2) => Number(v).toLocaleString("fr-FR", {maximumFractionDigits: d});
+  const fd = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso; };
+  const Q = ["q", "Quels paris", "af2-q"], C = ["c", "Cotes", "af2-c"], M = ["m", "Modèle", "af2-m"], B = ["b", "Autres sites", "af2-b"], S = ["s", "Mise", "af2-s"];
+  const NEUTRE = /^(peu importe|toutes?|tous|aucune?|illimitée?|ne pas en tenir compte|les inclure|sans (minimum|maximum))$/i;
+
+  const catInputs = [...document.querySelectorAll(".btCatChk")];
+  const cats = catInputs.filter(i => i.checked).map(i => i.value);
+  if (cats.length && cats.length < catInputs.length) add(...Q, "Catégories", cats.join(" · "), {title: `${cats.length} catégorie(s) sur ${catInputs.length}`});
+  const d0 = $("btDateDebut"), d1 = $("btDateFin");
+  const a = d0 ? d0.value : "", z = d1 ? d1.value : "";
+  if ((a && d0.min && a !== d0.min) || (z && d1.max && z !== d1.max)) add(...Q, "Période", `${fd(a || d0.min)} → ${fd(z || d1.max)}`);
+  const rf = $("btFilter");
+  if (rf && rf.value) add(...Q, "Résultat", (rf.selectedOptions[0]?.textContent || rf.value).trim());
+  const lig = [...document.querySelectorAll(".btLigueChk")].filter(x => x.checked).map(x => x.closest("label")?.querySelector("span")?.textContent.trim() || x.value);
+  if (lig.length) add(...Q, "Ligues", lig.length <= 2 ? lig.join(" · ") : `${lig.length} sélectionnées`, {title: lig.join(", ")});
+  if (selectionsExclues("bt")) add(...Q, "Sélections nationales", "exclues", {title: "Ligue des Nations, qualifications, amicaux internationaux… écartés"});
+  if (histMinimum("bt")) add(...Q, "Historique minimum", `${histMinimum("bt")} matchs par équipe`, {title: "À domicile pour celle qui reçoit, à l'extérieur pour celle qui se déplace"});
+  if (BT_HIST_SELECTION) add(...Q, "Historique", `dom. ${BT_HIST_SELECTION.dom} · ext. ${BT_HIST_SELECTION.ext}`);
+
+  const od = coteBornesActives("bt");
+  if (od.actif) add(...C, "Cotes", `${od.lo <= COTE_SLIDER_MIN ? "sans minimum" : nf(od.lo)} – ${od.hi >= COTE_SLIDER_MAX ? "sans maximum" : nf(od.hi)}`);
+  const mv = mvtBornesActives("bt");
+  if (mv.actif) {
+    const sg = v => `${v > 0 ? "+" : v < 0 ? "−" : ""}${nf(Math.abs(v), 1)} pt`;
+    add(...C, "Mouvement", `${mv.lo <= MVT_SLIDER_MIN ? "sans minimum" : sg(mv.lo)} – ${mv.hi >= MVT_SLIDER_MAX ? "sans maximum" : sg(mv.hi)}`,
+      {note: mv.lo === mv.hi && mv.lo === 0 ? "cote inchangée" : "", title: "Variation de probabilité implicite entre la première et la dernière cote relevées"});
+  }
+  if (momentPari()) add(...C, "Moment du pari", `≥ ${momentPari()} h avant le match`);
+
+  document.querySelectorAll("#btCatFilterBlocks .cat-filter-block").forEach(block => {
+    const cat = block.dataset.cat;
+    if (cats.length && !cats.includes(cat)) return;
+    const K = ["cat:" + cat, cat, "af2-k"];
+    const labels = [...block.querySelectorAll("label")];
+    block.querySelectorAll("select").forEach(sel => {
+      const l = labels.find(x => x.htmlFor === sel.id)?.textContent.trim();
+      let v = (sel.selectedOptions[0]?.textContent || "").replace(/\s*\(recommandé\)/gi, "").replace(/\s+/g, " ").trim();
+      if (!l || !v) return;
+      v = v.replace(/^Appliquer \(ligues éligibles\)$/, "appliquée (ligues éligibles)").replace(/^Les exclure$/, "exclus");
+      const neutre = NEUTRE.test(v) || /\(tous\)/.test(v);
+      add(...K, l, v.replace(/^./, c => c.toLowerCase()).replace(/^max /, "max "), {neutre});
+    });
+    const iss = [...block.querySelectorAll(".btIssueVmChk")], issOk = iss.filter(b => b.checked);
+    if (issOk.length && issOk.length < iss.length) add(...K, "Issues", issOk.map(b => b.closest("label")?.querySelector("span")?.textContent.trim() || b.value).join(", "));
+    const sc = [...block.querySelectorAll(".btScoreExChk")], scOk = sc.filter(b => b.checked);
+    if (scOk.length && scOk.length < sc.length) add(...K, "Scores", `${scOk.length} sélectionné${scOk.length > 1 ? "s" : ""}`, {title: scOk.map(b => b.value).join(", ")});
+    if (cat === CATEGORY_SCORE) {
+      const bf = forcesSeBornes("bt");
+      [["att", "Attaque"], ["def", "Défense"]].forEach(([k, nom]) => { if (bf[k].actif) add(...K, nom, bornesForceTxt(bf[k]), {title: `${nom} moyenne des deux équipes (borne haute exclue)`}); });
+    }
+  });
+
+  const fcb = cbkLireFiltres("bt");
+  if (fcb.actif) {
+    if (fcb.ev > -900) add(...B, "Espérance au meilleur prix", fcb.ev === 0 ? "> 0" : `≥ ${nf(fcb.ev * 100, 0)} %`);
+    if (fcb.gain > 0) add(...B, "Gain de cote", `≥ ${nf(fcb.gain * 100, 0)} %`);
+    if (fcb.desac) add(...B, "Issue", `${({plus: "autres sites plus confiants", moins: "autres sites moins confiants", ecart: "écart marqué", accord: "sites d'accord"})[fcb.desac] || fcb.desac} (${nf(fcb.desacSeuil * 100, 1)} pt)`);
+    if (fcb.match) add(...B, "Match", `${fcb.match === "agite" ? "désaccord marqué" : "sites d'accord"} (${nf(fcb.matchSeuil * 100, 1)} pt)`);
+    if (fcb.ecarteSans) add(...B, "Paris sans autre site", "écartés");
+  }
+
+  if (saisonActive("bt")) add(...M, "Correction saisonnière", "oui", {test: true});
+  if (absencesActive("bt")) add(...M, "Absences", "oui", {test: true, title: "Chaque point d'importance des absents connus affaiblit son équipe"});
+  if (niveauActif("bt")) add(...M, "Niveau de buts", "corrigé", {test: true, title: "Buts attendus × buts réels ÷ prévus des 42 jours précédents"});
+  if (defenseActif("bt")) add(...M, "Défense", "corrigée", {test: true});
+  if (accordActif("bt")) add(...M, "Accord des lectures", `avec ${nomAutreLecture(forcesTmActif("bt"))}`, {test: true});
+  const al = $("btAlpha");
+  if (al && parseFloat(al.value) !== 1) add(...M, "Poids modèle", (al.selectedOptions[0]?.textContent || "").trim());
+
+  const st = $("btMise");
+  if (st && st.value !== "fixe") add(...S, "Mise", (st.selectedOptions[0]?.textContent || "Kelly").trim());
+  else { const k = $("btStake"), v = k ? parseFloat(k.value) : NaN; if (k && isFinite(v) && v !== parseFloat(k.defaultValue)) add(...S, "Mise", `${nf(v)} € / pari`); }
+
+  const res = ordre.map(k => G.get(k));
+  res.forEach(g => { g.n = g.items.filter(i => !i.neutre).length; });
+  res.n = res.reduce((t, g) => t + g.n, 0);
+  return res;
+}
+function afGroupesHtml(groupes, vide = "Aucun filtre : tous les paris du modèle sont pris.") {
+  const esc = v => String(v).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  const nb = t => esc(t).replace(/ (%|€|pts?\b|h\b)/g, " $1");
+  if (!groupes.length) return `<p class="af2-vide">${vide}</p>`;
+  // trois zones : le périmètre (quels paris, cotes) · une colonne par type de pari · le modèle, les autres sites et la mise
+  const carte = g => `<section class="af2-g ${g.cls}">
+      <header class="af2-gt"><i aria-hidden="true"></i><span>${esc(g.titre)}</span>${g.n ? `<b>${g.n}</b>` : ""}</header>
+      <dl>${g.items.map(i => `<div class="af2-r${i.neutre ? " af2-neutre" : ""}"${i.title ? ` title="${esc(i.title)}"` : ""}><dt>${esc(i.l)}</dt><dd>${nb(i.v)}${i.test ? '<span class="af2-test">test</span>' : ""}${i.note ? `<small>${esc(i.note)}</small>` : ""}</dd></div>`).join("")}</dl>
+    </section>`;
+  const zA = groupes.filter(g => g.cle === "q" || g.cle === "c"), zC = groupes.filter(g => ["m", "b", "s"].includes(g.cle)), zB = groupes.filter(g => g.cle.startsWith("cat:"));
+  const zones = [zA].concat(zB.map(g => [g]), [zC]).filter(z => z.length);
+  return `<div class="af2-groupes">${zones.map(z => `<div class="af2-zone">${z.map(carte).join("")}</div>`).join("")}</div>`;
+}
 function renderBtActiveFilters(rowsFiltrees) {
   const host = $("btActiveFilters");
   if (!host) return;
@@ -7968,6 +8090,17 @@ function renderBtActiveFilters(rowsFiltrees) {
   }
 
   const count = (rowsFiltrees || []).length.toLocaleString("fr-FR");
+  let GR = [];
+  try { GR = btFiltresGroupes(); } catch (e) { console.error("filtres regroupés :", e); GR = null; }
+  if (GR) {
+    host.classList.add("af2-hote");
+    host.innerHTML = `<div class="af2">
+      <div class="af2-tete"><div class="af2-titre"><strong>${count} paris retenus</strong><span>${GR.n ? `${GR.n} réglage${GR.n > 1 ? "s" : ""} actif${GR.n > 1 ? "s" : ""}` : "historique complet"}</span></div></div>
+      ${afGroupesHtml(GR)}
+      <div class="active-filter-chips" hidden>${chips.join("")}</div>
+    </div>`;
+    return;
+  }
   host.innerHTML = `<div class="active-filter-overview">
       <span class="active-filter-icon" aria-hidden="true">≡</span>
       <span class="active-filter-heading"><strong>Périmètre affiché</strong><span><b>${count}</b> paris retenus</span></span>
@@ -16008,7 +16141,7 @@ function renderComparaison(rowsRetroFiltre) {
     const src = document.querySelector("#btActiveFilters .active-filter-chips");
     fh.innerHTML = `<span class="cmp-filtres-titre">Filtres du rétrospectif pris en compte`
       + `${deb || fin ? " · et période du panneau Bankroll" : ""}</span>`
-      + (src && src.innerHTML.trim() ? `<div class="active-filter-chips">${src.innerHTML}</div>` : '<span class="muted">—</span>');
+      + (() => { try { return afGroupesHtml(btFiltresGroupes()); } catch (e) { return src && src.innerHTML.trim() ? `<div class="active-filter-chips">${src.innerHTML}</div>` : '<span class="muted">—</span>'; } })();
   }
 
   const retroFiltre = rowsRetroFiltre || btFiltered();
@@ -17638,14 +17771,15 @@ function blRenderNotes() {
   $("blNotesCorps").innerHTML = notes.map(el => `<p>${el.innerHTML}</p>`).join("");
 }
 function blRenderFiltresActifs(D) {
-  const src = $("btActiveFilters");
-  const chips = src ? [...src.querySelectorAll(".active-filter-chip")] : [];
-  $("blChips").innerHTML = chips.length ? chips.slice(0, 9).map(c => c.outerHTML).join("") + (chips.length > 9 ? `<span class="active-filter-chip"><strong>+${chips.length - 9}</strong></span>` : "")
-    : '<span class="muted">aucun filtre particulier</span>';
-  const per = $("btRangeLabel") ? $("btRangeLabel").textContent.trim() : "";
-  $("blFbarLbl").innerHTML = (chips.length ? `Filtres actifs (${chips.length})` : "Filtres actifs") + (per ? `<small>${per}</small>` : "");
-  const d = $("btImpactDelta");
-  $("blCmp").innerHTML = d && d.textContent.trim() && d.textContent.trim() !== "—" ? `vs tous les paris <strong>${d.textContent.trim()}</strong>` : "";
+  let GR = [];
+  try { GR = btFiltresGroupes(); } catch (e) { console.error("Bilan (filtres) :", e); }
+  $("blChips").innerHTML = afGroupesHtml(GR);
+  const per = $("btRangeLabel") ? $("btRangeLabel").textContent.trim().replace(/^du /, "Du ") : "";
+  $("blFbarLbl").innerHTML = `<strong>Tes filtres</strong><span>${GR.n ? `${GR.n} réglage${GR.n > 1 ? "s" : ""} actif${GR.n > 1 ? "s" : ""}` : "aucun filtre"}${per ? ` · ${per}` : ""}</span>`;
+  const d = $("btImpactDelta"), dt = d ? d.textContent.trim() : "";
+  const neg = /^[−-]/.test(dt);
+  $("blCmp").innerHTML = dt && dt !== "—" ? `<b class="${neg ? "neg" : "pos"}">${dt.replace(/ pt$/, " pts").replace(/\s/g, "\u00a0")}</b> de ROI par rapport à tous les paris du modèle` : "";
+  $("blCmp").hidden = !(dt && dt !== "—");
 }
 function blDessiner() {
   const D = BL_DATA, wrap = $("blChartWrap");
@@ -18864,7 +18998,9 @@ function fxMaj(pref) {
   const cfgs = [
     {pref: "bt", panneau: "btFilterSettings", details: true, recap: "#page-backtest .filter-recap-panel", cbk: "btCbkFiltres", blocs: "btCatFilterBlocks",
      compte: () => `<b>${txt("btNb") || "—"}</b> paris retenus`,
-     resume: () => puces("#btActiveFilters"),
+     // 26/11/2026 : une pastille par famille de filtres (même couleurs que « Tes filtres » du Bilan),
+     // le détail au survol ; les anciennes pastilles une par filtre étaient coupées faute de place.
+     resume: () => { try { const GR = btFiltresGroupes(); return GR.length ? GR.map(g => `<span class="fx-puce af2-puce ${g.cls}" title="${fxEsc(g.items.filter(i => !i.neutre).map(i => `${i.l} : ${i.v}${i.test ? " (test)" : ""}`).join(" · "))}"><i></i>${fxEsc(g.titre)}<b>${g.n}</b></span>`).join("") : '<span class="fx-puce">aucun filtre</span>'; } catch (e) { return puces("#btActiveFilters"); } },
      ecart: () => { const d = txt("btImpactDelta"); return d && d !== "—" ? `<span title="Écart de ROI avec tous les paris du modèle">vs tous les paris <b>${fxEsc(d)}</b></span>` : ""; },
      direct: () => `Résultat en direct : <b>${txt("btNb") || "—"} paris · ROI ${txt("btRoi") || "—"}</b>`},
     {pref: "u", panneau: "uFilterPanel", details: false, cbk: "cbkFiltres", blocs: "uCatFilterBlocks", ouvreurs: ["uVoirFiltres"],
