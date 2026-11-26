@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261126194502">
+<link rel="stylesheet" href="style.css?v=20261126205132">
 </head>
 <body>
 <div class="topbar">
@@ -40,9 +40,9 @@
       <button type="button" class="tab" data-page="montecarlo" id="tab-montecarlo" role="tab" aria-controls="page-montecarlo" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="5" cy="14.5" r="1.6" fill="currentColor"/><circle cx="9.2" cy="7.8" r="1.6" fill="currentColor"/><circle cx="13.5" cy="15.3" r="1.6" fill="currentColor"/><circle cx="16.2" cy="6" r="1.6" fill="currentColor"/><circle cx="6.8" cy="3.6" r="1.3" fill="currentColor" opacity=".55"/></svg><span class="label">Simulation</span></button>
       <button type="button" class="tab" data-page="upcoming" id="tab-upcoming" role="tab" aria-controls="page-upcoming" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.3" width="14" height="12.2" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 8.3h14M7 2.3v3.2M13 2.3v3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="label">Paris à venir</span> <span class="badge-count" id="tabUpCount">0</span></button>
       <button type="button" class="tab" data-page="bankroll" id="tab-bankroll" role="tab" aria-controls="page-bankroll" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="15" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8.5h15" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="12" r="1.4" fill="currentColor"/></svg><span class="label">Bankroll</span></button>
-      <button type="button" class="tab" data-page="teams" id="tab-teams" role="tab" aria-controls="page-teams" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.3 16.3 4.7v5C16.3 14.1 13.5 16.5 10 18c-3.5-1.5-6.3-3.9-6.3-8.3v-5L10 2.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="label">Stats équipes</span></button>
+      <button type="button" class="tab" data-page="teams" id="tab-teams" role="tab" aria-controls="page-teams" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.3 16.3 4.7v5C16.3 14.1 13.5 16.5 10 18c-3.5-1.5-6.3-3.9-6.3-8.3v-5L10 2.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="label">Équipes et tirs</span></button>
       <button type="button" class="tab" data-page="marges" id="tab-marges" role="tab" aria-controls="page-marges" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5.5 14.5 14.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="6.8" cy="6.8" r="2.3" stroke="currentColor" stroke-width="1.6"/><circle cx="13.2" cy="13.2" r="2.3" stroke="currentColor" stroke-width="1.6"/></svg><span class="label">Marges</span></button>
-      <button type="button" class="tab" data-page="bookmakers" id="tab-bookmakers" role="tab" aria-controls="page-bookmakers" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v13.5M6 16.5h8M3.5 6h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M3.5 6 1.9 11a2.1 2.1 0 0 0 3.2 0L3.5 6ZM16.5 6 14.9 11a2.1 2.1 0 0 0 3.2 0L16.5 6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span class="label">Bookmakers</span></button>
+      <button type="button" class="tab" data-page="bookmakers" id="tab-bookmakers" role="tab" aria-controls="page-bookmakers" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v13.5M6 16.5h8M3.5 6h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M3.5 6 1.9 11a2.1 2.1 0 0 0 3.2 0L3.5 6ZM16.5 6 14.9 11a2.1 2.1 0 0 0 3.2 0L16.5 6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span class="label">Prix et bookmakers</span></button>
       <button type="button" class="tab" data-page="tirs" id="tab-tirs" role="tab" aria-controls="page-tirs" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.8v2.6M10 14.6v2.6M2.8 10h2.6M14.6 10h2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="label">Tirs cadrés</span></button>
     </nav>
   </div>
@@ -2804,7 +2804,7 @@
     <!-- Page Stats équipes refaite le 22/11/2026 : repères, fiche d'équipe (forces, forme, prochain match, tes
          paris), tableau cliquable. Les id des filtres d'origine sont conservés. -->
     <div class="page-heading">
-      <div class="page-heading-title"><p class="page-kicker">ÉQUIPES · 08</p><h2 class="page-title" id="heading-teams">Stats équipes</h2></div>
+      <div class="page-heading-title"><p class="page-kicker">ÉQUIPES · 08</p><h2 class="page-title" id="heading-teams">Équipes et tirs cadrés</h2></div>
       <p class="lead">Le niveau de chaque équipe selon le modèle, sa forme récente, son prochain match et ce que
       tes paris sur elle ont donné. Clique une équipe pour ouvrir sa fiche.</p>
     </div>
@@ -2990,7 +2990,7 @@
   <!-- ================================================================= -->
   <section class="page" id="page-bookmakers" role="tabpanel" aria-labelledby="heading-bookmakers" tabindex="0">
     <div class="page-heading">
-      <div class="page-heading-title"><p class="page-kicker">MARCHÉS · 10</p><h2 class="page-title" id="heading-bookmakers">Bookmakers</h2></div>
+      <div class="page-heading-title"><p class="page-kicker">MARCHÉS · 10</p><h2 class="page-title" id="heading-bookmakers">Prix et bookmakers</h2></div>
       <p class="lead">Winamax, Unibet, Betclic, Bwin et DAZN Bet face à face : qui paie le mieux, sur quel marché, et
       ce que ça aurait changé sur tes paris. De quoi décider <strong>où placer</strong> un pari une fois qu'il est choisi.</p>
     </div>
@@ -3348,7 +3348,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261126194603", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261126194603", APP = "app.js?v=20261126194502";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261126205253", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261126205253", APP = "app.js?v=20261126205132";
   var bandeau = document.getElementById("chargementDonnees");
   var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
   var debut = Date.now(), progres = 8, cible = 30;
