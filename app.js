@@ -1856,7 +1856,7 @@ const tabs = [...document.querySelectorAll(".tab")];
 // Menus courts -> boutons segmentés sur les pages harmonisées (25/11/2026),
 // même règle que les panneaux de filtres : ≤ 4 choix courts. Le <select>
 // reste la référence (caché), les boutons le pilotent.
-const PG_PAGES_SEG = ["page-marges", "page-tirs", "page-dc", "page-teams", "page-montecarlo"];
+const PG_PAGES_SEG = ["page-marges", "page-bookmakers", "page-tirs", "page-dc", "page-teams", "page-montecarlo"];
 function pgSegSync(sel) {
   if (sel && sel._pgSeg) sel._pgSeg.querySelectorAll("button").forEach(b => { b.classList.toggle("is-on", b.dataset.v === sel.value); b.disabled = sel.disabled; });
 }
@@ -1904,8 +1904,8 @@ function activerOnglet(tab) {
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
   if (tab.dataset.page === "overview" && typeof ov2Tout === "function") ov2Tout();
   if (tab.dataset.page === "teams" && typeof renderTeams === "function") renderTeams();
-  if (tab.dataset.page === "marges" && typeof renderMarges === "function") renderMarges();
-  if (tab.dataset.page === "tirs" && typeof renderTirsPage === "function") renderTirsPage();
+  if ((tab.dataset.page === "marges" || tab.dataset.page === "bookmakers") && typeof renderMarges === "function") renderMarges();
+  if ((tab.dataset.page === "tirs" || tab.dataset.page === "teams") && typeof renderTirsPage === "function") { try { renderTirsPage(); } catch (e) { console.error("Tirs :", e); } }
   if (tab.dataset.page === "dc" && typeof renderDcCalibration === "function") renderDcCalibration();
   if (typeof dvRendre === "function" && tab.dataset.page !== "dcv2") dvRendre();
   if (typeof blRendre === "function" && tab.dataset.page !== "bilan") blRendre();
@@ -1948,10 +1948,8 @@ const MENU_GROUPES = [
     ["montecarlo", "Entre quoi et quoi peut finir ta bankroll"]]},
   {id: "modele", titre: "Modèle et marché", pages: [
     ["dc", "Probabilités du modèle et value bets du moment"],
-    ["teams", "Niveau, forme et prochain match de chaque équipe"],
-    ["tirs", "Occasions créées et concédées, au-delà du score"],
-    ["bookmakers", "Qui paie le mieux, sur quel marché"],
-    ["marges", "Ce que prélève chaque bookmaker"]]},
+    ["teams", "Niveau, forme, tirs cadrés et prochain match de chaque équipe"],
+    ["bookmakers", "Ce que coûte chaque pari, et qui le paie le mieux"]]},
 ];
 const MENU_DIRECTS = ["overview", "upcoming", "bankroll"];
 (function initMenuPrincipal() {
@@ -6505,11 +6503,46 @@ function eqRenderFiche(i) {
         ${eqBarreForce("Défense à domicile", t.def_home, true)}${eqBarreForce("Défense à l'extérieur", t.def_away, true)}
         ${d.domicile != null ? `<p class="muted eq-xg">${d.domicile >= 0 ? `${Math.round(d.domicile * 100)} % plus forte à domicile qu'à l'extérieur` : `${Math.round(-d.domicile * 100)} % plus forte à l'extérieur qu'à domicile`}.</p>` : ""}
       </section>
+      ${eqBlocTirs(t)}
       ${mesParis}</div><div class="eq-col">
       <section class="eq-bloc"><h3>Forme récente</h3>${eqFormeChips(t, true)}${tendances}
         ${derniers ? `<ul class="eq-liste">${derniers}</ul>` : ""}</section>
       ${prochain}
     </div></div>`;
+}
+// Tirs cadrés de l'équipe dans sa fiche (26/11/2026, fusion des pages Équipes et Tirs cadrés). Les noms
+// viennent de deux sources (résultats / API-Football) : même nom et même pays une fois accents et
+// ponctuation retirés ; sinon le bloc n'apparaît pas.
+function eqBlocTirs(t) {
+  let T;
+  try { T = (typeof TIRS !== "undefined" && TIRS.equipes) || []; } catch (e) { return ""; }
+  const nrm = x => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // même nom, même pays ET même compétition (noms proches : « Ligue 1 » / « Ligue 1 McDonald's® ») :
+  // sans la compétition, l'équipe féminine « Lyon » prendrait les tirs de l'équipe masculine.
+  const n = nrm(t.equipe), p = nrm(t.pays), l = nrm(t.ligue);
+  const proche = (a, b) => a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)));
+  const fem = x => /femin|women|frauen|wsl|damen|\bw\b/i.test(String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const femT = fem(t.ligue) || fem(t.equipe);
+  // données récentes : lien calculé côté Python (e.ts, noms rapprochés avec les alias) ; sinon même nom
+  // exact, même pays, même compétition. La fiche de l'équipe dans une coupe montre les mêmes tirs.
+  const lies = T.some(e => e.ts);
+  const cand = T.filter(e => lies
+      ? (e.ts && e.ts[0] === t.equipe && e.pays === t.pays && (fem(e.ligue) || fem(e.equipe)) === femT)
+      : (nrm(e.equipe) === n && e.pays && p && nrm(e.pays) === p && proche(nrm(e.ligue), l) && (fem(e.ligue) || fem(e.equipe)) === femT))
+    .sort((a, b) => b.n - a.n);
+  const e = cand[0];
+  if (!e) return "";
+  const moy = (typeof TIRS !== "undefined" && TIRS.moyenne_ligue) || 0;
+  const tcp = e.tcp != null ? e.tcp : (e.attaque != null ? e.attaque * moy : null), tcc = e.tcc != null ? e.tcc : (e.defense != null ? e.defense * moy : null);
+  const f = (x, d = 1) => x == null || !isFinite(x) ? "—" : x.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+  return `<section class="eq-bloc eq-tirs"><h3>Tirs cadrés <span class="hint">— 1,00 = moyenne de toutes les équipes · ${e.n} matchs</span></h3>
+      ${e.attaque != null ? eqBarreForce("Tirs cadrés obtenus", e.attaque) : ""}${e.defense != null ? eqBarreForce("Tirs cadrés concédés", e.defense, true) : ""}
+      <div class="eq-stats eq-tirs-stats">
+        <div><strong>${f(tcp)}</strong><span>tirs cadrés obtenus par match</span></div>
+        <div><strong>${f(tcc)}</strong><span>concédés par match</span></div>
+        <div><strong class="${e.fin == null ? "" : e.fin > 0.1 ? "pos" : e.fin < -0.1 ? "neg" : ""}">${e.fin == null ? "—" : (e.fin > 0 ? "+" : e.fin < 0 ? "−" : "") + f(Math.abs(e.fin), 2)}</strong><span>finition : buts par match en plus ou en moins de ses tirs</span></div>
+      </div>
+    </section>`;
 }
 function eqChoisir(i, defiler) {
   EQ_ETAT.sel = i;
@@ -17216,6 +17249,162 @@ const MOB_NAV_LIBELLES = {overview: "Ensemble", upcoming: "À venir", bankroll: 
 /* Panneaux dont les réglages se replient. ref = id d'un champ du panneau (ou id du
    panneau lui-même) ; cibles = ce qui se replie (sélecteurs relatifs au panneau) ;
    le reste (indicateurs, tableau, bouton « Relancer »...) reste visible. */
+// ---------------------------------------------------------------------------
+// Fusion des pages Marges et Bookmakers en « Prix et bookmakers » (26/11/2026).
+// Réorganisation unique du DOM au chargement : les panneaux gardent leurs id
+// et leurs fonctions de rendu (renderMarges, renderBookmakers…), rien n'est
+// recalculé ni dupliqué. Ordre : aide commune → « Le prix chez Winamax »
+// (bloc en bref des marges) → « Face aux autres sites » (réglages, verdict,
+// cartes des sites) → onglets : Par type de pari · Tes paris · Ligues et
+// seuils · Dans quel cas ? · Gros écarts → Méthode et limites.
+// Les panneaux de la comparaison sortis de #cmpbCorps / #cmpbResultats suivent
+// toujours leur visibilité (pas de données, aucune cote comparable…).
+// ---------------------------------------------------------------------------
+(function initPrixFusion() {
+  const pb = $("page-bookmakers"), pm = $("page-marges");
+  if (!pb || !pm || pb._fusion) return;
+  pb._fusion = true;
+  const corps = $("cmpbCorps"), res = $("cmpbResultats"), heading = pb.querySelector(".page-heading");
+  const panneauDe = id => { const el = $(id); return el ? (el.classList.contains("panel") ? el : el.closest(".panel")) : null; };
+  // en-tête et aide commune
+  const lead = heading && heading.querySelector(".lead");
+  if (lead) lead.innerHTML = "Ce que Winamax prélève sur chaque type de pari, et où le même pari est mieux payé : Unibet, Betclic, Bwin et DAZN Bet face à face. De quoi savoir <strong>ce que coûte</strong> un pari et <strong>où le placer</strong>.";
+  const aideM = pm.querySelector("details.mc-aide"), aideB = corps && corps.querySelector(":scope > details.mc-aide");
+  if (aideM && aideB) {
+    const cM = aideM.querySelector(".mc-aide-corps"), cB = aideB.querySelector(".mc-aide-corps");
+    if (cM && cB) { const h = document.createElement("p"); h.innerHTML = "<strong>Comparer les sites.</strong>"; cM.append(h, ...cB.children); }
+    aideB.remove();
+  }
+  if (aideM) heading.after(aideM);
+  // 1. le prix chez Winamax
+  const heroM = $("margeHero");
+  if (heroM) {
+    (aideM || heading).after(heroM);
+    const t = heroM.querySelector(".pg-hero-t h2"); if (t) t.textContent = "Le prix chez Winamax";
+    const st = heroM.querySelector(".pg-hero-s"); if (st) st.textContent = "marge prélevée sur chaque pari, mesurée sur les matchs relevés";
+  }
+  // 2. face aux autres sites : réglages + verdict + cartes, dans un bloc en bref
+  const regl = panneauDe("cmpbMode");
+  if (regl && corps) {
+    const hero = document.createElement("div");
+    hero.className = "panel pg-hero px-hero"; hero.id = "pxCmpHero";
+    hero.innerHTML = '<div class="pg-hero-t"><h2>Face aux autres sites</h2><p class="pg-hero-s">les mêmes cotes, relevées à des moments proches</p></div>';
+    regl.before(hero);
+    [...regl.children].filter(el => el.tagName !== "H2").forEach(el => hero.append(el));
+    regl.remove();
+    ["cmpbVerdict", "cmpbSites"].forEach(id => { const el = $(id); if (el) hero.append(el); });
+    // la couverture des relevés (longue ligne par site) se replie, le réglage automatique reste visible
+    const couv = $("cmpbCouverture");
+    if (couv) { const d = document.createElement("details"); d.className = "px-couv"; d.innerHTML = "<summary>Couverture des relevés par site</summary>"; couv.before(d); d.append(couv); }
+  }
+  // 3. onglets
+  const ONGLETS = [
+    ["types", "Par type de pari", [["margeMarcheList", "m"], ["cmpbMarcheTable", "r"], ["cmpbMargeTable", "r"]]],
+    ["paris", "Tes paris", [["mgParisPanel", "m"], ["cmpbTesParisPanel", "c"], ["cmpbAVenirPanel", "c"]]],
+    ["ligues", "Ligues et seuils", [["margeLigueBody", "m"], ["mgSeuilsPanel", "m"]]],
+    ["cas", "Dans quel cas ?", [["cmpbDimTable", "r"]]],
+    ["ecarts", "Gros écarts", [["cmpbEcartTable", "r"]]],
+  ];
+  const nav = document.createElement("div");
+  nav.className = "bk2-onglets px-onglets"; nav.setAttribute("role", "tablist"); nav.setAttribute("aria-label", "Détail des prix");
+  const zone = document.createElement("div"); zone.className = "px-zone";
+  ONGLETS.forEach(([cle, lib, items]) => {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.px = cle; b.setAttribute("role", "tab"); b.textContent = lib; nav.append(b);
+    const pg = document.createElement("div"); pg.dataset.pxPage = cle; pg.setAttribute("role", "tabpanel");
+    items.forEach(([id, src]) => { const p = panneauDe(id); if (p) { if (src !== "m") p.dataset.pxSrc = src; pg.append(p); } });
+    zone.append(pg);
+  });
+  const ancre = corps || heroM;
+  ancre.after(nav); nav.after(zone);
+  const meth = pb.querySelector("details.cmpb-methode");
+  if (meth) { meth.dataset.pxSrc = "c"; zone.after(meth); }
+  // panneaux sortis de la comparaison : suivent la visibilité de leur ancien conteneur
+  const sync = () => {
+    const cOff = corps && corps.style.display === "none", rOff = res && res.style.display === "none";
+    pb.querySelectorAll("[data-px-src]").forEach(p => p.classList.toggle("px-off", p.dataset.pxSrc === "c" ? cOff : (cOff || rOff)));
+  };
+  [corps, res].forEach(el => el && new MutationObserver(sync).observe(el, {attributes: true, attributeFilter: ["style"]}));
+  sync();
+  // onglet courant
+  let courant = "types";
+  try { courant = localStorage.getItem("ww_px") || "types"; } catch (e) { /* rien */ }
+  const montrer = () => {
+    if (!ONGLETS.some(o => o[0] === courant)) courant = "types";
+    nav.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.px === courant)));
+    zone.querySelectorAll("[data-px-page]").forEach(p => { p.hidden = p.dataset.pxPage !== courant; });
+    setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 40);
+  };
+  nav.addEventListener("click", e => { const b = e.target.closest("button[data-px]"); if (!b) return; courant = b.dataset.px; try { localStorage.setItem("ww_px", courant); } catch (er) { /* rien */ } montrer(); });
+  montrer();
+  // l'ancienne page Marges n'a plus d'entrée : tout lien vers elle ouvre la page fusionnée
+  const tm = $("tab-marges"), tb = $("tab-bookmakers");
+  if (tm && tb) {
+    tm.hidden = true; tm.setAttribute("aria-hidden", "true");
+    tm.addEventListener("click", e => { e.stopImmediatePropagation(); e.preventDefault(); tb.click(); }, true);
+  }
+  pm.remove();
+})();
+
+// ---------------------------------------------------------------------------
+// Fusion des pages Stats équipes et Tirs cadrés en « Équipes et tirs cadrés »
+// (26/11/2026). Même principe que « Prix et bookmakers » : déplacement unique
+// des panneaux au chargement, ids et fonctions de rendu inchangés. Ordre :
+// aide commune → Choisir les équipes → Repères → fiche (avec ses tirs cadrés)
+// → onglets : Classement · Tirs cadrés (collecte en bref + forces par équipe)
+// · Finition · Par ligue · Tes paris.
+// ---------------------------------------------------------------------------
+(function initEquipesFusion() {
+  const pe = $("page-teams"), pt = $("page-tirs");
+  if (!pe || !pt || pe._fusion) return;
+  pe._fusion = true;
+  const panneauDe = id => { const el = $(id); return el ? (el.classList.contains("panel") ? el : el.closest(".panel")) : null; };
+  const heading = pe.querySelector(".page-heading");
+  const lead = heading && heading.querySelector(".lead");
+  if (lead) lead.innerHTML = "Le niveau de chaque équipe selon le modèle, sa forme, ses tirs cadrés, son prochain match et ce que tes paris sur elle ont donné. Clique une équipe pour ouvrir sa fiche.";
+  const aideE = pe.querySelector("details.mc-aide"), aideT = pt.querySelector("details.mc-aide");
+  if (aideE && aideT) {
+    const cE = aideE.querySelector(".mc-aide-corps"), cT = aideT.querySelector(".mc-aide-corps");
+    if (cE && cT) { const h = document.createElement("p"); h.innerHTML = "<strong>Tirs cadrés.</strong> Trois fois plus fréquents que les buts, ils mesurent le jeu avec bien moins de hasard."; cE.append(h, ...cT.children); }
+  }
+  const ONGLETS = [
+    ["classement", "Classement", ["teamBody"]],
+    ["tirs", "Tirs cadrés", ["tirsHero", "tirsBody"]],
+    ["finition", "Finition", ["tiFinPanel"]],
+    ["ligues", "Par ligue", ["tiLiguesPanel"]],
+    ["paris", "Tes paris", ["tiParisPanel"]],
+  ];
+  const nav = document.createElement("div");
+  nav.className = "bk2-onglets px-onglets"; nav.setAttribute("role", "tablist"); nav.setAttribute("aria-label", "Détail des équipes");
+  const zone = document.createElement("div"); zone.className = "px-zone";
+  const avant = panneauDe("teamBody");
+  ONGLETS.forEach(([cle, lib, ids]) => {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.eqo = cle; b.setAttribute("role", "tab"); b.textContent = lib; nav.append(b);
+    const pg = document.createElement("div"); pg.dataset.eqoPage = cle; pg.setAttribute("role", "tabpanel");
+    ids.forEach(id => { const p = panneauDe(id); if (p) pg.append(p); });
+    zone.append(pg);
+  });
+  const fiche = $("eqFiche");
+  (fiche || avant || heading).after(nav); nav.after(zone);
+  // la collecte en bref devient le haut de l'onglet « Tirs cadrés »
+  const th = $("tirsHero"); if (th) { const t = th.querySelector(".pg-hero-t h2"); if (t) t.textContent = "La collecte des tirs cadrés"; }
+  let courant = "classement";
+  try { courant = localStorage.getItem("ww_eqo") || "classement"; } catch (e) { /* rien */ }
+  const montrer = () => {
+    if (!ONGLETS.some(o => o[0] === courant)) courant = "classement";
+    nav.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.eqo === courant)));
+    zone.querySelectorAll("[data-eqo-page]").forEach(p => { p.hidden = p.dataset.eqoPage !== courant; });
+    setTimeout(() => { if (window.redessinerPageActive) window.redessinerPageActive(); }, 40);
+  };
+  nav.addEventListener("click", e => { const b = e.target.closest("button[data-eqo]"); if (!b) return; courant = b.dataset.eqo; try { localStorage.setItem("ww_eqo", courant); } catch (er) { /* rien */ } montrer(); });
+  montrer();
+  const tt = $("tab-tirs"), te = $("tab-teams");
+  if (tt && te) {
+    tt.hidden = true; tt.setAttribute("aria-hidden", "true");
+    tt.addEventListener("click", e => { e.stopImmediatePropagation(); e.preventDefault(); courant = "tirs"; montrer(); te.click(); }, true);
+  }
+  pt.remove();
+})();
+
 const MOB_PLIABLES = [
   {ref: "uFilterPanel", panneau: true, titre: "Filtrer les recommandations", masqueH2: true,
    cibles: ":scope > :not(h2):not(.kpis):not(.m-ftog)"},
@@ -17225,7 +17414,7 @@ const MOB_PLIABLES = [
   {ref: "bkDepart", titre: "Bankroll de départ et dates", cibles: ":scope > .controls"},
   {ref: "tPays", titre: "Filtrer les équipes", cibles: ":scope > .controls"},
   {ref: "margeSearch", titre: "Filtrer les ligues", cibles: ":scope > .controls"},
-  {ref: "cmpbMode", titre: "Réglages", masqueH2: true, cibles: ":scope > .controls, :scope > p.muted"},
+  {ref: "cmpbMode", titre: "Réglages de la comparaison", cibles: ":scope > .controls, :scope > p.muted"},
   {ref: "tiLigue", titre: "Filtrer les équipes", cibles: ":scope > .controls"},
   {ref: "syncBox", panneau: true, titre: "Synchronisation des paris joués", masqueH2: true, sansBadge: true,
    cibles: ":scope > :not(h2):not(.m-ftog)"},
@@ -17252,6 +17441,7 @@ function initMobile() {
 
   tabs.forEach(tab => {
     const page = tab.dataset.page;
+    if (tab.hidden) return;   // page retirée (ex. Marges, fusionnée dans « Prix et bookmakers » le 26/11/2026)
     if (MOB_NAV_PRINCIPAUX.includes(page)) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "mnav-btn"; b.dataset.page = page;
@@ -17376,7 +17566,7 @@ function initMobile() {
     const ref = document.getElementById(cfg.ref);
     const panneau = ref && (cfg.panneau ? ref : ref.closest(".panel"));
     if (!panneau || panneau._mPliable) return;
-    const h2 = panneau.querySelector(":scope > h2");
+    const h2 = panneau.querySelector(":scope > h2") || panneau.querySelector(":scope > .pg-hero-t");
     panneau._mPliable = true;
     const bouton = document.createElement("button");
     bouton.type = "button"; bouton.className = "m-ftog";
@@ -18719,10 +18909,10 @@ initBacktestSectionNav();
 renderBacktest();
 drawShotsCoverage();
 // Tirs cadrés : rendu à l'ouverture de l'onglet (relit les paris filtrés) ; au démarrage seulement si la page est affichée.
-if ($("page-tirs") && $("page-tirs").classList.contains("active")) { try { renderTirsPage(); } catch (e) { console.error("Page Tirs :", e); } }
+if (($("page-tirs") && $("page-tirs").classList.contains("active")) || ($("page-teams") && $("page-teams").classList.contains("active"))) { try { renderTirsPage(); } catch (e) { console.error("Page Tirs :", e); } }
 try { renderBookmakers(); } catch (e) { console.error("Page Bookmakers :", e); }
 // Marges : après Bookmakers (comparaison aux autres sites) ; sinon rendue à l'ouverture de l'onglet.
-if ($("page-marges") && $("page-marges").classList.contains("active")) { try { renderMarges(); } catch (e) { console.error("Page Marges :", e); } }
+if (($("page-marges") && $("page-marges").classList.contains("active")) || ($("page-bookmakers") && $("page-bookmakers").classList.contains("active"))) { try { renderMarges(); } catch (e) { console.error("Page Marges :", e); } }
 
 /* ================= PANNEAUX DE FILTRES RANGÉS EN ONGLETS (23/11/2026) =================
    Demande : « trop de texte, ça prend trop de place, on n'y comprend rien ». Mêmes réglages, mêmes identifiants,
