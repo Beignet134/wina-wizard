@@ -3629,6 +3629,21 @@ header.mp-2l .menu { order: 3; flex-basis: 100%; }
   #page-dcv2 .score-matrix .score-corner { font-size: .55rem; min-width: 3.6rem; }
 }
 /* ---- Page Bookmakers, refonte du 23/11/2026 ---- */
+/* Page fusionnée « Prix et bookmakers » (26/11/2026) */
+/* Page fusionnée « Équipes et tirs cadrés » (26/11/2026) */
+.eq-tirs-stats strong.pos { color: var(--up); } .eq-tirs-stats strong.neg { color: var(--down); }
+.eq-stats.eq-tirs-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: .6rem; }
+.px-off { display: none !important; }
+.px-hero > .controls { margin-top: .9rem; }
+.px-hero > p.muted { margin: .5rem 0 0 !important; }
+.px-couv { margin: .45rem 0 0; font-size: .8rem; color: var(--ink-faint); }
+.px-couv summary { cursor: pointer; width: max-content; max-width: 100%; color: var(--ink-faint); }
+.px-couv summary:hover { color: var(--ink-dim); }
+.px-couv > p { margin: .35rem 0 0 !important; }
+.px-hero > #cmpbVerdict { margin: .9rem 0 0; }
+.px-hero > .cmpb-sites { margin: .9rem 0 0; }
+.px-onglets { position: sticky; top: var(--ww-topbar-height, 0px); z-index: 30; background: var(--night, #08101b); }
+.px-zone > [data-px-page] > .panel:first-child { margin-top: 0; }
 .cmpb-sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .7rem; margin: 0 0 1.2rem; }
 .cmpb-sites:empty { display: none; }
 .cmpb-site { border: 1px solid var(--line-soft); border-radius: 14px; padding: .85rem .95rem; background: rgba(10,16,26,.45); display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
@@ -4218,7 +4233,7 @@ body > .topbar { margin-left: 0; margin-right: 0; }
 .pg-kpis-auto .pg-k:first-child .v { font-size: 1.6rem; }
 #tirsRepartWrap { margin-top: .9rem; }
 /* libellés des champs au format des panneaux de filtres */
-:is(#page-marges, #page-tirs, #page-dc, #page-teams, #page-montecarlo) .field > label { font-size: .76rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-faint); }
+:is(#page-marges, #page-bookmakers, #page-tirs, #page-dc, #page-teams, #page-montecarlo) .field > label { font-size: .76rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-faint); }
 .pg-field-seg { position: relative; }
 .pg-field-seg select.fx-sr { left: 0; top: 0; max-width: 1px; overflow: hidden; }
 .pg-field-seg .fx-seg { min-height: 38px; }
