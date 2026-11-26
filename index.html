@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261126061746">
+<link rel="stylesheet" href="style.css?v=20261126070608">
 </head>
 <body>
 <div class="topbar">
@@ -1733,11 +1733,13 @@
       croire : chance ou avantage, forme récente, rôle de chaque filtre. Mêmes paris que DC rétrospectif.</p>
     </div>
 
-    <div class="bl-fbar" id="blFbar">
-      <span class="bl-fbar-lbl" id="blFbarLbl">Filtres actifs</span>
-      <div class="bl-chips" id="blChips"></div>
-      <span class="bl-fbar-cmp" id="blCmp"></span>
-      <button type="button" class="rp-btn" id="blModifier" aria-expanded="false" aria-controls="btFilterSettings">Modifier les filtres</button>
+    <div class="bl-fbar af2" id="blFbar">
+      <div class="af2-tete">
+        <div class="af2-titre" id="blFbarLbl"><strong>Tes filtres</strong></div>
+        <span class="af2-ecart" id="blCmp"></span>
+        <button type="button" class="rp-btn" id="blModifier" aria-expanded="false" aria-controls="btFilterSettings">Modifier les filtres</button>
+      </div>
+      <div id="blChips"></div>
     </div>
     <!-- Le panneau de réglage de DC rétrospectif est « emprunté » ici tant que la page est affichée (blEmprunter) :
          mêmes champs, mêmes réglages, rien n'est dupliqué. -->
@@ -3346,7 +3348,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261126061804", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261126061804", APP = "app.js?v=20261126061746";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261126070627", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261126070627", APP = "app.js?v=20261126070608";
   var bandeau = document.getElementById("chargementDonnees");
   var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
   var debut = Date.now(), progres = 8, cible = 30;
