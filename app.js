@@ -3679,6 +3679,27 @@ function upSignauxCarte(v, cbk, cbkR, injuryBlock) {
       `<strong>${lib}</strong> (${e >= 0 ? "+" : "−"}${fr(Math.abs(e).toFixed(1))} % vs ${v.marche_n_bookmakers})`,
       `Médiane de ${v.marche_n_bookmakers} bookmaker${v.marche_n_bookmakers > 1 ? "s" : ""} : <strong>${v.marche_mediane.toFixed(2)}</strong>, Winamax : <strong>${v.cote.toFixed(2)}</strong>.`));
   }
+  // Fatigue et calendrier (26/11/2026) : affiché seulement quand c'est notable
+  try {
+    const c = calRepos(v);
+    if (c && c.dom && c.ext) {
+      const [h, a] = String(v.match || "").split(" - ");
+      const j = x => x.repos == null ? "?" : x.repos > 30 ? "30+" : x.repos;
+      const court = x => x.repos != null && x.repos <= 3, ecart = faEcart(c);
+      const euro = [[h, c.dom], [a, c.ext]].filter(([, x]) => x.sortEurope || x.rejoueEurope);
+      const treve = c.dom.retourTreve || c.ext.retourTreve;
+      if (court(c.dom) || court(c.ext) || euro.length || treve || (ecart != null && Math.abs(ecart) >= 3)) {
+        const ligneEq = (nom, x) => `<div class="dc-tip-row"><span>${cbkEsc(nom)}</span><strong>${j(x)} j de repos</strong></div>`
+          + (x.prec ? `<div class="dc-tip-row"><span class="muted">avant : ${fmtDateCourte(x.prec.d)}, ${cbkEsc(x.prec.l)}</span></div>` : "")
+          + (x.proch && x.suivant != null && x.suivant <= 6 ? `<div class="dc-tip-row"><span class="muted">après : dans ${x.suivant} j, ${cbkEsc(x.proch.l)}</span></div>` : "");
+        const tip = `<div class="dc-tip-head">Repos des équipes</div>${ligneEq(h, c.dom)}${ligneEq(a, c.ext)}${treve ? `<div class="dc-tip-row"><span>Trêve internationale</span><strong>finie le ${fmtDateCourte((c.dom.treve || c.ext.treve).fin)}</strong></div>` : ""}<div class="dc-tip-note">Calendrier reconstitué à partir des matchs proposés par Winamax ; les matchs joués en sélection ne comptent pas dans le repos d'un club. Aucun effet de fatigue n'est encore prouvé : voir DC rétrospectif › Fatigue et calendrier.</div>`;
+        let t = `Repos : <strong>dom. ${j(c.dom)} j · ext. ${j(c.ext)} j</strong>`;
+        if (treve) t += ` · retour de trêve internationale`;
+        if (euro.length) t += ` · ${euro.map(([n, x]) => `${cbkEsc(n)} ${x.sortEurope ? "sort" : "rejoue"} de coupe d'Europe`.replace("rejoue de", "rejoue en")).join(", ")}`;
+        L.push(upLigne("neutre", "⏱", t, tip));
+      }
+    }
+  } catch (e) { /* calendrier indisponible */ }
   // Mouvement de la cote Winamax
   if (v.variation_proba != null && v.variation_proba < -0.0001)
     L.push(upLigne("neg", "↗", `<strong>La cote s'allonge</strong> (${v.cote_ouverture} → ${v.cote.toFixed(2)})`, "Le marché s'éloigne de ce pari : historiquement le plus mauvais signal."));
@@ -4324,6 +4345,135 @@ function cbkMajControles() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Exposition par match et par journée (27/11/2026). Les paris d'un même
+// match ne sont pas indépendants : un seul score sort. Monte Carlo par
+// journée : un score tiré par match (Poisson des buts attendus du modèle),
+// tous les paris du match réglés avec ce score ; les catégories non réglables
+// par le score sont tirées selon leur probabilité.
+// ---------------------------------------------------------------------------
+function expoGagne(cat, col, h, a) {
+  const t = h + a, c = String(col || "");
+  if (cat === CATEGORY_SCORE) { const m = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(c); return m ? (+m[1] === h && +m[2] === a) : null; }
+  if (cat === CATEGORY_RESULT) return c === "homeWin" ? h > a : c === "draw" ? h === a : c === "awayWin" ? h < a : null;
+  if (cat === "Intervalle de buts") { const lab = c.replace(/^Buts\s*/, ""); if (/et plus/.test(lab)) return t >= parseInt(lab, 10); const m = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(lab); return m ? (t >= +m[1] && t <= +m[2]) : null; }
+  if (cat === "Plus/Moins de buts") { const m = /([\d.]+)/.exec(c); if (!m) return null; const sl = parseFloat(m[1]); if (sl === Math.floor(sl) && t === sl) return null; return /^Plus/.test(c) ? t > sl : t < sl; }
+  if (cat === "Les 2 équipes marquent") return c === "BTTS Oui" ? (h >= 1 && a >= 1) : c === "BTTS Non" ? !(h >= 1 && a >= 1) : null;
+  return null;
+}
+function expoPoisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L && k < 25); return k - 1; }
+function expoPois(l, k) { let f = 1; for (let i = 2; i <= k; i++) f *= i; return Math.exp(-l) * Math.pow(l, k) / f; }
+function expoCote(v) { const c = v.cote_aff ?? v.cote_jouee ?? v.cote; return Number(c) || 0; }
+// Simule une journée : matchs = [{lh, la, paris: [{cat, col, cote, mise, p}]}]
+function expoSimuler(matchs, N = 20000) {
+  const res = new Float64Array(N); let toutPerdu = 0;
+  for (let s = 0; s < N; s++) {
+    let tot = 0, gagnes = 0;
+    for (const m of matchs) {
+      const ok = m.lh != null && m.la != null;
+      const h = ok ? expoPoisson(m.lh) : 0, a = ok ? expoPoisson(m.la) : 0;
+      for (const b of m.paris) {
+        let g = ok ? expoGagne(b.cat, b.col, h, a) : null;
+        if (g == null) g = Math.random() < (b.p || 0);
+        if (g) { tot += b.mise * (b.cote - 1); gagnes++; } else tot -= b.mise;
+      }
+    }
+    res[s] = tot; if (!gagnes) toutPerdu++;
+  }
+  const tri = Array.from(res).sort((x, y) => x - y);
+  let neg = 0, somme = 0; for (const x of tri) { if (x < 0) neg++; somme += x; }
+  return {pPerte: neg / N, q05: tri[Math.floor(N * 0.05)], med: tri[Math.floor(N / 2)], moy: somme / N, pToutPerdu: toutPerdu / N};
+}
+// Relation entre les paris d'un même match (grille des scores 0-10)
+function expoRelation(m) {
+  const P = m.paris; if (P.length < 2) return null;
+  let ensemble = false, pAucun = 0, gainMax = -Infinity;
+  const ok = m.lh != null && m.la != null;
+  for (let h = 0; h <= 10; h++) for (let a = 0; a <= 10; a++) {
+    const w = ok ? expoPois(m.lh, h) * expoPois(m.la, a) : 0;
+    const g = P.map(b => expoGagne(b.cat, b.col, h, a));
+    if (g.filter(Boolean).length >= 2) ensemble = true;
+    if (!g.some(Boolean)) pAucun += w;
+    const tot = P.reduce((t, b, i) => t + (g[i] ? b.mise * (b.cote - 1) : -b.mise), 0);
+    if (tot > gainMax) gainMax = tot;
+  }
+  return {ensemble, pAucun: ok ? pAucun : null, gainMax};
+}
+function renderExposition(rows, mises, bankroll) {
+  const box = $("uExpo");
+  if (!box) return;
+  if (!rows.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const eur = v => { const r = Math.round(v); return (r < 0 ? "−" : r > 0 ? "+" : "") + Math.abs(r).toLocaleString("fr-FR") + " €"; };
+  const eurS = v => Math.round(v).toLocaleString("fr-FR") + " €";
+  const pc = v => `${Math.round(v * 100)} %`;
+  const esc = x => String(x ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  // regroupement jour → match
+  const jours = new Map(), auj = upAujourdhui();
+  rows.forEach((v, i) => {
+    const j = upJourIso(v), km = v.match + "|" + String(v.date || "").slice(0, 10);
+    if (j && auj && j < auj) return;   // match déjà commencé ou passé (données d'hier) : plus d'exposition à venir
+    if (!jours.has(j)) jours.set(j, new Map());
+    const J = jours.get(j);
+    if (!J.has(km)) J.set(km, {match: v.match, date: v.date, kickoff: v.kickoff, lh: v.lam_home ?? null, la: v.lam_away ?? null, paris: []});
+    J.get(km).paris.push({cat: v.categorie, col: v.colonne, cote: expoCote(v), mise: mises[i] || 0, p: v.p_aff ?? v.p_model ?? 0, lib: upLibellePari(v)});
+  });
+  if (!jours.size) { box.hidden = true; return; }
+  const lignes = [...jours.keys()].sort().map(j => {
+    const matchs = [...jours.get(j).values()];
+    const nb = matchs.reduce((t, m) => t + m.paris.length, 0), mise = matchs.reduce((t, m) => t + m.paris.reduce((u, b) => u + b.mise, 0), 0);
+    const sim = expoSimuler(matchs);
+    return {j, matchs, nb, mise, sim, liees: matchs.filter(m => m.paris.length >= 2)};
+  });
+  const grosse = lignes.slice().sort((a, b) => b.mise - a.mise)[0];
+  const liees = lignes.flatMap(l => l.liees.map(m => Object.assign({jour: l.j, rel: expoRelation(m)}, m)));
+  const excl = liees.filter(m => m.rel && !m.rel.ensemble).length;
+  const pctB = v => bankroll ? v / bankroll : null;
+  // tuiles
+  pgKpis($("uExpoKpis"), [
+    {k: "Plus grosse journée", v: eurS(grosse.mise), s: `${upNomJour(grosse.j)} · ${grosse.nb} paris sur ${grosse.matchs.length} matchs${bankroll ? ` · ${pc(pctB(grosse.mise))} de ta bankroll de départ` : ""}`},
+    {k: "Chances de la finir en perte", v: pc(grosse.sim.pPerte), s: `d'après le modèle · tout perdre : ${pc(grosse.sim.pToutPerdu)}`, cls: grosse.sim.pPerte > 0.6 ? "neg" : ""},
+    {k: "Mauvais jour (1 sur 20)", v: eur(grosse.sim.q05), s: `pire cas : ${eur(-grosse.mise)}`, cls: "neg"},
+    {k: "Matchs à plusieurs paris", v: String(liees.length), s: liees.length ? `${excl} où un seul pari peut passer` : "aucun pari lié"},
+  ]);
+  // tableau par jour
+  $("uExpoJours").innerHTML = `<thead><tr><th>Jour</th><th class="num">Paris</th><th class="num">Matchs</th><th class="num">Mise</th>${bankroll ? '<th class="num">Bankroll</th>' : ""}<th class="num">Gain espéré</th><th class="num">En perte</th><th class="num">Mauvais jour</th></tr></thead><tbody>`
+    + lignes.map(l => `<tr${l === grosse ? ' class="expo-max"' : ""}><td>${upNomJour(l.j)}${l.liees.length ? ` <span class="expo-tag" title="${l.liees.length} match(s) avec plusieurs paris">${l.liees.length} lié${l.liees.length > 1 ? "s" : ""}</span>` : ""}</td>
+      <td class="num">${l.nb}</td><td class="num">${l.matchs.length}</td><td class="num">${eurS(l.mise)}</td>${bankroll ? `<td class="num">${pc(pctB(l.mise))}</td>` : ""}
+      <td class="num ${l.sim.moy >= 0 ? "pos" : "neg"}">${eur(l.sim.moy)}</td><td class="num">${pc(l.sim.pPerte)}</td><td class="num neg">${eur(l.sim.q05)}</td></tr>`).join("") + "</tbody>";
+  // matchs à plusieurs paris
+  const bloc = $("uExpoLiensBloc");
+  bloc.hidden = !liees.length;
+  $("uExpoLiensTitre").textContent = `Matchs à plusieurs paris (${liees.length})`;
+  $("uExpoLiens").innerHTML = liees.map(m => {
+    const r = m.rel, mise = m.paris.reduce((t, b) => t + b.mise, 0);
+    const rel = !r ? "" : r.ensemble ? '<span class="expo-rel expo-cumul">peuvent passer ensemble</span>' : '<span class="expo-rel expo-excl">un seul peut passer</span>';
+    return `<div class="expo-m"><div class="expo-m-t"><strong>${esc(m.match)}</strong><span>${upNomJour(m.jour)}</span>${rel}</div>
+      <div class="expo-m-p">${m.paris.map(b => `<span>${esc(b.lib)} <small>à ${b.cote.toLocaleString("fr-FR", {maximumFractionDigits: 2})}</small></span>`).join("")}</div>
+      <div class="expo-m-c"><span>Mise <strong>${eurS(mise)}</strong></span>${r && r.pAucun != null ? `<span>Aucun ne passe : <strong>${pc(r.pAucun)}</strong> (${eur(-mise)})</span>` : ""}${r ? `<span>Meilleur cas <strong class="pos">${eur(r.gainMax)}</strong></span>` : ""}</div></div>`;
+  }).join("");
+  // historique : journées de tes paris filtrés (DC rétrospectif)
+  let hist = "";
+  try {
+    const H = btFiltered(), parJour = new Map(), parMatch = new Map();
+    H.forEach(r => { const st = btStakeFor(r); const d = String(r.date).slice(0, 10); const o = parJour.get(d) || {n: 0, mise: 0, net: 0}; o.n++; o.mise += st; o.net += r.profit * st; parJour.set(d, o);
+      const km = r.match + "|" + d; const q = parMatch.get(km) || {n: 0, mise: 0, net: 0}; q.n++; q.mise += st; q.net += r.profit * st; parMatch.set(km, q); });
+    const J = [...parJour.entries()];
+    if (J.length >= 5) {
+      const perte = J.filter(([, o]) => o.net < 0).length, pire = J.slice().sort((a, b) => a[1].net - b[1].net)[0], max = J.slice().sort((a, b) => b[1].mise - a[1].mise)[0];
+      const M = [...parMatch.values()], multi = M.filter(o => o.n >= 2), solo = M.filter(o => o.n === 1);
+      const roi = arr => { const mi = arr.reduce((t, o) => t + o.mise, 0); return mi ? arr.reduce((t, o) => t + o.net, 0) / mi : null; };
+      hist = `<strong>Dans ton historique filtré</strong> : ${J.length} journées de paris, dont ${perte} (${pc(perte / J.length)}) finies en perte. Pire journée : ${fmtDateCourte(pire[0])} (${eur(pire[1].net)} sur ${pire[1].n} paris) ; la plus chargée : ${fmtDateCourte(max[0])} (${max[1].n} paris, ${eurS(max[1].mise)}).`;
+      if (multi.length >= 5) { const r1 = roi(multi), r2 = roi(solo); hist += ` Matchs à plusieurs paris : ${multi.length}, ROI ${blP(r1, 0)} (contre ${blP(r2, 0)} pour un seul pari par match).`; }
+    }
+  } catch (e) { /* historique indisponible */ }
+  $("uExpoHist").innerHTML = hist;
+  // verdict
+  let v = `<strong>L'essentiel.</strong> ${lignes.length > 1 ? `Sur les ${lignes.length} prochains jours, ta` : "Ta"} plus grosse journée est <strong>${upNomJour(grosse.j).toLowerCase()}</strong> : ${grosse.nb} paris pour ${eurS(grosse.mise)}${bankroll ? ` (${pc(pctB(grosse.mise))} de ta bankroll de départ)` : ""}. Le modèle lui donne <strong>${pc(grosse.sim.pPerte)} de chances de finir en perte</strong>, même si elle rapporte ${eur(grosse.sim.moy)} en moyenne — c'est normal avec des grosses cotes : peu de paris passent, mais ils paient beaucoup.`;
+  if (bankroll && pctB(grosse.mise) > 0.25) v += ` <strong>Attention</strong> : plus d'un quart de ta bankroll de départ engagé le même jour.`;
+  if (liees.length) v += ` ${liees.length} match${liees.length > 1 ? "s portent" : " porte"} plusieurs de tes paris${excl ? ` — sur ${excl === liees.length ? (liees.length > 1 ? "tous" : "celui-ci") : excl}, un seul pari peut passer : ces mises ne se diversifient pas, elles se partagent l'issue` : ""}.`;
+  $("uExpoVerdict").innerHTML = v;
+}
 function renderUpcoming() {
   if (REINIT_FILTRES_EN_COURS) return;
   const stake = parseFloat($("uStake").value) || 0;
@@ -4712,6 +4862,7 @@ function renderUpcoming() {
   $("uMise").textContent = mise.toLocaleString("fr-FR", {maximumFractionDigits: 0}) + " €";
   const evEl=$("uEv"); evEl.textContent=fmtEur(evTotal); evEl.className="v "+(evTotal>=0?"pos":"neg");
   $("uMatches").textContent = matches;
+  try { renderExposition(rowsReco, miseParPari, bankrollRef); } catch (e) { console.error("Exposition :", e); }
 
   // Rend le changement de strategie tangible : avec Kelly, "Total a miser"
   // varie desormais reellement (mise moyenne differente de la mise fixe,
@@ -4829,6 +4980,7 @@ function renderUpcoming() {
     empty.textContent = UPCOMING.length===0
       ? `Aucun match à venir dans les ${UPCOMING_DAYS} prochains jours n'a de value bet (ou l'historique est encore insuffisant). Reviens quand de nouvelles cotes auront été capturées.`
       : "Aucune recommandation ne correspond à ces filtres. Baisse l'edge minimum ou change de catégorie.";
+    if ($("uExpo")) $("uExpo").hidden = true;
     renderOverviewUpcoming(CURRENT_UPCOMING_ROWS, CURRENT_UPCOMING_VERDICTS);
     return;
   }
@@ -8927,6 +9079,7 @@ function renderBacktest() {
   // bruts calculés côté Python.
   const rowsFiltrees = btFiltered();
   const rowsReferenceComplete = btFiltered({referenceComplete: true});
+  try { renderFatigue(rowsFiltrees, rowsReferenceComplete); } catch (e) { console.error("Fatigue :", e); }
   const verdictsMenus = dcCategoryVerdicts(
     btFiltered({sansCategories: true}), CATEGORIES_DC
   );
@@ -12130,6 +12283,178 @@ const LIBRE_SITE_MVT = site => ({
   groupes: () => MVT_MAT_TRANCHES.map(t => ({k: t.k, label: `${t.label} pt`})).concat([{k: "nm", label: "Un seul relevé"}, {k: "nc", label: "Pas coté"}]),
   cle: r => mvtBkMesure(r, site).k,
 });
+// ---------------------------------------------------------------------------
+// Fatigue et calendrier (26/11/2026). Calendrier de chaque équipe reconstitué
+// à partir des matchs proposés par Winamax (WIZARD_DATA.bets + value_bets) :
+// clé = nom + genre (féminin/masculin, d'après la compétition) + pays (pour
+// une compétition internationale, le pays habituel de l'équipe). Donne, pour
+// un match, le repos de chaque équipe (jours depuis son match précédent), si
+// elle sort d'une coupe d'Europe et si elle rejoue bientôt en coupe d'Europe.
+// ---------------------------------------------------------------------------
+const CAL_EURO = /ligue des champions|ligue europa|europa league|conf[ée]rence|libertadores|sudamericana|champions league/i;
+const CAL_ZONE = /europe|monde|international|am[ée]rique|afrique|asie|oc[ée]anie|concacaf|uefa|fifa/i;
+const CAL_FEM = /f[ée]min|women|frauen|wsl|damen|liga f\b|\(f\)/i;
+let CAL_INDEX = null;
+function calGenre(ligue, equipe) { return CAL_FEM.test(String(ligue || "") + " " + String(equipe || "")) ? "F" : "M"; }
+function calConstruire() {
+  if (CAL_INDEX) return CAL_INDEX;
+  const D = (typeof WIZARD_DATA !== "undefined" && WIZARD_DATA) || {};
+  const matchs = new Map();
+  const prendre = x => { if (!x || !x.match || !x.date) return; const k = x.match + "|" + x.date; if (!matchs.has(k)) matchs.set(k, {match: x.match, date: String(x.date).slice(0, 10), pays: x.pays || "", ligue: x.ligue || ""}); };
+  (D.bets || []).forEach(prendre); (D.value_bets || []).forEach(prendre); (D.dc_backtest || []).forEach(prendre);
+  const paysDe = new Map();
+  const zone = p => !p || CAL_ZONE.test(p);
+  matchs.forEach(m => {
+    if (zone(m.pays)) return;
+    String(m.match).split(" - ").slice(0, 2).forEach(t => { const k = t + "|" + calGenre(m.ligue, t); const c = paysDe.get(k) || {}; c[m.pays] = (c[m.pays] || 0) + 1; paysDe.set(k, c); });
+  });
+  const paysHabituel = k => { const c = paysDe.get(k); if (!c) return null; return Object.keys(c).sort((a, b) => c[b] - c[a])[0]; };
+  const cal = new Map();
+  matchs.forEach(m => {
+    String(m.match).split(" - ").slice(0, 2).forEach(t => {
+      const g = calGenre(m.ligue, t), p = zone(m.pays) ? paysHabituel(t + "|" + g) : m.pays;
+      if (!p) return;
+      const k = t + "|" + g + "|" + p;
+      if (!cal.has(k)) cal.set(k, []);
+      cal.get(k).push({d: m.date, l: m.ligue, euro: CAL_EURO.test(m.ligue) && !CAL_FEM.test(m.ligue)});
+    });
+  });
+  cal.forEach(L => L.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+  const dates = [...matchs.values()].map(m => m.date).sort();
+  // Trêves internationales : jours avec au moins 8 matchs de sélections masculines (Ligue des Nations,
+  // qualifications, amicaux, Espoirs…), regroupés quand ils se suivent (2 jours d'écart au plus). Les
+  // joueurs y partent avec leur sélection : leur club ne le « voit » pas dans son propre calendrier.
+  const selParJour = {};
+  matchs.forEach(m => { if (calGenre(m.ligue, m.match) === "M" && typeof estSelectionNationale === "function" && estSelectionNationale(m.pays, m.ligue)) selParJour[m.date] = (selParJour[m.date] || 0) + 1; });
+  const treves = [];
+  Object.keys(selParJour).filter(d => selParJour[d] >= 8).sort().forEach(d => {
+    const t = treves[treves.length - 1];
+    if (t && calJours(t.fin, d) <= 2) { t.fin = d; t.n += selParJour[d]; } else treves.push({debut: d, fin: d, n: selParJour[d]});
+  });
+  CAL_INDEX = {cal, paysHabituel, zone, treves, debut: dates[0] || null, cache: new Map()};
+  return CAL_INDEX;
+}
+function calJours(a, b) { return Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5); }
+// Repos de l'équipe `t` avant son match du `date` (compétition `ligue`, pays `pays`)
+function calEquipe(t, date, ligue, pays) {
+  const I = calConstruire(), g = calGenre(ligue, t);
+  const p = I.zone(pays) ? I.paysHabituel(t + "|" + g) : pays;
+  const L = p && I.cal.get(t + "|" + g + "|" + p);
+  if (!L) return null;
+  let prev = null, next = null;
+  for (const m of L) { if (m.d < date) prev = m; else if (m.d > date) { next = m; break; } }
+  // retour de trêve : premier match du club dans les 5 jours qui suivent la fin d'une trêve internationale
+  const treve = I.treves.find(w => date > w.fin && calJours(w.fin, date) <= 5 && (!prev || prev.d < w.debut));
+  return {
+    retourTreve: !!treve, treve: treve || null,
+    repos: prev ? calJours(prev.d, date) : null, prec: prev,
+    suivant: next ? calJours(date, next.d) : null, proch: next,
+    sortEurope: !!(prev && prev.euro && calJours(prev.d, date) <= 4),
+    rejoueEurope: !!(next && next.euro && calJours(date, next.d) <= 4),
+  };
+}
+// Repos des deux équipes d'une ligne (pari, value bet ou match), mis en cache par match et date
+function calRepos(r0) {
+  const r = (r0 && r0.orig) || r0;
+  if (!r || !r.match || !r.date) return null;
+  const I = calConstruire(), date = String(r.date).slice(0, 10), k = r.match + "|" + date;
+  if (I.cache.has(k)) return I.cache.get(k);
+  const [h, a] = String(r.match).split(" - ");
+  const res = a ? {dom: calEquipe(h, date, r.ligue, r.pays), ext: calEquipe(a, date, r.ligue, r.pays)} : null;
+  if (res && typeof estSelectionNationale === "function" && estSelectionNationale(r.pays, r.ligue)) [res.dom, res.ext].forEach(x => { if (x) { x.retourTreve = false; x.treve = null; } });
+  I.cache.set(k, res);
+  return res;
+}
+const FA_REPOS = [[0, 3, "3 jours ou moins"], [4, 5, "4 à 5 jours"], [6, 8, "6 à 8 jours"], [9, 14, "9 à 14 jours"], [15, 9999, "15 jours ou plus"]];
+const FA_ECART = [[-99, -3, "ext. bien plus reposé (3 j et +)"], [-2, -1, "ext. un peu plus reposé"], [0, 0, "même repos"], [1, 2, "dom. un peu plus reposé"], [3, 99, "dom. bien plus reposé (3 j et +)"]];
+function faEcart(c) { return (c && c.dom && c.ext && c.dom.repos != null && c.ext.repos != null && c.dom.repos <= 30 && c.ext.repos <= 30) ? c.dom.repos - c.ext.repos : null; }
+function renderFatigue(rowsF, rowsRef) {
+  const zone = $("faModele");
+  if (!zone) return;
+  const I = calConstruire();
+  if ($("faDebut")) $("faDebut").textContent = I.debut ? fmtDateCourte(I.debut) : "—";
+  const pc = v => `${Math.round(v * 100)} %`;
+  const nf = (v, d = 0) => Number(v).toLocaleString("fr-FR", {maximumFractionDigits: d});
+  // A. buts réels ÷ prévus, par repos de l'équipe (tous les matchs joués du backtest, une fois chacun)
+  const M = new Map();
+  (WIZARD_DATA.dc_backtest || []).forEach(r => { const k = r.match + "|" + r.date; if (!M.has(k) && r.score_reel && r.lam_home != null && r.lam_away != null) M.set(k, r); });
+  const lignesA = FA_REPOS.map(([a, b, lib]) => ({lib, f: x => x && x.repos != null && x.repos >= a && x.repos <= b && x.repos <= 9999}))
+    .concat([{lib: "sort d'une coupe d'Europe (≤ 4 j)", f: x => x && x.sortEurope, sep: true}, {lib: "rejoue en coupe d'Europe sous 4 j", f: x => x && x.rejoueEurope},
+      {lib: "retour de trêve internationale (≤ 5 j)", f: x => x && x.retourTreve}]);
+  const acc = lignesA.map(() => ({n: 0, bm: 0, pm: 0, be: 0, pe: 0}));
+  let nMatchs = 0;
+  M.forEach(r => {
+    const m = /(\d+)\D+(\d+)/.exec(String(r.score_reel)); if (!m) return;
+    const c = calRepos(r); if (!c) return;
+    nMatchs++;
+    const gh = +m[1], ga = +m[2];
+    [[c.dom, gh, r.lam_home, ga, r.lam_away], [c.ext, ga, r.lam_away, gh, r.lam_home]].forEach(([x, bm, pm, be, pe]) => {
+      lignesA.forEach((L, i) => { if (L.f(x)) { const o = acc[i]; o.n++; o.bm += bm; o.pm += pm; o.be += be; o.pe += pe; } });
+    });
+  });
+  // Le modèle peut sous- ou surestimer les buts en général (niveau de base) : un effet de fatigue, c'est
+  // une ligne qui s'écarte de ce niveau de base, pas de 100 %. Test : (réels − prévus × base) / √(prévus × base).
+  const base = acc.slice(0, FA_REPOS.length).reduce((t, o) => ({bm: t.bm + o.bm, pm: t.pm + o.pm, be: t.be + o.be, pe: t.pe + o.pe}), {bm: 0, pm: 0, be: 0, pe: 0});
+  const baseM = base.pm ? base.bm / base.pm : 1, baseE = base.pe ? base.be / base.pe : 1;
+  const z = (b, p, k) => p > 0 ? (b - p * k) / Math.sqrt(p * k) : 0;
+  const barre = (ratio, cls, moy) => {
+    const d = Math.max(-0.4, Math.min(0.4, ratio - 1)), w = Math.abs(d) / 0.4 * 50, pm = 50 + Math.max(-0.4, Math.min(0.4, moy - 1)) / 0.4 * 50;
+    return `<span class="fa-b ${cls}"><i style="${d >= 0 ? "left:50%" : `left:${50 - w}%`};width:${w}%"></i><em style="left:${pm.toFixed(1)}%" title="moyenne de toutes les équipes"></em></span>`;
+  };
+  const signal = [];
+  zone.innerHTML = `<div class="fa-tab">` + lignesA.map((L, i) => {
+    const o = acc[i];
+    if (!o.n) return "";
+    const rm = o.pm ? o.bm / o.pm : 1, re = o.pe ? o.be / o.pe : 1, zm = z(o.bm, o.pm, baseM), ze = z(o.be, o.pe, baseE);
+    if (Math.abs(zm) >= 2.5) signal.push(`${L.lib} : <strong>${pc(rm)}</strong> des buts prévus marqués (moyenne ${pc(baseM)})`);
+    if (Math.abs(ze) >= 2.5) signal.push(`${L.lib} : <strong>${pc(re)}</strong> des buts prévus encaissés (moyenne ${pc(baseE)})`);
+    const fort = v => Math.abs(v) >= 2.5 ? " fa-fort" : "";
+    return `<div class="fa-r${L.sep ? " fa-sep" : ""}">
+      <div class="fa-lib">${L.lib}<small>${nf(o.n)} matchs-équipe</small></div>
+      <div class="fa-v"><div class="fa-ligne${fort(zm)}" title="Buts marqués : ${nf(o.bm)} réels pour ${nf(o.pm, 0)} prévus">${barre(rm, "fa-mq", baseM)}<b>${pc(rm)}</b></div>
+        <div class="fa-ligne${fort(ze)}" title="Buts encaissés : ${nf(o.be)} réels pour ${nf(o.pe, 0)} prévus">${barre(re, "fa-en", baseE)}<b>${pc(re)}</b></div></div>
+    </div>`;
+  }).join("") + `</div>`;
+  if ($("faTreves")) $("faTreves").textContent = I.treves.length ? I.treves.map(w => `du ${fmtDateCourte(w.debut).slice(0, 5)} au ${fmtDateCourte(w.fin)}`).join(", ") : "aucune repérée";
+  $("faModeleSous").textContent = `${nf(nMatchs)} matchs joués où le repos est connu. En moyenne, les équipes marquent ${pc(baseM)} des buts prévus : un effet de fatigue se lit dans l'écart d'une ligne à cette moyenne.`;
+  // B. tes paris selon l'écart de repos (+ référence : tous les value bets)
+  const grouper = rows => {
+    const g = FA_ECART.map(() => ({n: 0, w: 0, pm: 0, net: 0, mise: 0})), tot = {n: 0, w: 0, pm: 0, net: 0, mise: 0, inconnu: 0};
+    rows.forEach(r => {
+      const e = faEcart(calRepos(r));
+      if (e == null) { tot.inconnu++; return; }
+      const i = FA_ECART.findIndex(([a, b]) => e >= a && e <= b); if (i < 0) return;
+      const st = typeof btStakeFor === "function" ? btStakeFor(r) : 1, o = g[i];
+      o.n++; o.w += r.gagne ? 1 : 0; o.pm += r.p_model || 0; o.net += r.profit * st; o.mise += st;
+      tot.n++;
+    });
+    return {g, tot};
+  };
+  const F = grouper(rowsF), R = grouper(rowsRef);
+  const rp = o => o.mise ? o.net / o.mise : null;
+  $("faParisSous").textContent = `${nf(F.tot.n)} de tes ${nf(rowsF.length)} paris ont un repos connu pour les deux équipes. Entre parenthèses : tous les value bets du modèle, sans filtre.`;
+  $("faParis").innerHTML = `<table class="fa-t"><thead><tr><th>Écart de repos</th><th>Paris</th><th>Gagnés / prévus</th><th>ROI</th></tr></thead><tbody>` +
+    FA_ECART.map(([, , lib], i) => {
+      const o = F.g[i], q = R.g[i], r1 = rp(o), r2 = rp(q);
+      return `<tr><td>${lib}</td><td class="num">${o.n}</td><td class="num">${o.n ? `${o.w} / ${nf(o.pm, 1)}` : "—"}</td>
+        <td class="num"><strong class="${r1 == null ? "" : r1 >= 0 ? "pos" : "neg"}">${r1 == null ? "—" : blP(r1, 0)}</strong> <small class="muted">(${r2 == null ? "—" : blP(r2, 0)})</small></td></tr>`;
+    }).join("") + `</tbody></table>`;
+  // verdict
+  let v = `<strong>L'essentiel.</strong> `;
+  if (!signal.length) {
+    const rs = acc.slice(0, FA_REPOS.length).filter(o => o.pm > 30).map(o => o.bm / o.pm);
+    v += `Pas d'effet de fatigue mesurable pour l'instant : sur ${nf(nMatchs)} matchs, les buts marqués restent ${rs.length ? `entre ${pc(Math.min(...rs))} et ${pc(Math.max(...rs))}` : "proches"} des buts prévus quel que soit le repos, autour de la moyenne de ${pc(baseM)}. Le modèle n'a pas besoin de correction de fatigue à ce stade.`;
+  } else v += `Écart net avec le modèle, au-delà du hasard : ${signal.join(" ; ")}. Une correction de fatigue pourrait améliorer le modèle : à tester.`;
+  const meilleurs = FA_ECART.map((x, i) => ({lib: x[2], o: F.g[i]})).filter(x => x.o.n >= 25);
+  if (meilleurs.length >= 2) {
+    const tri = meilleurs.sort((a, b) => rp(b.o) - rp(a.o));
+    v += ` Tes paris : meilleur ROI quand <strong>${tri[0].lib}</strong> (${blP(rp(tri[0].o), 0)} sur ${tri[0].o.n} paris), plus faible quand <strong>${tri[tri.length - 1].lib}</strong> (${blP(rp(tri[tri.length - 1].o), 0)}) — sur si peu de paris, c'est encore surtout du hasard.`;
+  }
+  $("faVerdict").innerHTML = v.replace(/ (%|€)/g, " $1");
+  document.querySelectorAll('#page-dcv2 [data-dv-n="fatigue"]').forEach(x => { x.textContent = ""; });
+}
+function fmtDateCourte(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso; }
+
 const LIBRE_VARIABLES = {
   cat: {nom: "Type de pari", groupe: "Pari", groupes: () => MVT_MAT_COLONNES.cat.groupes, cle: r => r.categorie},
   issue: {nom: "Issue (Vainqueur)", groupe: "Pari",
@@ -12166,6 +12491,19 @@ const LIBRE_VARIABLES = {
     {k: "h4", lo: 50, hi: 100, label: "50 à 99"}, {k: "h5", lo: 100, hi: Infinity, label: "100 et +"}],
     r => (r.n_hist_dom == null || r.n_hist_ext == null) ? null : Math.min(r.n_hist_dom, r.n_hist_ext))),
   // 25/11/2026 : buts attendus du match et équilibre (λ du modèle Dixon-Coles)
+  // 26/11/2026 : fatigue et calendrier
+  reposDom: Object.assign({nom: "Repos de l'équipe à domicile", groupe: "Calendrier"}, libreTranches(
+    FA_REPOS.map(([a, b, lib], i) => ({k: "r" + i, lo: a, hi: b + 1, label: lib})), r => { const c = calRepos(r); return c && c.dom ? c.dom.repos : null; })),
+  reposExt: Object.assign({nom: "Repos de l'équipe à l'extérieur", groupe: "Calendrier"}, libreTranches(
+    FA_REPOS.map(([a, b, lib], i) => ({k: "r" + i, lo: a, hi: b + 1, label: lib})), r => { const c = calRepos(r); return c && c.ext ? c.ext.repos : null; })),
+  reposEcart: Object.assign({nom: "Écart de repos (dom. − ext.)", groupe: "Calendrier"}, libreTranches(
+    FA_ECART.map(([a, b, lib], i) => ({k: "e" + i, lo: a, hi: b + 1, label: lib})), r => faEcart(calRepos(r)))),
+  coupeEurope: {nom: "Coupe d'Europe autour du match", groupe: "Calendrier",
+    groupes: () => [{k: "aucune", label: "Aucune"}, {k: "avant", label: "Une équipe en sort (≤ 4 j)"}, {k: "apres", label: "Une équipe y rejoue sous 4 j"}, {k: "deux", label: "Avant et après"}],
+    cle: r => { const c = calRepos(r); if (!c || !c.dom || !c.ext) return null; const av = c.dom.sortEurope || c.ext.sortEurope, ap = c.dom.rejoueEurope || c.ext.rejoueEurope; return av && ap ? "deux" : av ? "avant" : ap ? "apres" : "aucune"; }},
+  treveInt: {nom: "Trêve internationale", groupe: "Calendrier",
+    groupes: () => [{k: "non", label: "Hors retour de trêve"}, {k: "oui", label: "Retour de trêve (≤ 5 j)"}],
+    cle: r => { const c = calRepos(r); if (!c || !c.dom || !c.ext) return null; return (c.dom.retourTreve || c.ext.retourTreve) ? "oui" : "non"; }},
   butsAtt: Object.assign({nom: "Buts attendus du match", groupe: "Modèle"}, libreTranches([
     {k: "b0", lo: -Infinity, hi: 2.2, label: "moins de 2,2"}, {k: "b1", lo: 2.2, hi: 2.6, label: "2,2 à 2,6"},
     {k: "b2", lo: 2.6, hi: 3, label: "2,6 à 3"}, {k: "b3", lo: 3, hi: 3.5, label: "3 à 3,5"},
@@ -18438,6 +18776,7 @@ const DV_SECTIONS = {
   calib: () => [$("btCalibWrap") && $("btCalibWrap").closest("details")], oos: () => [$("btOos") && $("btOos").closest("details")],
   gamme: () => [$("btCoteWrap") && $("btCoteWrap").closest("details")], nb: () => [$("btNbValid") && $("btNbValid").closest("details")],
   lect: () => [$("panelLecturesForces")],
+  fatigue: () => [$("btFatiguePanel")],
 };
 let DV_SEC = "synthese", DV_EMPRUNTES = [];
 try { DV_SEC = localStorage.getItem("ww_dv_sec") || "synthese"; } catch (e) { /* rien */ }
