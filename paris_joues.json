@@ -708,5 +708,16 @@
   "capture_iso": "2026-11-27T22:00:22.392490",
   "mise": 10,
   "maj": 1795813951458
+ },
+ "2026-11-28|Pohang Steelers - Gwangju FC|0 - 0": {
+  "cote": 9,
+  "cote_confirmee": false,
+  "site": "winamax",
+  "cote_capturee": 9,
+  "ts": "2026-11-27T22:12:34",
+  "kickoff": "2026-11-28T08:30:00",
+  "capture_iso": "2026-11-27T22:00:22.392490",
+  "mise": 10,
+  "maj": 1795813954711
  }
 }
