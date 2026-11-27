@@ -697,5 +697,16 @@
   "capture_iso": "2026-11-24T20:08:02.760094",
   "mise": 5,
   "maj": 1795548904677
+ },
+ "2026-11-28|FC Anyang - Jeju United|awayWin": {
+  "cote": 2.83,
+  "cote_confirmee": false,
+  "site": "betclic",
+  "cote_capturee": 2.83,
+  "ts": "2026-11-27T22:12:31",
+  "kickoff": "2026-11-28T06:00:00",
+  "capture_iso": "2026-11-27T22:00:22.392490",
+  "mise": 10,
+  "maj": 1795813951458
  }
 }
