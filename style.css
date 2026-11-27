@@ -2789,6 +2789,70 @@ details.panel-foldable[open] > summary::before {
 /* ---- Page Bilan des filtres (23/11/2026) ---- */
 .tab-nouveau { font: 700 .55rem var(--font-mono); letter-spacing: .04em; text-transform: uppercase; padding: .05rem .3rem; border-radius: 5px;
   background: rgba(244,192,103,.16); color: var(--gold); margin-left: .1rem; }
+/* Exposition par match et par journée (27/11/2026) */
+.up-expo .mg-verdict { margin: .8rem 0 0; }
+.expo-tw { margin-top: .9rem; }
+.expo-t { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.expo-t th { text-align: left; font-weight: 500; font-size: .72rem; color: var(--ink-faint); padding: .35rem .5rem; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.expo-t td { padding: .45rem .5rem; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+.expo-t .num { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.expo-t td.pos { color: var(--up); } .expo-t td.neg { color: var(--down); }
+.expo-t tr.expo-max td { background: rgba(244,192,103,.06); }
+.expo-tag { display: inline-block; margin-left: .35rem; padding: 0 .4rem; border-radius: 999px; font-size: .66rem; color: var(--gold); background: rgba(244,192,103,.12); }
+.expo-liens { margin-top: .9rem; }
+.expo-liens > summary { cursor: pointer; font: 600 .84rem var(--font-display); color: var(--ink); width: max-content; max-width: 100%; }
+.expo-m { padding: .6rem 0; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: .3rem; }
+.expo-m:first-of-type { margin-top: .4rem; }
+.expo-m-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .7rem; font-size: .82rem; }
+.expo-m-t span { font-size: .74rem; color: var(--ink-faint); }
+.expo-rel { padding: .05rem .45rem; border-radius: 999px; font-size: .68rem !important; font-weight: 600; }
+.expo-excl { color: var(--coral) !important; background: rgba(255,113,133,.12); }
+.expo-cumul { color: var(--lime) !important; background: rgba(55,217,155,.12); }
+.expo-m-p { display: flex; flex-wrap: wrap; gap: .3rem; }
+.expo-m-p span { font-size: .76rem; padding: .15rem .5rem; border-radius: 8px; background: rgba(10,16,26,.55); border: 1px solid var(--line-soft); color: var(--ink); }
+.expo-m-p small { color: var(--ink-faint); }
+.expo-m-c { display: flex; flex-wrap: wrap; gap: .2rem 1rem; font-size: .74rem; color: var(--ink-faint); }
+.expo-m-c strong { font-family: var(--font-mono); color: var(--ink); } .expo-m-c strong.pos { color: var(--up); }
+.expo-hist { margin: .9rem 0 0; font-size: .78rem; color: var(--ink-dim); line-height: 1.5; }
+.expo-hist:empty { display: none; }
+@media (max-width: 720px) { .expo-t th:nth-child(3), .expo-t td:nth-child(3), .expo-t th:nth-child(5), .expo-t td:nth-child(5) { display: none; } }
+/* Fatigue et calendrier (26/11/2026) */
+.fa-verdict { margin: 0 0 1rem; }
+.fa-grille { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1.4rem; }
+.fa-bloc h3 { margin: 0 0 .25rem; font: 700 .9rem var(--font-display); color: var(--ink); }
+.fa-sous { margin: 0 0 .6rem; font-size: .74rem; color: var(--ink-faint); }
+.fa-leg { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: .72rem; color: var(--ink-dim); margin-bottom: .4rem; }
+.fa-leg span { display: inline-flex; align-items: center; gap: .35rem; }
+.fa-leg i { width: 12px; height: 7px; border-radius: 3px; display: inline-block; }
+.fa-l-b { background: var(--lime); } .fa-l-e { background: var(--coral); }
+.fa-leg-100 { color: var(--ink-faint); }
+.fa-r { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: .8rem; align-items: center; padding: .45rem 0; border-top: 1px solid var(--line-soft); }
+.fa-r:first-child { border-top: 0; }
+.fa-sep { border-top: 1px dashed rgba(119,134,154,.35); margin-top: .2rem; }
+.fa-lib { font-size: .8rem; color: var(--ink); }
+.fa-lib small { display: block; font-size: .68rem; color: var(--ink-faint); }
+.fa-v { display: flex; flex-direction: column; gap: .3rem; }
+.fa-ligne { display: grid; grid-template-columns: minmax(0, 1fr) 3.2rem; gap: .5rem; align-items: center; }
+.fa-ligne b { font: 600 .76rem var(--font-mono); color: var(--ink-dim); text-align: right; }
+.fa-fort b { color: var(--gold); font-weight: 700; }
+.fa-b { position: relative; height: 8px; border-radius: 4px; background: rgba(119,134,154,.12); }
+.fa-b::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--ink-faint); }
+.fa-b i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.fa-b em { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--gold); opacity: .9; }
+.fa-leg .fa-l-m { width: 2px; height: 12px; background: var(--gold); }
+.fa-mq i { background: var(--lime); opacity: .8; } .fa-en i { background: var(--coral); opacity: .8; }
+.fa-fort .fa-b i { opacity: 1; box-shadow: 0 0 0 1px var(--gold); }
+.fa-t { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.fa-t th { text-align: left; font-weight: 500; font-size: .72rem; color: var(--ink-faint); padding: .3rem .4rem; border-bottom: 1px solid var(--line-soft); }
+.fa-t td { padding: .45rem .4rem; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+.fa-t td.num, .fa-t th:not(:first-child) { text-align: right; white-space: nowrap; }
+.fa-t td.num { font-family: var(--font-mono); }
+.fa-t strong.pos { color: var(--up); } .fa-t strong.neg { color: var(--down); }
+.fa-savoir { margin-top: 1rem; font-size: .8rem; color: var(--ink-dim); }
+.fa-savoir summary { cursor: pointer; color: var(--ink-faint); width: max-content; max-width: 100%; }
+.fa-savoir p { margin: .5rem 0 0; line-height: 1.55; max-width: 900px; }
+@media (max-width: 900px) { .fa-grille { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .fa-r { grid-template-columns: 1fr; gap: .3rem; } .fa-t th:nth-child(3), .fa-t td:nth-child(3) { display: none; } }
 /* Filtres actifs regroupés (26/11/2026) */
 .af2-puce { display: inline-flex; align-items: center; gap: .35rem; }
 .af2-puce i { width: 7px; height: 7px; border-radius: 50%; background: var(--ac, var(--cyan)); flex: none; }
