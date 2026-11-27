@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261127194521">
+<link rel="stylesheet" href="style.css?v=20261127220029">
 </head>
 <body>
 <div class="topbar">
@@ -1599,6 +1599,34 @@
       </div>
     </details>
 
+    <details class="panel panel-foldable" id="btFatiguePanel" open>
+      <summary class="panel-fold-summary"><h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12.5" rx="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M3 8.5h14M7 3v3M13 3v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M7.5 12.5h2M12 12.5h.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Fatigue et calendrier <span class="hint">— repos des équipes, coupes d'Europe en semaine</span></h2>
+      <span class="panel-fold-label" aria-hidden="true"></span>
+      <svg class="panel-fold-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="panel-fold-body">
+        <div class="mg-verdict fa-verdict" id="faVerdict"></div>
+        <div class="fa-grille">
+          <section class="fa-bloc">
+            <h3>Le modèle face à la fatigue</h3>
+            <p class="fa-sous" id="faModeleSous"></p>
+            <div class="fa-leg"><span><i class="fa-l-b"></i>buts marqués</span><span><i class="fa-l-e"></i>buts encaissés</span><span><i class="fa-l-m"></i>moyenne de toutes les équipes</span><span class="fa-leg-100">trait central = 100 % des buts prévus</span></div>
+            <div id="faModele"></div>
+          </section>
+          <section class="fa-bloc">
+            <h3>Tes paris selon l'écart de repos</h3>
+            <p class="fa-sous" id="faParisSous"></p>
+            <div id="faParis"></div>
+          </section>
+        </div>
+        <details class="fa-savoir"><summary>Comment c'est calculé, et les limites</summary>
+          <p>Le <strong>repos</strong> d'une équipe est le nombre de jours depuis son match précédent. Le calendrier est reconstitué à partir des matchs proposés par Winamax depuis le <span id="faDebut">—</span> (championnats, coupes, coupes d'Europe), équipe par équipe. Les équipes féminines et masculines du même nom sont séparées.</p>
+          <p><strong>Buts réels ÷ prévus</strong> : pour chaque match joué, les buts marqués et encaissés par l'équipe, divisés par ceux qu'attendait le modèle. Au-dessus de 100 %, le modèle sous-estime ; en dessous, il surestime. Un écart n'est signalé que s'il dépasse nettement le hasard (environ 2,5 écarts-types).</p>
+          <p><strong>Trêves internationales</strong> : les matchs des sélections sont dans les données, mais une sélection est une équipe à part — le calendrier d'un club ne montre pas que ses joueurs ont joué avec leur pays. Les trêves sont donc repérées à part (jours avec au moins 8 matchs de sélections masculines : <span id="faTreves">—</span>), et le premier match d'un club dans les 5 jours qui suivent est marqué « retour de trêve ». Le repos affiché pour ce match (souvent 2 semaines) ne compte pas les matchs joués en sélection.</p>
+          <p><strong>Limites</strong> : les matchs que Winamax ne propose pas (petites coupes) n'apparaissent pas, et l'on ne sait pas quels joueurs ont été appelés en sélection. Le premier match de chaque équipe dans l'historique n'a pas de repos connu.</p>
+        </details>
+      </div>
+    </details>
+
     <details class="panel-group" id="btAnalysesAvancees">
       <summary>
         <svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 6.5h13M3.5 10h13M3.5 13.5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -1884,6 +1912,7 @@
         <button type="button" class="dv-l" data-dv="gamme"><span>Gamme de cotes</span><small data-dv-n="gamme"></small></button>
         <button type="button" class="dv-l" data-dv="nb"><span>Binomiale négative</span><small data-dv-n="nb"></small></button>
         <button type="button" class="dv-l" data-dv="lect"><span>Lectures du modèle</span><small data-dv-n="lect"></small></button>
+        <button type="button" class="dv-l" data-dv="fatigue"><span>Fatigue et calendrier</span><small data-dv-n="fatigue"></small></button>
       </nav>
       <div class="dv-main" id="dvSlot"></div>
     </div>
@@ -2163,6 +2192,18 @@
       <p class="muted" id="uCotesNote" style="display:none; margin:.6rem 0 0; font-size:.82rem"></p>
     </div>
 
+    <div class="panel up-expo" id="uExpo" hidden>
+      <div class="pg-hero-t"><h2>Ton exposition</h2><p class="pg-hero-s">ce que tu risques jour par jour, paris d'un même match simulés ensemble</p></div>
+      <div class="mg-verdict" id="uExpoVerdict"></div>
+      <div class="pg-kpis" id="uExpoKpis"></div>
+      <div class="tablewrap expo-tw"><table class="expo-t" id="uExpoJours"></table></div>
+      <details class="expo-liens" id="uExpoLiensBloc"><summary id="uExpoLiensTitre"></summary><div id="uExpoLiens"></div></details>
+      <p class="expo-hist" id="uExpoHist"></p>
+      <details class="fa-savoir"><summary>Comment c'est calculé</summary>
+        <p>Pour chaque journée, 20 000 journées possibles sont tirées au sort. Dans chaque match, <strong>un seul score</strong> est tiré (selon les buts attendus du modèle) et tous tes paris sur ce match sont réglés avec ce même score : deux scores exacts du même match ne peuvent pas passer ensemble, un score exact 2-1 et une victoire à domicile passent ensemble. Les paris qu'un score ne suffit pas à régler sont tirés selon leur probabilité.</p>
+        <p><strong>Chances de finir en perte</strong> : part des journées tirées qui finissent sous zéro. <strong>Mauvais jour</strong> : le résultat d'une journée sur vingt, la pire. Les probabilités sont celles du modèle : s'il est trop optimiste, le risque réel est plus élevé.</p>
+      </details>
+    </div>
     <div id="cbkCtl" class="cbk-ctl" style="display:none">
       <span class="cbk-ctl-lbl">Cote affichée</span>
       <div class="cbk-seg" role="group" aria-label="Cote affichée sur les cartes">
@@ -3348,7 +3389,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261127194643", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261127194643", APP = "app.js?v=20261127194521";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261127220153", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261127220153", APP = "app.js?v=20261127220029";
   var bandeau = document.getElementById("chargementDonnees");
   var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
   var debut = Date.now(), progres = 8, cible = 30;
