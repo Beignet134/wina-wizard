@@ -2789,6 +2789,19 @@ details.panel-foldable[open] > summary::before {
 /* ---- Page Bilan des filtres (23/11/2026) ---- */
 .tab-nouveau { font: 700 .55rem var(--font-mono); letter-spacing: .04em; text-transform: uppercase; padding: .05rem .3rem; border-radius: 5px;
   background: rgba(244,192,103,.16); color: var(--gold); margin-left: .1rem; }
+/* Qualité des données (27/11/2026) */
+#page-retro .dq-masque { display: none !important; }
+.dq-hero .mg-verdict { margin: .8rem 0 0; }
+.dq-sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .6rem; margin-top: .9rem; }
+.dq-s { --ac: var(--up); padding: .65rem .85rem; border-radius: 12px; background: rgba(10,16,26,.5); border: 1px solid var(--line-soft); border-left: 3px solid var(--ac); min-width: 0; }
+.dq-moyen { --ac: var(--gold); } .dq-vieux { --ac: var(--down); } .dq-inconnu { --ac: var(--ink-faint); }
+.dq-s-t { display: flex; align-items: center; gap: .45rem; font-size: .8rem; color: var(--ink); }
+.dq-s-t i { width: 8px; height: 8px; border-radius: 50%; background: var(--ac); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 20%, transparent); }
+.dq-s-t span { flex: 1; min-width: 0; font-weight: 600; }
+.dq-s-t em { font-style: normal; font-size: .66rem; color: var(--ac); }
+.dq-s-v { margin-top: .3rem; font: 700 1.05rem var(--font-mono); color: var(--ink); }
+.dq-s-d { margin-top: .15rem; font-size: .7rem; color: var(--ink-faint); line-height: 1.4; }
+@media (max-width: 720px) { .dq-sources { grid-template-columns: 1fr 1fr; } }
 /* Exposition par match et par journée (27/11/2026) */
 .up-expo .mg-verdict { margin: .8rem 0 0; }
 .expo-tw { margin-top: .9rem; }
