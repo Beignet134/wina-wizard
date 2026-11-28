@@ -699,15 +699,15 @@
   "maj": 1795548904677
  },
  "2026-11-28|Aberdeen - Dundee FC|0 - 0": {
-  "cote": 12.5,
+  "cote": 12,
   "cote_confirmee": false,
-  "site": "unibet",
-  "cote_capturee": 12.5,
+  "site": "winamax",
+  "cote_capturee": 12,
   "ts": "2026-11-28T13:47:07",
   "kickoff": "2026-11-28T16:00:00",
   "capture_iso": "2026-11-28T10:54:03.191653",
   "mise": 10,
-  "maj": 1795870027494
+  "maj": 1795870029696
  },
  "2026-11-28|Carrarese - Juve Stabia|0 - 0": {
   "cote": 8.5,
