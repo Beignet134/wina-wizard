@@ -720,6 +720,17 @@
   "mise": 5,
   "maj": 1795814017977
  },
+ "2026-11-28|Komárno - Žilina|0 - 3": {
+  "cote": 20,
+  "cote_confirmee": false,
+  "site": "unibet",
+  "cote_capturee": 20,
+  "ts": "2026-11-28T13:46:24",
+  "kickoff": "2026-11-28T15:30:00",
+  "capture_iso": "2026-11-28T10:54:03.191653",
+  "mise": 10,
+  "maj": 1795869984776
+ },
  "2026-11-28|Pohang Steelers - Gwangju FC|0 - 0": {
   "cote": 9,
   "cote_confirmee": false,
