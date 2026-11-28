@@ -1900,6 +1900,7 @@ function activerOnglet(tab) {
   window.scrollTo({top:0, behavior:"instant"});
   if (typeof majNavMobile === "function") majNavMobile();
   if (typeof window.majMenuPrincipal === "function") window.majMenuPrincipal();
+  if (tab.dataset.page === "retro") { try { renderQualiteDonnees(); } catch (e) { console.error("Qualité des données :", e); } }
   try { pgSegmenter(); pgSegToutSync(); } catch (e) { console.error("segmentés :", e); }
   if (tab.dataset.page === "montecarlo" && typeof runMonteCarlo === "function") runMonteCarlo();
   if (tab.dataset.page === "overview" && typeof ov2Tout === "function") ov2Tout();
@@ -1944,12 +1945,12 @@ const MENU_GROUPES = [
     ["bilan", "Gain cumulé et solidité de tes filtres"],
     ["backtest", "Matrices et analyses détaillées sur les matchs passés"],
     ["dcv2", "La même chose rangée par sommaire, à comparer"],
-    ["retro", "Simulateur de mise sur les matchs déjà joués"],
     ["montecarlo", "Entre quoi et quoi peut finir ta bankroll"]]},
   {id: "modele", titre: "Modèle et marché", pages: [
     ["dc", "Probabilités du modèle et value bets du moment"],
     ["teams", "Niveau, forme, tirs cadrés et prochain match de chaque équipe"],
-    ["bookmakers", "Ce que coûte chaque pari, et qui le paie le mieux"]]},
+    ["bookmakers", "Ce que coûte chaque pari, et qui le paie le mieux"],
+    ["retro", "Fraîcheur des sources et matchs rapprochés"]]},
 ];
 const MENU_DIRECTS = ["overview", "upcoming", "bankroll"];
 (function initMenuPrincipal() {
@@ -4473,6 +4474,67 @@ function renderExposition(rows, mises, bankroll) {
   if (bankroll && pctB(grosse.mise) > 0.25) v += ` <strong>Attention</strong> : plus d'un quart de ta bankroll de départ engagé le même jour.`;
   if (liees.length) v += ` ${liees.length} match${liees.length > 1 ? "s portent" : " porte"} plusieurs de tes paris${excl ? ` — sur ${excl === liees.length ? (liees.length > 1 ? "tous" : "celui-ci") : excl}, un seul pari peut passer : ces mises ne se diversifient pas, elles se partagent l'issue` : ""}.`;
   $("uExpoVerdict").innerHTML = v;
+}
+// ---------------------------------------------------------------------------
+// Qualité des données (27/11/2026) : fraîcheur de chaque source, lue dans les
+// données publiées. Seuils : relevés de cotes et génération du site ≤ 6 h vert,
+// ≤ 24 h orange ; résultats et tirs (API-Football) jugés au jour près.
+// ---------------------------------------------------------------------------
+function dqParse(x) {
+  if (!x) return null;
+  const s = String(x), m = /^(\d{2})\/(\d{2})\/(\d{4})\D+(\d{1,2}):(\d{2})/.exec(s);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]);
+  const d = new Date(/T|\s\d/.test(s) ? s.replace(" ", "T") : s + "T12:00:00");
+  return isNaN(d) ? null : d;
+}
+function dqAge(d) {
+  if (!d) return "—";
+  const h = (Date.now() - d.getTime()) / 36e5;
+  if (h < 1) return `il y a ${Math.max(1, Math.round(h * 60))} min`;
+  if (h < 48) return `il y a ${Math.round(h)} h`;
+  return `il y a ${Math.round(h / 24)} jours`;
+}
+function dqEtat(d, okH, moyenH) { if (!d) return "inconnu"; const h = (Date.now() - d.getTime()) / 36e5; return h <= okH ? "ok" : h <= moyenH ? "moyen" : "vieux"; }
+function dqDate(d) { return d ? d.toLocaleString("fr-FR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}).replace(" ", " à ") : "—"; }
+function renderQualiteDonnees() {
+  const z = $("dqSources");
+  if (!z || typeof WIZARD_DATA === "undefined") return;
+  const D = WIZARD_DATA, nf = v => Number(v || 0).toLocaleString("fr-FR");
+  const S = [];
+  const gen = dqParse(D.generated);
+  S.push({nom: "Site généré", d: gen, etat: dqEtat(gen, 6, 24), detail: `dernière publication · ${dqDate(gen)}`});
+  const rel = (typeof UPCOMING !== "undefined" ? UPCOMING : []).map(v => v.releve).filter(Boolean).sort().pop();
+  const dW = dqParse(rel);
+  S.push({nom: "Cotes Winamax", d: dW, etat: dqEtat(dW, 6, 24), detail: `${nf(D.meta && D.meta.n_odds_files)} fichiers de relevés · dernier ${dqDate(dW)}`});
+  const sites = (D.comparaison_bk && D.comparaison_bk.sites) || {};
+  Object.keys(sites).forEach(k => { const x = sites[k], d = dqParse(x.dernier);
+    S.push({nom: x.nom || k, d, etat: dqEtat(d, 6, 24), detail: `${nf(x.fichiers)} relevés · ${nf(x.apparies)} matchs appariés sur ${nf(x.matchs)}`}); });
+  const derRes = (D.dc_backtest || []).filter(r => r.score_reel).map(r => String(r.date).slice(0, 10)).sort().pop();
+  const dR = dqParse(derRes);
+  S.push({nom: "Résultats", d: dR, etat: dqEtat(dR, 60, 108), age: derRes ? `matchs du ${fmtDateCourte(derRes).slice(0, 5)}` : "—", detail: `${nf(D.meta && D.meta.n_results_files)} fichiers de résultats · derniers matchs rapprochés`});
+  const sc = D.shots_coverage, finTirs = sc && sc.periode ? sc.periode[1] : null, dT = dqParse(finTirs);
+  const avecPred = (typeof UPCOMING !== "undefined" ? UPCOMING : []).filter(v => v.prediction).length, nUp = (typeof UPCOMING !== "undefined" ? UPCOMING.length : 0);
+  if (sc) S.push({nom: "API-Football", d: dT, etat: dqEtat(dT, 84, 180), age: finTirs ? `tirs au ${fmtDateCourte(finTirs).slice(0, 5)}` : "—",
+    detail: `tirs cadrés de ${nf(sc.n_matchs)} matchs${nUp ? ` · prévisions sur ${Math.round(avecPred / nUp * 100)} % des paris à venir` : ""}`});
+  let TR = null; try { TR = tauxRapprochement(); } catch (e) { /* rien */ }
+  if (TR && TR.pct != null) S.push({nom: "Rapprochement", d: null, etat: TR.pct >= 0.97 ? "ok" : TR.pct >= 0.92 ? "moyen" : "vieux", age: `${(Math.round(TR.pct * 1000) / 10).toLocaleString("fr-FR")} %`, detail: `${nf(TR.matched)} sur ${nf(TR.joues)} matchs joués retrouvés dans les résultats`});
+  const ETIQ = {ok: "à jour", moyen: "en retard", vieux: "très en retard", inconnu: "inconnu"};
+  z.innerHTML = S.map(x => `<div class="dq-s dq-${x.etat}"><div class="dq-s-t"><i aria-hidden="true"></i><span>${x.nom}</span><em>${ETIQ[x.etat]}</em></div>
+    <div class="dq-s-v">${x.age || dqAge(x.d)}</div><div class="dq-s-d">${x.detail}</div></div>`).join("");
+  $("dqMaintenant").textContent = `vérifié le ${new Date().toLocaleString("fr-FR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}).replace(" ", " à ")}`;
+  const ko = S.filter(x => x.etat === "vieux" || x.etat === "moyen");
+  let v = "<strong>L'essentiel.</strong> ";
+  if (!ko.length) v += "Toutes les sources sont à jour et les matchs joués sont bien retrouvés dans les résultats.";
+  else if (gen && dqEtat(gen, 6, 24) !== "ok") {
+    // site ancien : toutes les sources le paraissent aussi, inutile de les énumérer
+    v += `Le site n'a pas été republié depuis <strong>${dqAge(gen).replace("il y a ", "")}</strong> : la chaîne du PC ne tourne peut-être plus (PC éteint, ou erreur dans le lanceur). Toutes les sources paraissent donc en retard.`;
+    const rp = ko.find(x => x.nom === "Rapprochement");
+    if (rp) v += ` À part : seuls <strong>${rp.age}</strong> des matchs joués sont retrouvés dans les résultats (détail plus bas).`;
+  } else {
+    v += `${ko.length === 1 ? "Une source demande" : `${ko.length} sources demandent`} ton attention : ${ko.map(x => `<strong>${x.nom}</strong> (${x.age || dqAge(x.d)})`).join(", ")}.`;
+    if (ko.some(x => x.etat === "vieux" && x.nom !== "Rapprochement")) v += " Le site est récent mais cette source est ancienne : c'est son collecteur qui échoue, regarde le journal de la chaîne.";
+  }
+  $("dqVerdict").innerHTML = v;
 }
 function renderUpcoming() {
   if (REINIT_FILTRES_EN_COURS) return;
@@ -17581,8 +17643,8 @@ const MOB_SVG = {
   plus: '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="4.5" cy="10" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="15.5" cy="10" r="1.5" fill="currentColor"/></svg>'
 };
 /* Onglets épinglés dans la barre basse (les autres sont dans la feuille « Plus »). */
-const MOB_NAV_PRINCIPAUX = ["overview", "upcoming", "bankroll", "retro"];
-const MOB_NAV_LIBELLES = {overview: "Ensemble", upcoming: "À venir", bankroll: "Bankroll", retro: "Rétro"};
+const MOB_NAV_PRINCIPAUX = ["overview", "upcoming", "bankroll", "bilan"];
+const MOB_NAV_LIBELLES = {overview: "Ensemble", upcoming: "À venir", bankroll: "Bankroll", bilan: "Bilan", retro: "Données"};
 
 /* Panneaux dont les réglages se replient. ref = id d'un champ du panneau (ou id du
    panneau lui-même) ; cibles = ce qui se replie (sélecteurs relatifs au panneau) ;
