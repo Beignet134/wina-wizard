@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261128105409">
+<link rel="stylesheet" href="style.css?v=20261128135051">
 </head>
 <body>
 <div class="topbar">
@@ -1614,13 +1614,13 @@
         <div class="mg-verdict fa-verdict" id="faVerdict"></div>
         <div class="fa-grille">
           <section class="fa-bloc">
-            <h3>Le modèle face à la fatigue</h3>
+            <h3>Le modèle face à la fatigue <button type="button" class="fx-i" data-fx-aide="Pour chaque match joué, les buts marqués et encaissés par chaque équipe divisés par ceux qu&#x27;attendait le modèle, selon son repos. Le trait jaune est la moyenne de toutes les équipes : un effet de fatigue se lit dans l&#x27;écart d&#x27;une ligne à ce trait, pas à 100 %. Une valeur en or s&#x27;écarte de la moyenne plus que le hasard ne l&#x27;explique." aria-label="Explication">i</button></h3>
             <p class="fa-sous" id="faModeleSous"></p>
             <div class="fa-leg"><span><i class="fa-l-b"></i>buts marqués</span><span><i class="fa-l-e"></i>buts encaissés</span><span><i class="fa-l-m"></i>moyenne de toutes les équipes</span><span class="fa-leg-100">trait central = 100 % des buts prévus</span></div>
             <div id="faModele"></div>
           </section>
           <section class="fa-bloc">
-            <h3>Tes paris selon l'écart de repos</h3>
+            <h3>Tes paris selon l'écart de repos <button type="button" class="fx-i" data-fx-aide="Écart de repos = jours de repos de l&#x27;équipe à domicile moins ceux de l&#x27;équipe à l&#x27;extérieur. Gagnés / prévus : paris gagnés contre la somme des probabilités du modèle. Entre parenthèses : le ROI de tous les value bets du modèle, sans tes filtres, pour voir si l&#x27;effet tient sur beaucoup plus de paris." aria-label="Explication">i</button></h3>
             <p class="fa-sous" id="faParisSous"></p>
             <div id="faParis"></div>
           </section>
@@ -1822,12 +1822,12 @@
       </div>
       <div class="bl-gros-corps">
         <div class="bl-gros-g">
-          <h3>Ton gain si on retire tes plus gros gains</h3>
+          <h3>Ton gain si on retire tes plus gros gains <button type="button" class="fx-i" data-fx-aide="Ton gain net si l&#x27;on enlève ton plus gros gain, puis les deux plus gros, etc. Le point rouge marque le moment où il passe sous zéro : c&#x27;est le nombre de paris sur lesquels repose tout ton bénéfice." aria-label="Explication">i</button></h3>
           <div class="bl-chart" id="blGrosChart"></div>
           <div class="bl-gros-top" id="blGrosTop"></div>
         </div>
         <div class="bl-gros-d">
-          <h3>Paris gagnés et paris prévus, par cote</h3>
+          <h3>Paris gagnés et paris prévus, par cote <button type="button" class="fx-i" data-fx-aide="Barre : paris gagnés. Repère violet : paris que le modèle prévoyait de gagner (somme de ses probabilités). Pointillé : ce que prévoyait le marché (cotes sans marge). « Au-dessus des prévisions » = tu as gagné nettement plus que prévu : une partie de ce gain vient de la chance." aria-label="Explication">i</button></h3>
           <div class="bl-gros-leg"><span><i class="g-reel"></i>gagnés</span><span><i class="g-mod"></i>prévus par le modèle</span><span><i class="g-mar"></i>prévus par le marché</span></div>
           <div id="blGrosBandes"></div>
           <p class="bl-note" id="blGrosNote"></p>
@@ -2026,7 +2026,7 @@
 
       <p class="muted mc-contexte">
         Départ <strong id="mcDepartAff">—</strong> · <strong id="mcNbParis">—</strong> paris sur
-        <strong id="mcNbJoursHist">—</strong> jours, ceux qui passent les filtres de « DC rétrospectif »
+        <strong id="mcNbJoursHist">—</strong>, ceux qui passent les filtres de « DC rétrospectif »
         (change-les là-bas pour simuler une autre sélection). <span id="mcHorizonAff"></span>
       </p>
       <div class="mc-run-row">
@@ -2074,11 +2074,14 @@
         <h2>Répartition des gains finaux <span class="hint">— une stratégie par graphique</span></h2>
         <div id="mcHistGrid" class="mc-hist-grid"></div>
         <details class="mc-mini-aide">
-          <summary>Pourquoi chaque graphique a sa propre échelle ?</summary>
-          <p>Une stratégie qui compose peut produire quelques simulations extrêmes, très au-dessus des autres : avec une
-          échelle commune, elles écraseraient toutes les barres. Chaque graphique est donc cadré sur les résultats de sa
-          propre stratégie (du 1ᵉʳ au 99ᵉ percentile) ; le nombre de simulations hors cadre est indiqué dessous. Pour
-          comparer les stratégies entre elles, regarde le résumé en haut.</p>
+          <summary>Comment lire ces graphiques ?</summary>
+          <p>Chaque barre compte les simulations qui finissent avec ce gain : en rouge les pertes, dans la couleur de la
+          stratégie les gains. Le trait plein marque la <strong>médiane</strong> (une simulation sur deux fait mieux), le
+          pointillé le zéro. La colonne hachurée « ruine », à gauche, compte les simulations où la bankroll est tombée à
+          zéro : elle a sa propre colonne pour ne pas écraser les autres barres (une flèche ↑ signale qu'elle dépasse le cadre).</p>
+          <p>Chaque graphique a sa propre échelle, cadrée du 1ᵉʳ au 99ᵉ percentile de sa stratégie : une stratégie qui
+          compose produit quelques simulations extrêmes qui écraseraient toutes les barres. Les simulations hors cadre
+          sont indiquées dessous. Pour comparer les stratégies entre elles, regarde le résumé en haut.</p>
         </details>
       </div>
 
@@ -3396,7 +3399,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261128105436", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261128105436", APP = "app.js?v=20261128105409";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261128135109", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261128135109", APP = "app.js?v=20261128135051";
   var bandeau = document.getElementById("chargementDonnees");
   var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
   var debut = Date.now(), progres = 8, cible = 30;
