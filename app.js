@@ -4432,13 +4432,13 @@ function renderExposition(rows, mises, bankroll) {
   const pctB = v => bankroll ? v / bankroll : null;
   // tuiles
   pgKpis($("uExpoKpis"), [
-    {k: "Plus grosse journée", v: eurS(grosse.mise), s: `${upNomJour(grosse.j)} · ${grosse.nb} paris sur ${grosse.matchs.length} matchs${bankroll ? ` · ${pc(pctB(grosse.mise))} de ta bankroll de départ` : ""}`},
-    {k: "Chances de la finir en perte", v: pc(grosse.sim.pPerte), s: `d'après le modèle · tout perdre : ${pc(grosse.sim.pToutPerdu)}`, cls: grosse.sim.pPerte > 0.6 ? "neg" : ""},
-    {k: "Mauvais jour (1 sur 20)", v: eur(grosse.sim.q05), s: `pire cas : ${eur(-grosse.mise)}`, cls: "neg"},
-    {k: "Matchs à plusieurs paris", v: String(liees.length), s: liees.length ? `${excl} où un seul pari peut passer` : "aucun pari lié"},
+    {k: "Plus grosse journée", aide: "La journée à venir où tu mises le plus, avec la mise conseillée par la page (fixe ou Kelly). La part de bankroll se calcule sur la bankroll de départ réglée dans la page Bankroll.", v: eurS(grosse.mise), s: `${upNomJour(grosse.j)} · ${grosse.nb} paris sur ${grosse.matchs.length} matchs${bankroll ? ` · ${pc(pctB(grosse.mise))} de ta bankroll de départ` : ""}`},
+    {k: "Chances de la finir en perte", aide: "Sur 20 000 journées tirées au sort avec les probabilités du modèle (un seul score par match, tous tes paris du match réglés avec), la part qui finit sous zéro. Avec des grosses cotes, c'est souvent plus d'une sur deux même quand la journée rapporte en moyenne.", v: pc(grosse.sim.pPerte), s: `d'après le modèle · tout perdre : ${pc(grosse.sim.pToutPerdu)}`, cls: grosse.sim.pPerte > 0.6 ? "neg" : ""},
+    {k: "Mauvais jour (1 sur 20)", aide: "Le résultat de la journée qui fait moins bien que 95 % des journées tirées au sort : une journée sur vingt finit au moins aussi mal. Le pire cas, c'est tous les paris perdus.", v: eur(grosse.sim.q05), s: `pire cas : ${eur(-grosse.mise)}`, cls: "neg"},
+    {k: "Matchs à plusieurs paris", aide: "Matchs sur lesquels tu as plus d'un pari. Deux scores exacts du même match ne peuvent pas passer ensemble : ces mises se partagent l'issue au lieu de se diversifier.", v: String(liees.length), s: liees.length ? `${excl} où un seul pari peut passer` : "aucun pari lié"},
   ]);
   // tableau par jour
-  $("uExpoJours").innerHTML = `<thead><tr><th>Jour</th><th class="num">Paris</th><th class="num">Matchs</th><th class="num">Mise</th>${bankroll ? '<th class="num">Bankroll</th>' : ""}<th class="num">Gain espéré</th><th class="num">En perte</th><th class="num">Mauvais jour</th></tr></thead><tbody>`
+  $("uExpoJours").innerHTML = `<thead><tr><th>Jour</th><th class="num">Paris</th><th class="num">Matchs</th><th class="num">Mise</th>${bankroll ? `<th class="num">Bankroll ${infoBulle("Part de ta bankroll de départ (page Bankroll) engagée ce jour-là.")}</th>` : ""}<th class="num">Gain espéré ${infoBulle("Moyenne des 20 000 journées tirées au sort, avec les probabilités du modèle. S'il est trop optimiste, le gain réel sera plus faible.")}</th><th class="num">En perte ${infoBulle("Chances de finir la journée sous zéro.")}</th><th class="num">Mauvais jour ${infoBulle("Une journée sur vingt finit au moins aussi mal.")}</th></tr></thead><tbody>`
     + lignes.map(l => `<tr${l === grosse ? ' class="expo-max"' : ""}><td>${upNomJour(l.j)}${l.liees.length ? ` <span class="expo-tag" title="${l.liees.length} match(s) avec plusieurs paris">${l.liees.length} lié${l.liees.length > 1 ? "s" : ""}</span>` : ""}</td>
       <td class="num">${l.nb}</td><td class="num">${l.matchs.length}</td><td class="num">${eurS(l.mise)}</td>${bankroll ? `<td class="num">${pc(pctB(l.mise))}</td>` : ""}
       <td class="num ${l.sim.moy >= 0 ? "pos" : "neg"}">${eur(l.sim.moy)}</td><td class="num">${pc(l.sim.pPerte)}</td><td class="num neg">${eur(l.sim.q05)}</td></tr>`).join("") + "</tbody>";
@@ -4502,24 +4502,24 @@ function renderQualiteDonnees() {
   const D = WIZARD_DATA, nf = v => Number(v || 0).toLocaleString("fr-FR");
   const S = [];
   const gen = dqParse(D.generated);
-  S.push({nom: "Site généré", d: gen, etat: dqEtat(gen, 6, 24), detail: `dernière publication · ${dqDate(gen)}`});
+  S.push({nom: "Site généré", aide: "Heure de la dernière publication du site par la chaîne du PC (étape tableau de bord). Si elle date, la chaîne ne tourne plus : PC éteint ou en veille, ou erreur dans le lanceur. À jour : moins de 6 h ; en retard : moins de 24 h.", d: gen, etat: dqEtat(gen, 6, 24), detail: `dernière publication · ${dqDate(gen)}`});
   const rel = (typeof UPCOMING !== "undefined" ? UPCOMING : []).map(v => v.releve).filter(Boolean).sort().pop();
   const dW = dqParse(rel);
-  S.push({nom: "Cotes Winamax", d: dW, etat: dqEtat(dW, 6, 24), detail: `${nf(D.meta && D.meta.n_odds_files)} fichiers de relevés · dernier ${dqDate(dW)}`});
+  S.push({nom: "Cotes Winamax", aide: "Dernier relevé de cotes Winamax utilisé pour les paris à venir (wina_get_exact_score.py). Les alertes et la page Paris à venir partent de ce relevé. À jour : moins de 6 h.", d: dW, etat: dqEtat(dW, 6, 24), detail: `${nf(D.meta && D.meta.n_odds_files)} fichiers de relevés · dernier ${dqDate(dW)}`});
   const sites = (D.comparaison_bk && D.comparaison_bk.sites) || {};
   Object.keys(sites).forEach(k => { const x = sites[k], d = dqParse(x.dernier);
-    S.push({nom: x.nom || k, d, etat: dqEtat(d, 6, 24), detail: `${nf(x.fichiers)} relevés · ${nf(x.apparies)} matchs appariés sur ${nf(x.matchs)}`}); });
+    S.push({nom: x.nom || k, aide: `Dernier relevé ${x.nom || k} (maj_autres_bookmakers.py). Sert à la page Prix et bookmakers et au repère « mieux payé ailleurs ». Matchs appariés : retrouvés à la fois chez Winamax et sur ce site. Un site bloqué est mis en pause 24 à 48 h par la chaîne.`, d, etat: dqEtat(d, 6, 24), detail: `${nf(x.fichiers)} relevés · ${nf(x.apparies)} matchs appariés sur ${nf(x.matchs)}`}); });
   const derRes = (D.dc_backtest || []).filter(r => r.score_reel).map(r => String(r.date).slice(0, 10)).sort().pop();
   const dR = dqParse(derRes);
-  S.push({nom: "Résultats", d: dR, etat: dqEtat(dR, 60, 108), age: derRes ? `matchs du ${fmtDateCourte(derRes).slice(0, 5)}` : "—", detail: `${nf(D.meta && D.meta.n_results_files)} fichiers de résultats · derniers matchs rapprochés`});
+  S.push({nom: "Résultats", aide: "Date des derniers matchs dont le résultat a été retrouvé (histo_score_matches.py, résultats de la veille). Sans résultat, un pari ne compte dans aucune analyse. À jour : matchs d'il y a 2 jours ou moins.", d: dR, etat: dqEtat(dR, 60, 108), age: derRes ? `matchs du ${fmtDateCourte(derRes).slice(0, 5)}` : "—", detail: `${nf(D.meta && D.meta.n_results_files)} fichiers de résultats · derniers matchs rapprochés`});
   const sc = D.shots_coverage, finTirs = sc && sc.periode ? sc.periode[1] : null, dT = dqParse(finTirs);
   const avecPred = (typeof UPCOMING !== "undefined" ? UPCOMING : []).filter(v => v.prediction).length, nUp = (typeof UPCOMING !== "undefined" ? UPCOMING.length : 0);
-  if (sc) S.push({nom: "API-Football", d: dT, etat: dqEtat(dT, 84, 180), age: finTirs ? `tirs au ${fmtDateCourte(finTirs).slice(0, 5)}` : "—",
+  if (sc) S.push({nom: "API-Football", aide: "Date des derniers tirs cadrés reçus d'API-Football (api_football_collect.py), et part des paris à venir qui ont une prévision de l'API. Sert aux absences, aux tirs cadrés et aux prévisions.", d: dT, etat: dqEtat(dT, 84, 180), age: finTirs ? `tirs au ${fmtDateCourte(finTirs).slice(0, 5)}` : "—",
     detail: `tirs cadrés de ${nf(sc.n_matchs)} matchs${nUp ? ` · prévisions sur ${Math.round(avecPred / nUp * 100)} % des paris à venir` : ""}`});
   let TR = null; try { TR = tauxRapprochement(); } catch (e) { /* rien */ }
-  if (TR && TR.pct != null) S.push({nom: "Rapprochement", d: null, etat: TR.pct >= 0.97 ? "ok" : TR.pct >= 0.92 ? "moyen" : "vieux", age: `${(Math.round(TR.pct * 1000) / 10).toLocaleString("fr-FR")} %`, detail: `${nf(TR.matched)} sur ${nf(TR.joues)} matchs joués retrouvés dans les résultats`});
+  if (TR && TR.pct != null) S.push({nom: "Rapprochement", aide: "Part des matchs déjà joués dont la cote a été retrouvée dans les résultats. Un match non rapproché disparaît de toutes les analyses : le détail et les corrections possibles sont plus bas. À jour : 97 % ou plus.", d: null, etat: TR.pct >= 0.97 ? "ok" : TR.pct >= 0.92 ? "moyen" : "vieux", age: `${(Math.round(TR.pct * 1000) / 10).toLocaleString("fr-FR")} %`, detail: `${nf(TR.matched)} sur ${nf(TR.joues)} matchs joués retrouvés dans les résultats`});
   const ETIQ = {ok: "à jour", moyen: "en retard", vieux: "très en retard", inconnu: "inconnu"};
-  z.innerHTML = S.map(x => `<div class="dq-s dq-${x.etat}"><div class="dq-s-t"><i aria-hidden="true"></i><span>${x.nom}</span><em>${ETIQ[x.etat]}</em></div>
+  z.innerHTML = S.map(x => `<div class="dq-s dq-${x.etat}"><div class="dq-s-t"><i aria-hidden="true"></i><span>${x.nom} ${x.aide ? infoBulle(x.aide) : ""}</span><em>${ETIQ[x.etat]}</em></div>
     <div class="dq-s-v">${x.age || dqAge(x.d)}</div><div class="dq-s-d">${x.detail}</div></div>`).join("");
   $("dqMaintenant").textContent = `vérifié le ${new Date().toLocaleString("fr-FR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}).replace(" ", " à ")}`;
   const ko = S.filter(x => x.etat === "vieux" || x.etat === "moyen");
@@ -14681,10 +14681,15 @@ function mgParisFiltres() {
 // bande de chiffres clés), sur le modèle de la page Bankroll.
 // pgKpis(zone, [{k, v, s, cls}]) : la première case est la case principale.
 // ---------------------------------------------------------------------------
+// Bouton « i » d'explication (info-bulle commune .fx-i / data-fx-aide), utilisable partout (28/11/2026).
+function infoBulle(texte) {
+  const t = String(texte || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return `<button type="button" class="fx-i" data-fx-aide="${t}" aria-label="Explication">i</button>`;
+}
 function pgKpis(zone, cases) {
   if (!zone) return;
   zone.style.setProperty("--pg-n", Math.max(1, cases.length - 1));
-  zone.innerHTML = cases.map(c => `<div class="pg-k"><div class="k">${c.k}</div><div class="v ${c.cls || ""}">${c.v}</div>${c.s ? `<div class="s">${c.s}</div>` : ""}</div>`).join("");
+  zone.innerHTML = cases.map(c => `<div class="pg-k"><div class="k">${c.k}${c.aide ? " " + infoBulle(c.aide) : ""}</div><div class="v ${c.cls || ""}">${c.v}</div>${c.s ? `<div class="s">${c.s}</div>` : ""}</div>`).join("");
   zone.hidden = !cases.length;
 }
 function renderMarges() {
@@ -16562,6 +16567,72 @@ function cmpMediane(arr) {
 
 // rowsRetroFiltre : lignes déjà filtrées par la page DC rétrospectif, si l'appelant
 // les a sous la main (renderBacktest) ; sinon on les recalcule.
+// ---------------------------------------------------------------------------
+// Paris du rétrospectif jamais joués : pourquoi ? (28/11/2026). Lit le journal
+// des alertes publié par la chaîne (WIZARD_DATA.alertes_journal) : pour chaque
+// passage, le relevé Winamax, l'heure d'envoi, et le sort de chaque pari dont
+// le match approchait (annoncé, ou premier critère qui échouait).
+// ---------------------------------------------------------------------------
+const JA_TEXTES = {
+  autre_pari: "un autre pari du même match a été annoncé à sa place",
+  plafond: "plafond de 12 alertes par passage atteint",
+  nuit: "match pendant les heures de sommeil (ancien réglage)",
+  echec: "notification en échec (ntfy)",
+  releve_vieux: "relevé Winamax de plus de 2 h au moment de l'envoi : chaîne trop longue",
+  historique: "moins de 30 matchs d'historique à ce moment-là",
+  releves: "un seul relevé de cote au dernier passage",
+  mouvement: "au dernier passage avant le match, la cote avait bougé",
+  forces: "attaque ou défense hors bornes au dernier passage",
+  selection: "sélection nationale",
+  lecture: "absent de la lecture du modèle utilisée par les alertes",
+  donnees: "données incomplètes au dernier passage",
+  edge: "edge sous le minimum au dernier passage",
+  esperance: "espérance trop faible au dernier passage",
+  esperance_max: "espérance au-dessus du maximum au dernier passage",
+  rang: "un autre site payait mieux",
+  categorie: "catégorie non suivie par les alertes",
+  ok: "passait les filtres",
+};
+const JA_GROUPES = [
+  ["alerte", "Annoncés, pas joués", "Tu as reçu l'alerte : ce sont les vrais paris loupés."],
+  ["chaine", "Match commencé pendant la chaîne", "Le relevé Winamax qui le qualifie a été pris avant le coup d'envoi, mais les alertes partent en fin de chaîne, après les autres sites : le match avait commencé. Le passage « alertes seulement » juste après le relevé Winamax corrige ça."],
+  ["lente", "Chaîne trop longue", "Plus de 2 h entre le relevé Winamax et l'envoi : le script refuse d'alerter sur une cote aussi ancienne."],
+  ["trou", "Aucun passage avant le match", "Pas de passage de la chaîne entre le dernier qui l'a vu (match encore trop loin) et le coup d'envoi : PC en veille, éteint ou chaîne en erreur."],
+  ["filtres", "Ne passait pas au dernier passage", "Au dernier passage avant le match, le pari ne passait pas les filtres des alertes (cote qui avait bougé, un seul relevé, edge…). Le rétrospectif le juge sur un relevé que l'alerte n'a pas vu."],
+  ["autre", "Autre raison", "Plafond de 12 alertes, autre pari du même match annoncé, notification en échec, heures de sommeil."],
+  ["jamais", "Jamais vu par un passage", "Aucun passage de la chaîne ne l'a vu comme pari à valeur dans les 7 h avant le match."],
+  ["avant_premier", "Avant ton premier pari enregistré", "Le rétrospectif remonte plus loin que tes paris enregistrés : rien de loupé."],
+  ["avant_journal", "Avant le journal des alertes", "Le journal des alertes n'existait pas encore : pas d'explication possible."],
+];
+function jaHeure(iso) { return iso ? String(iso).slice(11, 16) : "—"; }
+function jaJour(iso) { return iso ? `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}` : ""; }
+function jaExpliquer(r, premierJoue) {
+  const J = (typeof WIZARD_DATA !== "undefined" && WIZARD_DATA.alertes_journal) || {};
+  const runs = J.runs || [], paris = J.paris || {};
+  const date = String(r.date).slice(0, 10);
+  if (premierJoue && date < premierJoue) return {g: "avant_premier", txt: "avant ton premier pari enregistré"};
+  const debut = runs.length ? String(runs[0].t).slice(0, 10) : null;
+  if (!debut || date < debut) return {g: "avant_journal", txt: "avant le journal des alertes"};
+  const e = paris[`${date}|${r.match}|${r.colonne}`];
+  if (!e) {
+    const ceJour = runs.filter(x => String(x.t).slice(0, 10) === date).length;
+    return ceJour ? {g: "jamais", txt: "aucun passage ne l'a vu comme pari à valeur avant le match"} : {g: "trou", txt: "aucun passage de la chaîne ce jour-là"};
+  }
+  if (e.env) return {g: "alerte", txt: `annoncé à ${jaHeure(e.env)}, pas joué`};
+  const evals = (e.e || []).filter(x => !e.ko || String(x[1]) < e.ko);
+  const der = evals[evals.length - 1] || (e.e || [])[e.e.length - 1];
+  if (!der) return {g: "jamais", txt: "aucun passage ne l'a vu avant le match"};
+  const [t, rel, code] = der;
+  if (code === "commence") return {g: "chaine", txt: `match à ${jaHeure(e.ko)} : relevé à ${jaHeure(rel)}, alertes parties à ${jaHeure(t)}`};
+  if (code === "fenetre") {
+    const apres = runs.filter(x => x.t > t && (!e.ko || x.t < e.ko));
+    return apres.length ? {g: "filtres", txt: `vu à ${jaHeure(t)} (match encore loin), plus vu ensuite`} : {g: "trou", txt: `dernier passage à ${jaHeure(t)}, aucun autre avant le match (${jaHeure(e.ko)})`};
+  }
+  if (code === "releve_vieux") return {g: "lente", txt: `relevé à ${jaHeure(rel)}, envoi à ${jaHeure(t)}`};
+  if (["autre_pari", "plafond", "nuit", "echec", "deja"].includes(code)) return {g: "autre", txt: JA_TEXTES[code] || code};
+  return {g: "filtres", txt: `${JA_TEXTES[code] || code} (${jaHeure(t)})`};
+}
+
 function renderComparaison(rowsRetroFiltre) {
   const corps = $("cmpCorps");
   if (!corps || !BK_CTX) return;
@@ -16609,6 +16680,9 @@ function renderComparaison(rowsRetroFiltre) {
     if (r) paires.push({l, r}); else horsRetro.push({l, raison: raison(l)});
   });
   const nonJoues = retro.filter(r => !clesJouees.has(cleBt(r)));
+  // 28/11/2026 : pourquoi chaque pari du rétrospectif n'a pas été joué (journal des alertes)
+  const premierJoue = lignes.length ? lignes.map(l => String(l.date).slice(0, 10)).sort()[0] : null;
+  const pourquoi = new Map(nonJoues.map(r => [r, jaExpliquer(r, premierJoue)]));
 
   const somme = (a, f) => a.reduce((t, x) => t + f(x), 0);
   const stR = r => { const m = btStakeFor(r); return isFinite(m) ? m : 0; };
@@ -16666,7 +16740,10 @@ function renderComparaison(rowsRetroFiltre) {
       <div class="cp2-grille">
         ${carte("c", "Joués seulement", C.n, lg("toi", C.miseJ, C.netJ, C.n))}
         ${carte("a", "Joués et dans le rétro", A.n, lg("toi", A.miseJ, A.netJ, A.n) + lg("rétro", A.miseR, A.netR, A.n))}
-        ${carte("b", "Rétro seulement, jamais joués", B.n, lg("rétro", B.miseR, B.netR, B.n))}
+        ${carte("b", "Rétro seulement, jamais joués", B.n, lg("rétro", B.miseR, B.netR, B.n) + (() => {
+          const g = k => nonJoues.filter(r => pourquoi.get(r).g === k), al = g("alerte"), av = nonJoues.filter(r => ["avant_premier", "avant_journal"].includes(pourquoi.get(r).g));
+          const ja = nonJoues.length - al.length - av.length;
+          return `<div class="cp2-g-sous"><span>dont annoncés, pas joués <b>${al.length}</b>${al.length ? ` · ${fmtEur(somme(al, r => r.profit * stR(r)))}` : ""}</span><span>jamais annoncés <b>${ja}</b></span><span>avant ton 1er pari ou le journal <b>${av.length}</b></span></div>`; })())}
       </div>
       <div class="cp2-totaux">
         <div><span>Tes paris joués, total</span><span>${pl(totJ.n, "pari")}</span><span>${cmpMontant(totJ.mise)}</span><b class="${cmpSigne(totJ.net)}">${eur(totJ.net)}</b><em class="${cmpSigne(roiTotJ)}">${cmpPct(roiTotJ)}</em></div>
@@ -16713,6 +16790,31 @@ function renderComparaison(rowsRetroFiltre) {
     </section>`;
   }
 
+  // --- Paris du rétro jamais joués : pourquoi ? (journal des alertes, 28/11/2026) ---
+  let pasJoues = "";
+  if (B.n) {
+    const groupes = JA_GROUPES.map(([kk, lib, aide]) => ({kk, lib, aide, g: nonJoues.filter(r => pourquoi.get(r).g === kk)})).filter(x => x.g.length);
+    const mx = Math.max(...groupes.map(x => x.g.length));
+    const J = (typeof WIZARD_DATA !== "undefined" && WIZARD_DATA.alertes_journal) || {};
+    const runs = J.runs || [];
+    let delai = "";
+    const recents = runs.filter(x => x.r && x.t).slice(-56);
+    if (recents.length) {
+      const d = recents.map(x => (Date.parse(x.t) - Date.parse(x.r)) / 6e4).filter(x => isFinite(x) && x >= 0).sort((a, b) => a - b);
+      const rap = recents.filter(x => x.mode === "rapide").length;
+      if (d.length) delai = `<p class="cp2-note">Délai entre le relevé Winamax et l'envoi des alertes, sur les ${d.length} derniers passages : médiane <b>${Math.round(d[d.length >> 1])} min</b>, maximum ${Math.round(d[d.length - 1])} min${rap ? ` · ${rap} passage${rap > 1 ? "s" : ""} rapide${rap > 1 ? "s" : ""}` : " · aucun passage rapide (« alertes seulement ») pour l'instant"}.</p>`;
+    }
+    pasJoues = `<section class="cp2-bloc">
+      <h4>Les ${B.n} paris du rétrospectif que tu n'as pas joués : pourquoi ?</h4>
+      ${runs.length ? "" : `<p class="cp2-note">Le journal des alertes n'est pas encore publié : il apparaît après le prochain passage de la chaîne avec la nouvelle version du script.</p>`}
+      ${groupes.map(({kk, lib, aide, g}) => { const mise = somme(g, stR), net = somme(g, r => r.profit * stR(r));
+        return `<div class="cp2-r${kk === "alerte" ? " cp2-r-fort" : ""}"><span class="cp2-r-l">${lib} <button type="button" class="fx-i" data-fx-aide="${cmpEsc(aide)}" aria-label="Détail">i</button></span>
+          <span class="cp2-r-b"><i style="width:${(g.length / mx * 100).toFixed(1)}%"></i></span><b>${g.length}</b>
+          <span>${cmpMontant(mise)}</span><b class="${cmpSigne(net)}">${fmtEur(net)}</b><em class="${cmpSigne(cmpRoi(net, mise))}">${cmpPct(cmpRoi(net, mise))}</em></div>`; }).join("")}
+      ${delai}
+    </section>`;
+  }
+
   // --- Détail pari par pari ------------------------------------------------------
   CMP_DETAIL = [
     ...paires.map(({l, r}) => ({type: "commun", date: l.date, match: l.match, pari: l.pari,
@@ -16723,7 +16825,7 @@ function renderComparaison(rowsRetroFiltre) {
       coteJ: l.coteJouee, confirmee: l.confirmee, coteR: l.coteCloture,
       miseJ: l.mise, resJ: l.resultatEuros, raison: kk})),
     ...nonJoues.map(r => ({type: "retro", date: r.date, match: r.match, pari: r.colonne,
-      coteR: r.cote, miseR: stR(r), resR: r.profit * stR(r)})),
+      coteR: r.cote, miseR: stR(r), resR: r.profit * stR(r), pourquoi: pourquoi.get(r)})),
   ].sort((a, b) => b.date.localeCompare(a.date) || a.match.localeCompare(b.match) || String(a.pari).localeCompare(String(b.pari)));
 
   const attenteN = lignes.length - reels.length;
@@ -16732,6 +16834,7 @@ function renderComparaison(rowsRetroFiltre) {
     + alerte
     + `<div class="cp2-deux">${synthese}${prix}</div>`
     + absents
+    + pasJoues
     + `<section class="cp2-bloc cp2-detail"><h4>Détail, pari par pari</h4><div id="cmpDetailWrap"></div></section>`;
   cmpDessinerDetail({A, B, C});
 }
@@ -16758,7 +16861,7 @@ function cmpDessinerDetail(n) {
       <td data-label="Date" class="cp2-date">${d.date.slice(8, 10)}/${d.date.slice(5, 7)}</td>
       <td data-label="Match">${cmpEsc(d.match)}</td>
       <td data-label="Pari">${cmpEsc(["homeWin", "draw", "awayWin"].includes(d.pari) && typeof upLibellePari === "function" ? upLibellePari({match: d.match, colonne: d.pari}) : d.pari)}</td>
-      <td data-label="Statut"><span class="cmp-badge ${d.type}">${BADGES[d.type]}</span>${d.discord ? ' <span title="Résultat différent entre vos paris et le rétrospectif">⚠</span>' : ""}${d.raison ? `<div class="cmp-raison" title="${cmpEsc(CMP_RAISONS[d.raison])}">${CMP_RAISONS_COURT[d.raison]}</div>` : ""}</td>
+      <td data-label="Statut"><span class="cmp-badge ${d.type}">${BADGES[d.type]}</span>${d.discord ? ' <span title="Résultat différent entre vos paris et le rétrospectif">⚠</span>' : ""}${d.pourquoi ? `<div class="cmp-raison cmp-pq-${d.pourquoi.g}">${cmpEsc(d.pourquoi.txt)}</div>` : ""}${d.raison ? `<div class="cmp-raison" title="${cmpEsc(CMP_RAISONS[d.raison])}">${CMP_RAISONS_COURT[d.raison]}</div>` : ""}</td>
       <td data-label="Cote jouée" class="num">${cote(d.coteJ, d.confirmee)}</td>
       <td data-label="Cote rétro" class="num">${d.type === "joue" ? (d.coteR != null ? `<span class="muted" title="Clôture">${d.coteR.toFixed(2)}</span>` : "—") : cote(d.coteR)}</td>
       <td data-label="Écart cote" class="num ${cmpSigne(ecartCote)}">${ecartCote == null ? "—" : cmpPct(ecartCote)}</td>
@@ -16983,56 +17086,93 @@ function calculerPlagePercentile(nets, pLo, pHi) {
 // entassés dans le bin de bord, ce qui fausserait sa hauteur) et signalés
 // en légende plutôt que silencieusement coupés — la queue extrême est
 // réelle, pas une erreur d'affichage à cacher.
-function drawHistogramDans(elWrap, nets, plage, couleur) {
+function drawHistogramDans(elWrap, nets, plage, couleur, depart) {
+  // 28/11/2026 : refonte. Barres rouges sous zéro, couleur de la stratégie au-dessus ; la ruine (bankroll
+  // tombée à zéro) a sa propre colonne à gauche, hors échelle, au lieu d'écraser les autres barres ; repères
+  // 0 et médiane ; graduations lisibles (plus de texte étiré) ; survol : tranche et part des simulations.
   if (!elWrap) return;
   if (nets.length < 2) { elWrap.innerHTML = '<p class="muted">Pas assez de trajectoires.</p>'; return; }
-  let mn = plage.mn, mx = plage.mx;
+  elWrap._histo = [nets, plage, couleur, depart];
+  const N = nets.length;
+  const tri = Float64Array.from(nets).sort();
+  const q = p => tri[Math.min(N - 1, Math.max(0, Math.round(p * (N - 1))))];
+  const seuilRuine = depart ? -depart + 0.005 : -Infinity;
+  const nRuine = depart ? nets.filter(v => v <= seuilRuine).length : 0;
+  const vivants = nRuine ? tri.filter(v => v > seuilRuine) : tri;
+  let mn, mx;
+  if (vivants.length >= 2) { const nv = vivants.length; mn = vivants[Math.round(0.01 * (nv - 1))]; mx = vivants[Math.round(0.99 * (nv - 1))]; }
+  else { mn = plage.mn; mx = plage.mx; }
   if (mn === mx) { mn -= 1; mx += 1; }
-  const NB_BINS = 20;
-  const largeur = (mx - mn) / NB_BINS;
-  const bins = new Array(NB_BINS).fill(0);
-  let nSousPlage = 0, nSurPlage = 0;
-  nets.forEach(v => {
-    if (v < mn) { nSousPlage++; return; }
-    if (v > mx) { nSurPlage++; return; }
-    let b = Math.floor((v - mn) / largeur);
-    if (b >= NB_BINS) b = NB_BINS - 1;
-    if (b < 0) b = 0;
-    bins[b]++;
-  });
-  const maxCount = arrMax(bins);
-
-  const W = 360, H = 150, padL = 8, padR = 8, padT = 10, padB = 24;
-  const bw = (W - padL - padR) / NB_BINS;
-  const sy = c => padT + (1 - (maxCount ? c / maxCount : 0)) * (H - padT - padB);
-  const baseY = H - padB;
-  const zeroX = padL + ((0 - mn) / largeur) * bw;
-
-  let barres = "";
+  const NB = 24, larg = (mx - mn) / NB, bins = new Array(NB).fill(0);
+  let nSous = 0, nSur = 0;
+  vivants.forEach(v => { if (v < mn) { nSous++; return; } if (v > mx) { nSur++; return; } let b = Math.floor((v - mn) / larg); if (b >= NB) b = NB - 1; bins[b]++; });
+  const maxC = Math.max(1, ...bins);
+  const W = Math.max(240, Math.round(elWrap.clientWidth || 320)), H = 168, padT = 22, padB = 26, padR = 6;
+  const colR = nRuine ? 34 : 0, padL = 6 + colR;
+  const bw = (W - padL - padR) / NB, baseY = H - padB;
+  const sy = c => padT + (1 - c / maxC) * (baseY - padT);
+  const X = v => padL + (v - mn) / (mx - mn) * (W - padL - padR);
+  const court = v => { const a = Math.abs(v), sg = v > 0 ? "+" : v < 0 ? "−" : ""; return sg + (a >= 10000 ? Math.round(a / 1000) + " k" : a >= 1000 ? (a / 1000).toLocaleString("fr-FR", {maximumFractionDigits: 1}) + " k" : Math.round(a).toLocaleString("fr-FR")) + " €"; };
+  let svg = "";
+  // colonne « ruine »
+  if (nRuine) {
+    const pr = nRuine / N, h = Math.min(baseY - padT, (nRuine / maxC) * (baseY - padT)), coupe = nRuine > maxC;
+    svg += `<defs><pattern id="mcHach${elWrap.id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="rgba(255,113,133,.25)"/><line x1="0" y1="0" x2="0" y2="5" stroke="var(--coral)" stroke-width="2"/></pattern></defs>`;
+    svg += `<rect class="mc-h-bar" data-i="ruine" x="4" y="${(baseY - h).toFixed(1)}" width="${colR - 8}" height="${h.toFixed(1)}" fill="url(#mcHach${elWrap.id})" rx="2"/>`;
+    svg += `<text x="${colR / 2}" y="${(baseY - h - 5).toFixed(1)}" text-anchor="middle" class="mc-h-t" style="fill:var(--coral);font-weight:700">${Math.round(pr * 100)} %${coupe ? "↑" : ""}</text>`;
+    svg += `<text x="${colR / 2}" y="${H - 9}" text-anchor="middle" class="mc-h-t" style="fill:var(--coral)">ruine</text>`;
+    svg += `<line x1="${colR}" x2="${colR}" y1="${padT}" y2="${baseY}" stroke="var(--line-soft)"/>`;
+  }
+  // barres
   bins.forEach((c, i) => {
     if (!c) return;
-    const x = padL + i * bw, y = sy(c);
-    barres += `<rect x="${(x+0.5).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, bw-1).toFixed(1)}" height="${(baseY-y).toFixed(1)}" fill="${couleur}" opacity=".8" rx="1"/>`;
+    const x = padL + i * bw, y = sy(c), centre = mn + (i + 0.5) * larg;
+    svg += `<rect class="mc-h-bar" data-i="${i}" x="${(x + 0.6).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0.5, bw - 1.2).toFixed(1)}" height="${(baseY - y).toFixed(1)}" fill="${centre < 0 ? "var(--coral)" : couleur}" opacity="${centre < 0 ? .7 : .88}" rx="1.5"/>`;
   });
-
-  let legendeHors = "";
-  if (nSousPlage + nSurPlage > 0) {
-    const vraiMin = arrMin(nets), vraiMax = arrMax(nets);
-    const morceaux = [];
-    if (nSousPlage) morceaux.push(`${nSousPlage} en dessous (jusqu'à ${fmtEur(vraiMin)})`);
-    if (nSurPlage) morceaux.push(`${nSurPlage} au-dessus (jusqu'à ${fmtEur(vraiMax)})`);
-    legendeHors = `<p class="muted" style="margin:.3rem 0 0; font-size:.66rem; line-height:1.3">Axe cadré sur P1–P99 · ${morceaux.join(" · ")} hors cadre</p>`;
+  svg += `<line x1="${padL}" x2="${W - padR}" y1="${baseY}" y2="${baseY}" stroke="var(--line)"/>`;
+  // graduations
+  const span = mx - mn, pas = [1, 2, 2.5, 5].flatMap(k => [k, k * 10, k * 100, k * 1000, k * 10000]).sort((a, b) => a - b).find(p => span / p <= 4) || 100000;
+  for (let v = Math.ceil(mn / pas) * pas; v <= mx + 1e-9; v += pas) {
+    const x = X(v); if (x < padL + 8 || x > W - padR - 8) continue;
+    svg += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${baseY}" y2="${baseY + 4}" stroke="var(--ink-faint)"/><text x="${x.toFixed(1)}" y="${H - 9}" text-anchor="middle" class="mc-h-t">${court(v)}</text>`;
   }
-
-  elWrap.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Distribution des résultats finaux">
-      ${(zeroX >= padL && zeroX <= W - padR) ? `<line x1="${zeroX.toFixed(1)}" y1="${padT}" x2="${zeroX.toFixed(1)}" y2="${baseY}" stroke="var(--ink-faint)" stroke-dasharray="3,4" opacity=".7"/>` : ""}
-      ${barres}
-      <line x1="${padL}" y1="${baseY}" x2="${W-padR}" y2="${baseY}" class="chart-grid-line"/>
-      <text x="${padL}" y="${H-7}" text-anchor="start" class="chart-tip" fill="var(--ink-faint)">${fmtEur(mn)}</text>
-      <text x="${W-padR}" y="${H-7}" text-anchor="end" class="chart-tip" fill="var(--ink-faint)">${fmtEur(mx)}</text>
-    </svg>${legendeHors}`;
+  // repères : zéro et médiane
+  const med = q(0.5);
+  if (0 > mn && 0 < mx) svg += `<line x1="${X(0).toFixed(1)}" x2="${X(0).toFixed(1)}" y1="${padT - 6}" y2="${baseY}" stroke="var(--ink-faint)" stroke-dasharray="3 3"/>`;
+  if (med >= mn && med <= mx) {
+    const xm = X(med), droite = xm > W * 0.7;
+    svg += `<line x1="${xm.toFixed(1)}" x2="${xm.toFixed(1)}" y1="${padT - 8}" y2="${baseY}" stroke="var(--ink)" stroke-width="1.5"/>`;
+    svg += `<text x="${(xm + (droite ? -4 : 4)).toFixed(1)}" y="${padT - 10}" text-anchor="${droite ? "end" : "start"}" class="mc-h-t" style="fill:var(--ink);font-weight:600">médiane ${court(med)}</text>`;
+  }
+  const pGain = nets.filter(v => v > 0).length / N;
+  const hors = [];
+  if (nSous) hors.push(`${nSous} sous ${court(mn)}`);
+  if (nSur) hors.push(`${nSur} au-delà de ${court(mx)} (jusqu'à ${court(tri[N - 1])})`);
+  elWrap.innerHTML = `<div class="mc-h-zone"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Répartition du gain final : médiane ${court(med)}, gagnant dans ${Math.round(pGain * 100)} % des simulations">${svg}</svg><div class="dc-tooltip mc-h-tip" hidden></div></div>
+    <div class="mc-h-stats">${med <= seuilRuine ? `<span>Médiane <b class="neg">ruine</b></span>` : ""}<span>Gagnant <b class="${pGain >= 0.5 ? "pos" : "neg"}">${Math.round(pGain * 100)} %</b> ${infoBulle("Gagnant : part des simulations qui finissent au-dessus de la bankroll de départ. 1 sur 10 sous : 10 % des simulations finissent plus bas que ce montant. 1 sur 10 au-dessus : 10 % finissent plus haut. Survole ou touche une barre pour voir sa tranche.")}</span><span>1 sur 10 sous <b>${court(q(0.1))}</b></span><span>1 sur 10 au-dessus de <b>${court(q(0.9))}</b></span></div>
+    ${hors.length ? `<p class="mc-h-hors">Hors cadre : ${hors.join(" · ")}.</p>` : ""}`;
+  // survol
+  const svgEl = elWrap.querySelector("svg"), tip = elWrap.querySelector(".mc-h-tip");
+  const montrerBarre = b => {
+    if (!b) { tip.hidden = true; return; }
+    const i = b.dataset.i;
+    if (i === "ruine") tip.innerHTML = `<div class="dc-tip-head">Ruine</div><div class="dc-tip-row"><span>bankroll tombée à zéro</span><strong>${nRuine} sur ${N}</strong></div><div class="dc-tip-row"><span>soit</span><strong class="neg">${(nRuine / N * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</strong></div>`;
+    else { const a = mn + i * larg, z = a + larg, c = bins[i];
+      tip.innerHTML = `<div class="dc-tip-head">Gain final de ${court(a)} à ${court(z)}</div><div class="dc-tip-row"><span>simulations</span><strong>${c} sur ${N}</strong></div><div class="dc-tip-row"><span>soit</span><strong>${(c / N * 100).toLocaleString("fr-FR", {maximumFractionDigits: 1})} %</strong></div>`; }
+    tip.hidden = false;
+    const r = elWrap.querySelector(".mc-h-zone").getBoundingClientRect(), bx = b.getBoundingClientRect();
+    tip.style.left = Math.min(r.width - tip.offsetWidth - 4, Math.max(4, bx.left - r.left + bx.width / 2 - tip.offsetWidth / 2)) + "px";
+    tip.style.top = Math.max(0, bx.top - r.top - tip.offsetHeight - 6) + "px";
+  };
+  svgEl.addEventListener("mousemove", ev => montrerBarre(ev.target.closest(".mc-h-bar")));
+  let dernierDoigt = 0;
+  svgEl.addEventListener("mouseleave", () => { if (Date.now() - dernierDoigt > 900) tip.hidden = true; });
+  // au doigt : un appui sur une barre affiche sa tranche, un appui ailleurs la cache
+  const auDoigt = ev => { dernierDoigt = Date.now(); const t = ev.touches[0], el = t && document.elementFromPoint(t.clientX, t.clientY); montrerBarre(el && el.closest ? el.closest(".mc-h-bar") : null); };
+  svgEl.addEventListener("touchstart", auDoigt, {passive: true});
+  svgEl.addEventListener("touchmove", auDoigt, {passive: true});
 }
+function redessinerHistosMC() { document.querySelectorAll("#mcHistGrid .mc-hist-cell-chart").forEach(el => { if (el._histo) drawHistogramDans(el, ...el._histo); }); }
 
 // Dernière distribution simulée (gain net trié par stratégie), conservée
 // pour que le curseur "explorer un percentile précis" (majExplorateurPercentile())
@@ -17235,9 +17375,21 @@ function runMonteCarlo() {
   // jour ne peuvent pas engager, ensemble, plus que ce qu'on a).
   const parJour = {};
   rows.forEach(r => { (parJour[r.date] = parJour[r.date] || []).push(r); });
-  const dates = Object.keys(parJour).sort();
+  // 28/11/2026 : jours CALENDAIRES du premier au dernier pari, jours sans pari compris (avant : seulement
+  // les jours avec au moins un pari, d'où « 61 jours » pour trois mois d'historique). Un horizon de 90 jours
+  // vaut ainsi 90 vrais jours, et le tirage au-delà de l'historique garde le bon rythme de paris.
+  const joursAvecParis = Object.keys(parJour).sort();
+  const dates = [];
+  if (joursAvecParis.length) {
+    const fin = joursAvecParis[joursAvecParis.length - 1];
+    for (let t = Date.parse(joursAvecParis[0] + "T12:00:00Z"); ; t += 864e5) {
+      const iso = new Date(t).toISOString().slice(0, 10);
+      dates.push(iso);
+      if (iso >= fin || dates.length > 4000) break;
+    }
+  }
   const joursData = dates.map(date => {
-    const paris = parJour[date];
+    const paris = parJour[date] || [];
     return {
       date,
       p: paris.map(r => Math.min(Math.max(r.p_aff ?? r.p_model ?? 0, 0), 1)),
@@ -17246,8 +17398,10 @@ function runMonteCarlo() {
     };
   });
   const histJours = joursData.length;
-  if ($("mcNbJoursHist")) $("mcNbJoursHist").textContent = histJours;
-  if ($("mcHorizonHistNb")) $("mcHorizonHistNb").textContent = histJours;
+  if ($("mcNbJoursHist")) $("mcNbJoursHist").textContent = joursAvecParis.length ? `${histJours} jours (dont ${joursAvecParis.length} avec des paris, du ${fmtDateCourte(joursAvecParis[0])} au ${fmtDateCourte(joursAvecParis[joursAvecParis.length - 1])})` : "0";
+  // un <span> dans une <option> n'est pas gardé par le navigateur : on réécrit le texte de l'option
+  const optH = $("mcHorizon") && $("mcHorizon").querySelector('option[value="hist"]');
+  if (optH) optH.textContent = `Historique actuel (${histJours} jours)`;
 
   const strategies = mcStrategiesActives();
 
@@ -17504,7 +17658,7 @@ function runMonteCarlo() {
       </div>`).join("");
     resultatsStrat.forEach((r, i) => {
       const plage = calculerPlagePercentile(r.nets, 0.01, 0.99);
-      drawHistogramDans($("mcHistCell" + i), r.nets, plage, r.strat.color);
+      drawHistogramDans($("mcHistCell" + i), r.nets, plage, r.strat.color, depart);
     });
   }
 
@@ -18147,7 +18301,7 @@ function initMobile() {
     bilan: () => { if (typeof blDessiner === "function") blDessiner(); if (typeof blGrosDessiner === "function") blGrosDessiner(); if (typeof blIcDessiner === "function") blIcDessiner(); MAP_GRAPHIQUES.backtest(); },
     dcv2: () => { if (typeof blDessiner === "function") blDessiner(); MAP_GRAPHIQUES.backtest(); if (typeof mb2Dessiner === "function") mb2Dessiner(); },
     // 22/11/2026 : redessine l'éventail sans relancer le tirage au sort (avant : une rotation changeait les résultats)
-    montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) dessinerEventailMC(); else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
+    montecarlo: () => { if (typeof dessinerEventailMC === "function" && mcDernierEventail) { dessinerEventailMC(); if (typeof redessinerHistosMC === "function") redessinerHistosMC(); } else if (typeof runMonteCarlo === "function") runMonteCarlo(); }
   };
   window.redessinerPageActive = function () {
     dernierW = chartW();
@@ -18549,12 +18703,13 @@ function blRenderIc(D) {
   if (I.nReq && I.nReq > I.n) v += ` Pour qu'un avantage de ${blP(I.ev, 0)} se distingue de la chance, il faut environ <strong>${nf(I.nReq)} paris</strong>, soit ${duree} à ton rythme.`;
   else if (I.nReq) v += ` Tu as déjà assez de paris pour qu'un avantage de ${blP(I.ev, 0)} se distingue de la chance.`;
   $("blIcVerdict").innerHTML = v.replace(/ (%|€)/g, "\u00a0$1");
-  const k = (l, val, sub, cls = "") => `<div class="bl-ic-k"><div class="l">${l}</div><div class="v ${cls}">${val}</div><div class="s">${sub}</div></div>`;
+  const k = (l, val, sub, cls = "", aide = "") => `<div class="bl-ic-k"><div class="l">${l}${aide ? " " + infoBulle(aide) : ""}</div><div class="v ${cls}">${val}</div><div class="s">${sub}</div></div>`;
   $("blIcKpis").innerHTML =
-    k("Fourchette du ROI (95\u00a0%)", `${blP(I.bas, 0)} <span>à</span> ${blP(I.haut, 0)}`, `ROI mesuré ${blP(I.roi, 0)} sur ${I.n} paris`, I.bas > 0 ? "pos" : I.haut < 0 ? "neg" : "")
-    + k("Annoncé par le modèle", I.ev != null ? blP(I.ev, 0) : "—", "espérance moyenne de ces paris", "vio")
+    k("Fourchette du ROI (95\u00a0%)", `${blP(I.bas, 0)} <span>à</span> ${blP(I.haut, 0)}`, `ROI mesuré ${blP(I.roi, 0)} sur ${I.n} paris`, I.bas > 0 ? "pos" : I.haut < 0 ? "neg" : "", "Si tu rejouais 100 fois une période comme celle-ci, le vrai ROI de ces paris serait dans cette fourchette environ 95 fois. Elle est large parce que les cotes sont élevées.")
+    + k("Annoncé par le modèle", I.ev != null ? blP(I.ev, 0) : "—", "espérance moyenne de ces paris", "vio", "Moyenne, pondérée par la mise, de l'espérance que le modèle donnait à chacun de ces paris au moment du relevé. C'est le ROI de croisière à attendre si le modèle est juste.")
     + k("Paris pour trancher", I.nReq ? (I.nReq > I.n ? `≈ ${nf(I.nReq)}` : "atteint") : "—",
-        I.nReq ? (I.nReq > I.n ? `vers ${quand(I.dateReq)}, à ${Math.round(I.parMois)} paris par mois` : `${I.n} paris joués pour ${nf(I.nReq)} nécessaires`) : "le modèle n'annonce pas d'avantage");
+        I.nReq ? (I.nReq > I.n ? `vers ${quand(I.dateReq)}, à ${Math.round(I.parMois)} paris par mois` : `${I.n} paris joués pour ${nf(I.nReq)} nécessaires`) : "le modèle n'annonce pas d'avantage", "",
+        "Nombre de paris à partir duquel un avantage égal à celui qu'annonce le modèle ne pourrait plus être confondu avec de la chance (fourchette à 95 % qui ne contient plus zéro). La date suppose ton rythme actuel de paris.");
   $("blIcNote").textContent = "Fourchette à 95 % : si tu rejouais 100 fois une période comme celle-ci, le vrai ROI serait dans la fourchette environ 95 fois. Elle est large parce que les cotes sont élevées : quelques paris gagnés de plus ou de moins font varier le ROI de plusieurs dizaines de points.";
   blIcDessiner();
 }
@@ -19553,13 +19708,13 @@ function fxMaj(pref) {
 (function fxInfoBulle() {
   const tip = document.createElement("div"); tip.className = "fx-tip"; tip.hidden = true; tip.setAttribute("role", "tooltip");
   document.body.appendChild(tip);
-  let cible = null;
+  let cible = null, montreA = 0;
   const montrer = b => {
     const notes = (b._fxNotes || []).filter(n => n.style.display !== "none" && n.textContent.trim()).map(n => n.innerHTML);
     const aide = b.dataset.fxAide || "";
     if (!aide && !notes.length) { tip.hidden = true; return; }
     tip.innerHTML = [aide, ...notes].filter(Boolean).map(t => `<p>${t}</p>`).join("");
-    tip.hidden = false; cible = b;
+    tip.hidden = false; cible = b; montreA = Date.now();
     const r = b.getBoundingClientRect(), w = Math.min(360, window.innerWidth - 24);
     tip.style.width = w + "px";
     const x = Math.max(12, Math.min(window.innerWidth - w - 12, r.left - 20));
@@ -19569,10 +19724,15 @@ function fxMaj(pref) {
   };
   const cacher = () => { tip.hidden = true; cible = null; };
   document.addEventListener("mouseover", e => { const b = e.target.closest(".fx-i"); if (b) montrer(b); });
-  document.addEventListener("mouseout", e => { if (e.target.closest(".fx-i") && !e.relatedTarget?.closest?.(".fx-tip")) cacher(); });
+  // au doigt, les « mouseout » émulés juste après l'appui ne doivent pas refermer la bulle
+  let dernierDoigt = 0;
+  document.addEventListener("touchstart", () => { dernierDoigt = Date.now(); }, {passive: true, capture: true});
+  document.addEventListener("mouseout", e => { if (Date.now() - dernierDoigt < 1000) return; if (e.target.closest(".fx-i") && !e.relatedTarget?.closest?.(".fx-tip")) cacher(); });
   document.addEventListener("click", e => {
     const b = e.target.closest(".fx-i");
-    if (b) { e.preventDefault(); e.stopPropagation(); if (cible === b && !tip.hidden) cacher(); else montrer(b); return; }
+    // Au doigt, le navigateur envoie « mouseover » juste avant « click » : sans ce délai, la bulle s'ouvrait
+    // puis se refermait aussitôt (28/11/2026). Un second appui, plus tard, la referme.
+    if (b) { e.preventDefault(); e.stopPropagation(); if (cible === b && !tip.hidden && Date.now() - montreA > 450) cacher(); else montrer(b); return; }
     if (!e.target.closest(".fx-tip")) cacher();
   }, true);
   document.addEventListener("focusin", e => { const b = e.target.closest(".fx-i"); if (b && b.matches(":focus-visible")) montrer(b); });
