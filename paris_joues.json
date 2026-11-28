@@ -699,15 +699,15 @@
   "maj": 1795548904677
  },
  "2026-11-28|Carrarese - Juve Stabia|0 - 0": {
-  "cote": 8,
-  "cote_confirmee": false,
+  "cote": 8.5,
+  "cote_confirmee": true,
   "site": "winamax",
   "cote_capturee": 8,
   "ts": "2026-11-28T13:45:24",
   "kickoff": "2026-11-28T15:00:00",
   "capture_iso": "2026-11-28T10:54:03.191653",
   "mise": 5,
-  "maj": 1795869932311
+  "maj": 1795869936281
  },
  "2026-11-28|FC Anyang - Jeju United|awayWin": {
   "cote": 2.7,
