@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261128074452">
+<link rel="stylesheet" href="style.css?v=20261128093811">
 </head>
 <body>
 <div class="topbar">
@@ -32,7 +32,7 @@
     </header>
     <nav class="tabs" role="tablist" aria-label="Sections de Wina Wizard" aria-orientation="horizontal">
       <button type="button" class="tab active" data-page="overview" id="tab-overview" role="tab" aria-controls="page-overview" aria-selected="true" tabindex="0"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 16.5V9.5M10 16.5V4M17 16.5v-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="label">Vue d'ensemble</span></button>
-      <button type="button" class="tab" data-page="retro" id="tab-retro" role="tab" aria-controls="page-retro" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7.5V11l2.6 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 2.2 3.7 4.3l2.1 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Rétrospectif</span></button>
+      <button type="button" class="tab" data-page="retro" id="tab-retro" role="tab" aria-controls="page-retro" aria-selected="false" tabindex="-1" data-dq="1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7.5V11l2.6 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 2.2 3.7 4.3l2.1 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Qualité des données</span></button>
       <button type="button" class="tab" data-page="dc" id="tab-dc" role="tab" aria-controls="page-dc" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2 15c1.8 0 2.2-10 6-10s4.2 10 6 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2 15h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="label">Dixon-Coles</span></button>
       <button type="button" class="tab" data-page="backtest" id="tab-backtest" role="tab" aria-controls="page-backtest" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M6.6 10.2l2.3 2.3 4.5-4.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">DC rétrospectif</span></button>
       <button type="button" class="tab" data-page="bilan" id="tab-bilan" role="tab" aria-controls="page-bilan" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 15.5 7.5 10l3 2.5L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Bilan des filtres</span><span class="tab-nouveau">nouveau</span></button>
@@ -98,25 +98,32 @@
   <!-- ================================================================= -->
   <section class="page" id="page-retro" role="tabpanel" aria-labelledby="heading-retro" tabindex="0">
     <div class="page-heading">
-      <div class="page-heading-title"><p class="page-kicker">RÉSULTATS RÉELS · 02</p><h2 class="page-title" id="heading-retro">Rétrospectif</h2></div>
-      <p class="lead">Ce qui <em>aurait</em> été gagné sur les matchs déjà joués — simulateur de mise, filtres et sélection manuelle.</p>
+      <div class="page-heading-title"><p class="page-kicker">DONNÉES</p><h2 class="page-title" id="heading-retro">Qualité des données</h2></div>
+      <p class="lead">Les données sont-elles <strong>fraîches</strong> et <strong>complètes</strong> ? Une source en retard ou un match non rapproché fausse toutes les autres pages.</p>
     </div>
 
     <!-- Page Rétrospectif refaite le 22/11/2026 : le rapprochement cotes / résultats (les soucis de mapping) passe
          en tête, avec ce qu'il y a à corriger et comment ; puis le simulateur, la courbe, les catégories et le
          détail. Tous les id d'origine sont conservés (les deux panneaux de diagnostic ont seulement été déplacés). -->
     <details class="mc-aide">
-      <summary><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.6M10 6.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span><strong>Cette page mesure le passé : sur assez de combinaisons, on trouve toujours un gagnant par hasard.</strong></span>
+      <summary>
+        <span><strong>Toutes les analyses reposent sur deux choses : des relevés récents, et des matchs retrouvés dans les résultats.</strong></span>
         <span class="mc-aide-plus">En savoir plus</span></summary>
       <div class="mc-aide-corps">
-        <p>Le <strong>ROI test</strong> (données récentes jamais utilisées pour repérer l'edge) est le seul juge de
-        fiabilité. Un petit nombre de paris rend tout résultat fragile. Rien ici n'est une consigne de pari.</p>
-        <p>Chaque cote n'est comptée que si son match a été <strong>rapproché</strong> d'un résultat : un match
-        mal rapproché disparaît de toutes les pages (rétrospectif, DC rétrospectif, alertes). D'où le bilan
-        ci-dessous.</p>
+        <p>Chaque source est relevée par la chaîne du PC toutes les 3 h environ. Une source en retard (orange, puis rouge) signale
+        un collecteur qui a échoué ou un PC éteint : les paris à venir et les comparaisons de sites partent alors de cotes anciennes.</p>
+        <p>Chaque cote n'est comptée que si son match a été <strong>rapproché</strong> de son résultat : un match mal rapproché
+        disparaît de toutes les pages (DC rétrospectif, Bilan, alertes). Le panneau du dessous dit quoi corriger, et comment.</p>
+        <p>Remplace l'ancien onglet « Rétrospectif » (27/11/2026) : son simulateur sur toutes les cotes Winamax, sans le modèle,
+        faisait doublon avec « Prix et bookmakers » et « DC rétrospectif ».</p>
       </div>
     </details>
+
+    <div class="panel pg-hero dq-hero" id="dqHero">
+      <div class="pg-hero-t"><h2>Fraîcheur des sources</h2><p class="pg-hero-s" id="dqMaintenant"></p></div>
+      <div class="mg-verdict" id="dqVerdict"></div>
+      <div class="dq-sources" id="dqSources"></div>
+    </div>
 
     <div class="panel rp-panel" id="rpPanel">
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 12.5 5.6 14.4a2.6 2.6 0 0 1-3.7-3.7L4.8 7.8a2.6 2.6 0 0 1 3.7 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="m12.5 7.5 1.9-1.9a2.6 2.6 0 0 1 3.7 3.7l-2.9 2.9a2.6 2.6 0 0 1-3.7 0M7.6 12.4l4.8-4.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Rapprochement cotes et résultats <span class="hint">— les matchs qui échappent à toutes les analyses</span></h2>
@@ -186,7 +193,7 @@
       </details>
     </div>
 
-    <div class="panel">
+    <div class="panel dq-masque" hidden>
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 6h12M4 14h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="6" r="2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="14" r="2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Simulateur de mise <span class="hint">— mise fixe appliquée à chaque pari retenu</span></h2>
       <div class="controls">
         <div class="field">
@@ -241,12 +248,12 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel dq-masque" hidden>
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 15.5 7.5 10l3 2.5L17 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Évolution du gain cumulé <span class="hint">— ordre chronologique des paris retenus</span></h2>
       <div id="chartWrap"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel dq-masque" hidden>
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 8h14M8.5 8v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Rentabilité par catégorie <span class="hint">— recalculée sur les paris filtrés, validation out-of-sample</span></h2>
       <div class="tablewrap">
         <table id="catTable">
@@ -260,7 +267,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel dq-masque" hidden>
       <h2><svg class="section-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6.5 6h10M6.5 10h10M6.5 14h10M3.4 6h.01M3.4 10h.01M3.4 14h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Détail des paris <span class="hint">— clique un en-tête pour trier ; coche pour composer ta sélection</span></h2>
       <div class="tablewrap table-scroll">
         <table id="betTable" class="cardify">
@@ -3389,7 +3396,7 @@
    donnees.js complet si le navigateur ne sait pas décompresser ou si la version compressée manque. Les adresses
    sont réécrites par wina_wizard.py (casse-cache ?v=, puis adresses de la Release à la publication). */
 (function () {
-  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261128074627", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261128074627", APP = "app.js?v=20261128074452";
+  var DONNEES_GZ = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees_gz.js?v=20261128093855", DONNEES = "https://github.com/Beignet134/wina-wizard/releases/download/data-latest/donnees.js?v=20261128093855", APP = "app.js?v=20261128093811";
   var bandeau = document.getElementById("chargementDonnees");
   var msg = document.getElementById("chgMsg"), barre = document.getElementById("chgBarre"), temps = document.getElementById("chgTemps");
   var debut = Date.now(), progres = 8, cible = 30;
